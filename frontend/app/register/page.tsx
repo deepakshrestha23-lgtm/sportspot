@@ -9,14 +9,12 @@ import { getApiErrorMessage } from "@/lib/apiErrors";
 import type { RegisterPayload } from "@/types/auth";
 
 type RegisterRole = RegisterPayload["role"];
-type SkillLevel = "Beginner" | "Amateur" | "Pro";
-type OwnerSport = "Futsal" | "Cricksal" | "Both";
+type SkillLevel = "Beginner" | "Intermediate" | "Advanced";
 type FieldErrors = Record<string, string>;
 
 const locations = ["Kathmandu", "Lalitpur", "Bhaktapur"];
 
-const skillLevels: SkillLevel[] = ["Beginner", "Amateur", "Pro"];
-const ownerSports: OwnerSport[] = ["Futsal", "Cricksal", "Both"];
+const skillLevels: SkillLevel[] = ["Beginner", "Intermediate", "Advanced"];
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const namePattern = /^[A-Za-z][A-Za-z\s.'-]*$/;
 const nepaliMobilePattern = /^(977)?9[78]\d{8}$/;
@@ -36,7 +34,6 @@ export default function RegisterPage() {
     email: "",
     phone: "",
     location: "",
-    preferredSport: "Futsal",
     skillLevel: "Beginner" as SkillLevel,
     password: "",
   });
@@ -47,7 +44,6 @@ export default function RegisterPage() {
     phone: "",
     venueName: "",
     location: "",
-    primarySport: "Futsal" as OwnerSport,
     password: "",
   });
 
@@ -141,9 +137,6 @@ export default function RegisterPage() {
       const fullNameError = validateName(playerForm.fullName, "Full name");
       if (fullNameError) errors.fullName = fullNameError;
       if (!playerForm.location) errors.location = "Please select your city.";
-      if (!["Cricksal", "Futsal"].includes(playerForm.preferredSport)) {
-        errors.preferredSport = "Please select a valid sport.";
-      }
       if (!skillLevels.includes(playerForm.skillLevel)) {
         errors.skillLevel = "Please select a valid skill level.";
       }
@@ -155,9 +148,6 @@ export default function RegisterPage() {
       const venueNameError = validateVenueName(ownerForm.venueName);
       if (venueNameError) errors.venueName = venueNameError;
       if (!ownerForm.location) errors.location = "Please select your city.";
-      if (!ownerSports.includes(ownerForm.primarySport)) {
-        errors.primarySport = "Please select a valid supported sport.";
-      }
     }
 
     if (!acceptedTerms) {
@@ -187,6 +177,9 @@ export default function RegisterPage() {
             phone: playerForm.phone.trim(),
             password: playerForm.password,
             role: "PLAYER",
+            preferred_sport: "CRICKSAL",
+            skill_level: mapSkillLevel(playerForm.skillLevel),
+            location: playerForm.location,
           }
         : {
             full_name: ownerForm.ownerName.trim(),
@@ -318,19 +311,8 @@ export default function RegisterPage() {
                 </select>
               </Field>
 
-              <Field error={fieldErrors.preferredSport} label="Preferred Sport">
-                <select
-                  className={getInputClassName(Boolean(fieldErrors.preferredSport))}
-                  onChange={(event) => {
-                    const preferredSport = event.target.value;
-                    setPlayerForm({ ...playerForm, preferredSport });
-                    setFieldError("preferredSport", ["Cricksal", "Futsal"].includes(preferredSport) ? "" : "Please select a valid sport.");
-                  }}
-                  value={playerForm.preferredSport}
-                >
-                  <option value="Cricksal">Cricksal</option>
-                  <option value="Futsal">Futsal</option>
-                </select>
+              <Field label="Sport">
+                <ReadOnlySportBadge />
               </Field>
 
               <Field error={fieldErrors.skillLevel} label="Skill Level">
@@ -386,7 +368,7 @@ export default function RegisterPage() {
                     setFieldError("venueName", venueName ? validateVenueName(venueName) : "");
                   }}
                   onBlur={() => setFieldError("venueName", validateVenueName(ownerForm.venueName))}
-                  placeholder="e.g. Kathmandu Futsal Arena"
+                  placeholder="e.g. Kathmandu Cricksal Arena"
                   required
                   value={ownerForm.venueName}
                 />
@@ -449,15 +431,8 @@ export default function RegisterPage() {
                 </select>
               </Field>
 
-              <Field error={fieldErrors.primarySport} label="Primary Sport Supported">
-                <SegmentedControl
-                  options={ownerSports}
-                  selected={ownerForm.primarySport}
-                  onSelect={(primarySport) => {
-                    setOwnerForm({ ...ownerForm, primarySport });
-                    setFieldError("primarySport", "");
-                  }}
-                />
+              <Field label="Primary Sport Supported">
+                <ReadOnlySportBadge />
               </Field>
 
               <Field className="sm:col-span-2" error={fieldErrors.password} label="Create Password">
@@ -551,6 +526,21 @@ function Field({
       {error ? <span className="mt-1 block text-xs font-semibold text-red-600">{error}</span> : null}
     </label>
   );
+}
+
+function ReadOnlySportBadge() {
+  return (
+    <div className="mt-2 flex h-12 items-center justify-between rounded-md border border-green-200 bg-green-50 px-4 text-sm">
+      <span className="font-black text-sportNavy">Cricksal</span>
+      <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-sportGreen">SportSpot Sport</span>
+    </div>
+  );
+}
+
+function mapSkillLevel(skillLevel: SkillLevel) {
+  if (skillLevel === "Intermediate") return "INTERMEDIATE";
+  if (skillLevel === "Advanced") return "ADVANCED";
+  return "BEGINNER";
 }
 
 function RoleButton({

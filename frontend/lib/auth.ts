@@ -19,6 +19,11 @@ export function getAccessToken() {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
+export function saveAccessToken(accessToken: string) {
+  if (!isBrowser()) return;
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+}
+
 export function getRefreshToken() {
   if (!isBrowser()) return null;
   return localStorage.getItem(REFRESH_TOKEN_KEY);

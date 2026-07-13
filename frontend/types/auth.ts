@@ -23,4 +23,7 @@ export interface RegisterPayload {
   phone: string;
   password: string;
   role: Exclude<UserRole, "ADMIN">;
+  preferred_sport?: "CRICKSAL";
+  skill_level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+  location?: string;
 }
