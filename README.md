@@ -1,1462 +1,865 @@
-# SportSpot — Cricksal-First Player Matchmaking and Court Booking Platform
+# SportSpot
 
-## Project Owner
-Deepak Shrestha
+SportSpot is a Nepal-focused sports web application for Cricksal players, teams, court owners, and administrators.
 
-## Project Name
-SportSpot
+Current development status: active local development. Authentication, email verification, password recovery, player profiles, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, and wishlist support exist in the repository. Open games, team challenges, Game Room, rating submission, disputes, production deployment, and several admin operations are not complete.
 
-## Current MVP Focus
-SportSpot is currently focused ONLY on CRICKSAL.
+Current sport scope: Cricksal only.
 
-Do not implement Futsal in the current MVP.
-Do not add Futsal UI, Futsal routes, Futsal fields, Futsal roles, Futsal pages, or Futsal filters right now.
+Product statement: Find Courts. Join Games. Challenge Teams. Play with Trust.
 
-Futsal can be mentioned as future scope, but all current development should focus on Cricksal only.
+## 1. Project Overview
 
-Current tagline:
-Find Courts. Join Games. Challenge Teams. Play with Trust.
+SportSpot solves the local coordination problem around Cricksal in Nepal. Players need reliable ways to find verified courts, discover teammates or opponents, book available slots, coordinate teams, and build trust. Court owners need a structured way to publish venues, manage courts, generate slots, handle bookings, and communicate important updates. Admins need to review venue submissions before venues become visible to players.
 
----
+The product is not only a court-listing website. The intended platform joins venue discovery, court booking, player identity, teams, invitations, notifications, email, payment, and trust information into one workflow.
 
-# 1. Project Overview
+## 2. Product Scope
 
-SportSpot is a Nepal-focused sports coordination platform for Cricksal players.
+Current scope:
 
-The main purpose of SportSpot is not only court booking. The system should help Cricksal players:
+- Cricksal-only web application.
+- Roles: Guest, Player, Court Owner, Admin.
+- Decoupled frontend and backend.
+- Local-development focused MVP/FYP implementation.
+- Khalti can use a development sandbox internally, but user-facing UI should show only Khalti.
 
-- Find Cricksal courts
-- Join open games
-- Create or join teams
-- Challenge other teams
-- Manage confirmed matches through Game Room
-- Build trust using rating and reliability
-- Reduce manual confusion in court booking
-- Help solo or unconnected players find games easily
+Outside current scope:
 
-SportSpot should be treated as a sports matchmaking and coordination platform, not just a booking website.
+- Multi-sport UI.
+- Real automatic refund transfer.
+- Split payment.
+- Full open-game flow.
+- Full team challenge flow.
+- Game Room.
+- Rating submission and recommendation engine.
+- Production deployment and monitoring.
 
----
+## 3. User Roles and Permissions
 
-# 2. Current Technology Stack
+| Role | Purpose | Verified capabilities | Restrictions |
+| --- | --- | --- | --- |
+| Guest | Public visitor | View homepage and public court discovery, register, log in, request password reset | Cannot book, save wishlist, manage teams, or access dashboards |
+| Player | Cricksal participant | Verify email, log in, maintain profile, upload profile photo, create teams, invite by SportSpot ID, add guests, accept/reject invitations, view member profile cards, save wishlist items, discover venues, reserve consecutive slots, pay with Khalti, view bookings, cancel eligible bookings, receive notifications | Cannot manage venues, slots, owner refunds, or admin review |
+| Court Owner | Venue operator | Verify email, set up venue, upload photos/proof, submit for review, manage own courts, generate/block/unblock slots, view bookings, cancel own bookings, send booking messages, process owner-side refund records | Cannot create player teams or approve venues |
+| Admin | Internal reviewer | Django admin access, frontend admin dashboard, venue approval/request-changes/rejection/suspension | Public registration is blocked; full users/bookings/reports/disputes admin is incomplete |
 
-Frontend:
-- Next.js
-- TypeScript
-- Tailwind CSS
-- shadcn/ui if already installed or useful
-- Responsive UI
+## 4. Technology Stack
 
-Backend:
-- Django
-- Django REST Framework
-- JWT authentication using SimpleJWT
-- PostgreSQL database
+| Layer | Technology | Purpose | Why selected |
+| --- | --- | --- | --- |
+| Frontend | Next.js 15, React 19 | App Router UI | Modern React routing and rendering |
+| Frontend | TypeScript | Typed UI and API contracts | Reduces integration mistakes |
+| Frontend | Tailwind CSS | Responsive styling | Fast consistent UI system |
+| Frontend HTTP | Axios | API calls | JWT interceptor support |
+| Backend | Django 5 | Main backend and admin | Mature Python framework |
+| Backend API | Django REST Framework | JSON API | Serializers, views, permissions |
+| Auth | SimpleJWT plus custom verified JWT auth | JWT login/refresh with email verification and auth-version checks | Stateless API auth with extra safety |
+| Database | PostgreSQL | Persistent relational data | Fits bookings, slots, teams, users, notifications |
+| Email | Django email backend via console or SMTP | OTP, reset links, transactional emails | Simple local and real SMTP support |
+| Payment | Khalti Web Checkout API | Booking payment initiation and verification | Nepal-relevant payment provider |
+| Media | Django local media storage | Uploaded images and documents | Practical for local/FYP development |
 
-Architecture:
-- Decoupled frontend and backend
-- Next.js handles frontend UI and routing
-- Django REST Framework handles backend APIs and business logic
-- PostgreSQL stores relational data
+## 5. System Architecture
 
----
-
-# 3. Development Style Rules for Codex
-
-Before making changes:
-- Read this README carefully.
-- Inspect the current project structure.
-- Understand what is already implemented.
-- Do not rewrite the whole project unnecessarily.
-- Do not break working login/register.
-- Do not create future modules early.
-- Implement only the phase requested.
-- Explain all files changed after implementation.
-- Provide exact commands to run.
-- Provide testing checklist after each phase.
-
-Important:
-This project is being developed step by step. Do not jump ahead.
-
----
-
-# 4. Current Completed Work
-
-Phase 1 is completed:
-- Project setup exists.
-- Backend Django project exists.
-- Frontend Next.js project exists.
-- PostgreSQL is connected.
-- Authentication works.
-- Player registration works.
-- Login works.
-- JWT/token authentication works.
-- Role-based dashboard redirect exists or should be preserved.
-- Basic navigation/dashboard shell may already exist.
-
-Do not break Phase 1.
-
----
-
-# 5. Current Main Development Direction
-
-Current implementation focus includes:
-- Player authentication and Cricksal profile
-- Cricksal team management
-- Real notification center for active events
-- Cricksal court owner venue setup
-- Admin venue verification
-- Player court discovery and booking
-
-Do not focus on:
-- Futsal
-- Production payment settlement
-- Challenge Teams booking integration
-- Game Room
-- Advanced AI
-- Full scoring system
-- Advanced analytics
-
-Build the system phase by phase and keep each completed phase working before adding the next one.
-
----
-
-# 6. Sport Rule
-
-Current sport focus:
-- CRICKSAL only
-
-Player profile should not ask:
-- Preferred Sport
-- Futsal Role
-- Futsal Skill Level
-
-Because the current platform flow has only Cricksal.
-
-The player is automatically a Cricksal player.
-
-Use Cricksal-related fields only.
-
-Future scope:
-- Futsal support can be added later using a sport preference model.
-- For now, keep database and UI simple.
-
----
-
-# 7. User Roles
-
-The system supports:
-
-1. PLAYER
-2. COURT_OWNER
-3. ADMIN
-
-Current implemented role scope:
-- PLAYER: profile, teams, invitations, court discovery, bookings
-- COURT_OWNER: venue setup, court setup, slots, bookings, calendar
-- ADMIN: venue approval, request changes, rejection, suspension
-
----
-
-# 8. Navigation Rules
-
-## Before Login
-
-Navbar should show:
-
-SportSpot | Courts | Find Game | Challenge Teams | Register Venue | Login | Sign Up
-
-Since current MVP is Cricksal-only, do not use Courts dropdown with Cricksal/Futsal.
-
-Use:
-
-- Courts
-- Find Game
-- Challenge Teams
-- Register Venue
-- Login
-- Sign Up
-
-Register Venue appears only before login.
-
----
-
-## After PLAYER Login
-
-Navbar should show:
-
-SportSpot | Courts | Find Game | Challenge Teams | Bell Icon | Player Name Dropdown
-
-Do not show Register Venue after player login.
-
-Player profile dropdown should contain only:
-
-- Dashboard → /dashboard/player
-- My Profile → /dashboard/player/profile
-- Logout
-
-Do not put Notifications inside profile dropdown.
-Do not put Notifications inside dashboard sidebar.
-
----
-
-# 9. Notification UX Rule
-
-Notifications should be handled only through the navbar bell icon.
-
-When the player clicks the bell icon:
-- Open a Notification Center panel/drawer.
-- On desktop, it can open as a right-side drawer.
-- On mobile, it can open as a full-screen panel.
-
-Notifications are backend-backed and created through one central notification service.
-Do not use placeholder/static notification data for active features.
-
-Notification state:
-- Unseen means the notification card has not been visible in the Notification Centre for about one second.
-- The bell badge counts unseen notifications.
-- Read means the user opened the related page or completed an action.
-- Opening the bell must not mark every notification read or seen.
-
-Current connected events:
-- Team invitations, invitation acceptance/rejection, invitation cancellation, and registered member removal
-- Venue submission, approval, changes requested, rejection, and suspension
-- Booking reservation, confirmation, payment failure/expiry, and cancellation
-- Owner-managed mock refund requests and refund outcomes
-- Important booking messages sent by a court owner to the player on that booking
-
-Current delivery uses polling and refresh-on-focus. WebSocket infrastructure is future scope.
-
-Challenge, join request, Game Room, match reminder, rating reminder, and dispute notification
-types are reserved for their future modules. They must not display fake notifications or broken
-actions until those modules exist.
-
-Notification Center is an action center and should always use real database notifications.
-
----
-
-# 10. Player Dashboard Structure
-
-Player dashboard route:
-
-/dashboard/player
-
-Dashboard sidebar should contain:
-
-- Overview
-- My Profile
-- My Teams
-- My Matches / Game Rooms
-- My Bookings
-- My Requests
-- My Invitations
-- My Ratings
-- Settings
-
-Do not include Notifications in the dashboard sidebar.
-
-Dashboard overview should show:
-
-- Welcome message
-- Profile status
-- SportSpot ID
-- Cricksal role
-- Skill level
-- Location
-- Reliability display
-- Completed matches
-- No-shows
-- Average rating
-- Upcoming match placeholder
-- Pending requests placeholder
-- Team invitations placeholder
-
-Quick action cards:
-
-- Complete/Edit Profile
-- Find Game
-- Book Court
-- Create Team
-- Challenge Team
-
-Only Complete/Edit Profile needs to fully work in Phase 2.
-Other quick actions can remain placeholders for now.
-
----
-
-# 11. Phase Plan
-
-## Phase 1: Authentication
-Status: Completed
-
-Includes:
-- Register
-- Login
-- JWT authentication
-- Role-based redirect
-- Basic dashboard route
-
----
-
-## Phase 2: Player Profile and Cricksal Identity
-Status: Completed
-
-Goal:
-A player should have a proper Cricksal sports identity after login.
-
-Flow:
-Player registers
-→ account is created
-→ PlayerProfile is created automatically
-→ player logs in
-→ dashboard shows profile status
-→ player clicks Complete/Edit Profile
-→ profile form opens with registration values already filled
-→ player completes Cricksal details
-→ profile is saved in PostgreSQL
-→ dashboard updates profile status
-
----
-
-## Phase 3: Team Management
-Status: Completed
-
-Includes:
-- Create Cricksal team
-- Captain role
-- Invite registered players by SportSpot ID
-- Registered player invitation accept/reject flow
-- Add guest players
-- Team profile
-- Team reliability/rating placeholders
-
-Registered player recruitment must use SportSpot ID only. Do not add email invite, phone invite, name search, or Futsal.
-
----
-
-## Phase 4: Full Cricksal Court Booking
-Status: Completed
-
-Includes:
-- Court owner venue setup
-- Venue proof and verification submission
-- Admin approval, request changes, rejection, and suspension
-- Court setup
-- Slot generation and pricing
-- Player court discovery
-- Slot reservation
-- Khalti sandbox payment
-- Mock payment fallback for local demo/testing
-- Booking confirmation
-- Booking pass
-- Player booking history
-- Court owner booking management
-- Owner slot calendar with block/unblock
-- Structured cancellation and refund policy
-- Booking-time policy snapshots so later venue edits do not alter existing bookings
-- Full, partial, and no-refund cancellation windows
-- Owner-managed mock refund processing
-- Automatic unpaid reservation expiry command
-
-### Cancellation and Refund Operations
-
-Each venue defines an executable cancellation policy. The default policy is:
-
-- 100% refund when the player cancels at least 24 hours before the booking starts.
-- 50% refund when the player cancels between 12 and 24 hours before the booking starts.
-- No refund when the player cancels less than 12 hours before the booking starts.
-- A venue-caused cancellation of a paid booking always requires a 100% refund.
-- Cancelling an unpaid reservation releases all selected slots and requires no refund.
-- Multi-slot bookings are cancelled atomically; every slot receives the same lifecycle outcome.
-- Completed or already-started bookings cannot be cancelled through the normal player/owner flow.
-
-Court owners may configure the full-refund cutoff, optional partial-refund window, and partial-refund percentage. SportSpot captures a versioned snapshot when a booking is reserved. A later policy edit applies only to future bookings.
-
-Refund eligibility and amount are calculated by SportSpot. Khalti sandbox is used for demo payment confirmation, but refund settlement is still recorded manually by the venue owner in the MVP; the owner cannot reject or reduce a system-approved entitlement. Real payment-provider refund automation and dispute handling remain future scope.
-
-### Reservation Expiry Operations
-
-Unpaid reservations are held for 10 minutes. If the player does not complete Khalti sandbox payment or demo fallback payment before `reserved_until`, SportSpot expires the booking, marks payment as failed, releases all selected slots, and notifies the player and venue owner.
-
-Run this command periodically:
-
-```bash
-cd backend
-python manage.py expire_reservations
-```
-
-For a real deployment, schedule it every minute with Windows Task Scheduler, cron, or a worker process. The command is idempotent, so rerunning it does not duplicate payment-failed notifications or emails.
-
-Confirmed paid bookings are completed after the final selected slot end time passes. Slots remain `BOOKED` for history, payment remains `PAID`, and the booking receives `completed_at`.
-
-Run this command periodically:
-
-```bash
-cd backend
-python manage.py complete_bookings
-```
-
-For a real deployment, schedule it every 5-15 minutes or hourly. Booking list/detail APIs also refresh lifecycle state when opened, so the UI corrects stale confirmed bookings even before the scheduler runs.
-
-Recommended single maintenance command for local demo:
-
-```bash
-cd backend
-python manage.py run_booking_maintenance
-```
-
-This runs reservation expiry, booking completion, and booking reminders together. Use this during testing when you want SportSpot to catch up all booking lifecycle operations at once.
-
----
-
-## Phase 5: Open Game / Find Game
-Future
-
-Will include:
-- Teams looking for players
-- Join requests
-- Role-based open slots
-
-Do not implement until requested.
-
----
-
-## Phase 6: Challenge Teams
-Future
-
-Will include:
-- Challenge another team
-- Accept/reject/counter proposal
-- Challenge detail page
-
-Do not implement until requested.
-
----
-
-## Phase 7: Game Room
-Future
-
-Will include:
-- Confirmed match workspace
-- Lineups
-- Booking pass
-- Attendance
-- Result
-- Rating prompt
-
-Do not implement until requested.
-
----
-
-## Phase 8: Ratings and Reliability
-Future
-
-Will include:
-- Post-match rating
-- Reliability update
-- No-show handling
-
-Do not implement rating submission until requested.
-
----
-
-## Phase 9: Rule-Based Recommendation
-Future
-
-Will include:
-- Recommend open games
-- Recommend teams
-- Recommend courts
-- Explain why recommendation was shown
-
-Do not implement until requested.
-
----
-
-## Phase 10: Future Expansion
-Future
-
-Will include:
-- Production eSewa/Khalti payment
-- Refund automation
-- Split payment
-- Advanced owner analytics
-- Futsal support
-
-Do not implement until requested.
-
----
-
-# 12. Phase 2 Detailed Requirements
-
-Now implement Phase 2 only:
-
-PLAYER PROFILE AND CRICKSAL IDENTITY
-
-Do not implement:
-- Team model
-- Team creation
-- Venue model
-- Court booking
-- Payment
-- Open games
-- Challenge system
-- Game Room
-- Real notification backend
-- Rating submission
-- Recommendation
-- Futsal
-
----
-
-# 13. Phase 2 Backend Requirements
-
-Create Django app named players if it does not already exist.
-
-Create PlayerProfile model.
-
-PlayerProfile fields:
-
-- id
-- user: OneToOneField to custom User
-- sportspot_id: unique string generated automatically
-- profile_photo: optional image field or optional URL field for now
-- location
-- weekly_availability
-- playing_style
-- skill_level with choices:
-  - BEGINNER
-  - INTERMEDIATE
-  - ADVANCED
-- preferred_cricksal_role with choices:
-  - BATSMAN
-  - BOWLER
-  - ALL_ROUNDER
-  - WICKETKEEPER
-  - NONE
-- reliability_score default 100
-- average_rating default 0
-- no_show_count default 0
-- late_cancellation_count default 0
-- completed_matches_count default 0
-- created_at
-- updated_at
-
-Do not include preferred_sport because current MVP is Cricksal-only.
-Do not include futsal_role.
-Do not include futsal fields.
-
----
-
-# 14. SportSpot ID Rule
-
-sportspot_id should be generated automatically.
-
-Format:
-
-SSP-10001
-SSP-10002
-SSP-10003
-
-Rules:
-- Must be unique.
-- Player should not manually enter it.
-- It should be created when PlayerProfile is created.
-- It should be visible on dashboard and profile page.
-
----
-
-# 15. Backend Business Rules
-
-1. Only users with role PLAYER can have PlayerProfile.
-2. One PLAYER can have only one PlayerProfile.
-3. COURT_OWNER cannot create PlayerProfile.
-4. ADMIN cannot create PlayerProfile.
-5. PlayerProfile must be linked to currently authenticated user.
-6. If profile already exists, prevent duplicate profile.
-7. If old player account does not have profile, API should handle safely.
-8. Registration should automatically create PlayerProfile for player users.
-9. If registration already collects skill level and location, copy those into PlayerProfile.
-10. Current MVP sport is Cricksal, so profile is assumed to be Cricksal.
-
----
-
-# 16. Registration Logic
-
-When a user registers as PLAYER:
-
-1. Create User account.
-2. Automatically create PlayerProfile.
-3. Copy these values from registration into PlayerProfile:
-   - location
-   - skill_level
-4. Set preferred_cricksal_role = NONE by default.
-5. Generate sportspot_id automatically.
-6. Set reliability_score = 100.
-7. Set average_rating = 0.
-8. Set completed_matches_count = 0.
-9. Set no_show_count = 0.
-10. Set late_cancellation_count = 0.
-
-Important:
-Do not lose values selected during registration.
-If the player selected location and skill level during registration, those values should appear in profile after login.
-
----
-
-# 17. Profile Completion Logic
-
-Create simple profile completion status.
-
-Important fields for complete Cricksal profile:
-
-- location
-- skill_level
-- weekly_availability
-- playing_style
-- preferred_cricksal_role
-
-If any important field is missing or preferred_cricksal_role is NONE:
-- Profile Status = Incomplete
-
-If all important fields are filled:
-- Profile Status = Complete
-
-Dashboard should show:
-- Complete Profile button if incomplete
-- Edit Profile button if complete
-
----
-
-# 18. Reliability Logic
-
-Database default:
-
-reliability_score = 100
-
-But frontend should display new players carefully.
-
-If completed_matches_count < 3:
-Show:
-- New Player
-- Provisional Reliability
-- Message: Reliability becomes meaningful after a few completed matches.
-
-Do not make new players look fully proven.
-
-If completed_matches_count >= 3:
-Show actual reliability score normally.
-
-Example:
-New player:
-Reliability: New Player
-Completed Matches: 0
-No-shows: 0
-
-Experienced player:
-Reliability: 92/100
-Completed Matches: 7
-No-shows: 0
-
----
-
-# 19. API Requirements
-
-Create authenticated APIs:
-
-GET /api/players/profile/
-
-Purpose:
-Return currently logged-in player profile.
-
-Behavior:
-- If profile exists, return profile data.
-- If profile does not exist, return clear response without crashing.
-
-POST /api/players/profile/
-
-Purpose:
-Create profile for current player.
-
-Rules:
-- Only PLAYER can create.
-- Prevent duplicate profile.
-- Generate sportspot_id automatically.
-
-PUT /api/players/profile/
-
-Purpose:
-Update full profile.
-
-PATCH /api/players/profile/
-
-Purpose:
-Partially update profile.
-
-Create:
-- model
-- serializer
-- permissions
-- views
-- urls
-- admin registration
-
-Add players urls to main backend urls.py.
-
-Use JWT authentication already present in the project.
-
----
-
-# 20. Frontend Phase 2 Requirements
-
-Create or update route:
-
-/dashboard/player/profile
-
-This page should:
-
-1. Fetch current player profile from GET /api/players/profile/.
-2. If profile exists, show edit form with saved values.
-3. If profile does not exist, show create profile form safely.
-4. Registration values like location and skill level should already be filled.
-5. Player can edit location and skill level.
-6. Player can add weekly availability.
-7. Player can add playing style.
-8. Player can select preferred Cricksal role.
-9. Save using authenticated request.
-10. Show loading state.
-11. Show success message after save.
-12. Show error message if API fails.
-13. Keep design consistent with SportSpot.
-
----
-
-# 21. Player Profile Page UI
-
-Use dark theme with green accent.
-
-Top profile card should show:
-
-- Avatar placeholder
-- Full name
-- SportSpot ID
-- Cricksal Player
-- Skill level
-- Location
-- New Player / Provisional Reliability
-- Completed matches
-- Average rating
-
-Main form sections:
-
-## Section 1: Cricksal Identity
-
-Fields:
-- Skill Level:
-  - Beginner
-  - Intermediate
-  - Advanced
-
-- Location
-
-- Weekly Availability
-
-- Playing Style
-
-## Section 2: Cricksal Role
-
-Field:
-Preferred Cricksal Role:
-- Batsman
-- Bowler
-- All-rounder
-- Wicketkeeper
-- None
-
-## Section 3: Trust Summary
-
-Read-only fields:
-- Reliability
-- Completed Matches
-- No-shows
-- Late Cancellations
-- Average Rating
-
-Trust summary should not be editable by player.
-
----
-
-# 22. Player Dashboard Update
-
-Update:
-
-/dashboard/player
-
-Dashboard should show:
-
-- Welcome back, player name
-- Profile status:
-  - Incomplete
-  - Complete
-- SportSpot ID
-- Sport: Cricksal
-- Skill level
-- Location
-- Preferred Cricksal role
-- Reliability display:
-  - New Player / Provisional Reliability if completed_matches_count < 3
-- Completed matches
-- No-shows
-- Average rating
-
-Quick action cards:
-- Complete/Edit Profile → /dashboard/player/profile
-- Find Game → placeholder
-- Book Court → placeholder
-- Create Team → placeholder
-- Challenge Team → placeholder
-
-Only Complete/Edit Profile needs to work in Phase 2.
-
----
-
-# 23. Player Dashboard Sidebar
-
-Sidebar should contain:
-
-- Overview
-- My Profile
-- My Teams
-- My Matches / Game Rooms
-- My Bookings
-- My Requests
-- My Invitations
-- My Ratings
-- Settings
-
-Do not include Notifications in sidebar.
-
-Other pages can be placeholder routes for now.
-
----
-
-# 24. Navbar Rules
-
-Before login:
-
-SportSpot | Courts | Find Game | Challenge Teams | Register Venue | Login | Sign Up
-
-After PLAYER login:
-
-SportSpot | Courts | Find Game | Challenge Teams | Bell Icon | Player Name Dropdown
-
-Player dropdown:
-
-- Dashboard
-- My Profile
-- Logout
-
-Do not show Register Venue after player login.
-Do not show Notifications in profile dropdown.
-
----
-
-# 25. Placeholder Pages
-
-Create placeholder pages if missing:
-
-- /courts
-- /find-game
-- /challenge-teams
-- /dashboard/player/teams
-- /dashboard/player/matches
-- /dashboard/player/bookings
-- /dashboard/player/requests
-- /dashboard/player/invitations
-- /dashboard/player/ratings
-- /dashboard/player/settings
-
-These pages can show clean placeholder UI:
-"This feature will be available in a later phase."
-
-Do not implement their real logic yet.
-
----
-
-# 26. Quality Requirements
-
-- Keep authentication working.
-- Keep login/register working.
-- Keep JWT authenticated requests working.
-- Keep role-based access working.
-- Use clean DRF structure.
-- Use TypeScript types for PlayerProfile.
-- Use Tailwind CSS.
-- Keep UI responsive.
-- Handle loading state.
-- Handle empty state.
-- Handle success state.
-- Handle error state.
-- Do not hardcode real user values.
-- Do not create duplicate player profiles.
-- Do not add Futsal now.
-- Do not build future modules early.
-
----
-
-# 27. Commands to Run After Implementation
-
-Backend:
-
-cd backend
-python manage.py makemigrations
-python manage.py migrate
-python manage.py runserver
-
-Frontend:
-
-cd frontend
-npm run dev
-
----
-
-# 28. Phase 2 Testing Checklist
-
-After implementation, this should work:
-
-1. Register a new PLAYER.
-2. During registration, enter location and skill level.
-3. Login as that player.
-4. Open /dashboard/player.
-5. Dashboard shows:
-   - SportSpot ID
-   - Sport: Cricksal
-   - Skill level
-   - Location
-   - Profile status
-6. Click Complete/Edit Profile.
-7. /dashboard/player/profile opens.
-8. Form is pre-filled with registration values.
-9. Add:
-   - Weekly availability
-   - Playing style
-   - Preferred Cricksal role
-10. Save profile.
-11. Success message appears.
-12. Refresh page.
-13. Saved data still appears.
-14. Dashboard updates profile status.
-15. PostgreSQL has data in players_playerprofile.
-16. Court owner/admin cannot create player profile.
-17. No Futsal fields appear anywhere in Phase 2 UI.
-
-PostgreSQL check:
-
-SELECT * FROM players_playerprofile;
-
----
-
-# 29. Git Workflow
-
-After Phase 2 works:
-
-git status
-git add .
-git commit -m "Complete Phase 2 Cricksal player profile"
-git push
-
-Do not commit broken code.
-Commit only after testing.
-
-## Project Structure
+SportSpot uses a decoupled client-server architecture with a modular monolithic Django backend. It is not a microservices system.
 
 ```text
-sportspot/
-  backend/
-    accounts/
-    players/
-    venues/
-    sportspot_api/
-    manage.py
-    requirements.txt
-  frontend/
-    app/
-    components/
-    lib/
-    types/
-    package.json
-  README.md
-  .gitignore
-  .env.example
+User
+-> Next.js frontend
+-> Django REST API
+-> PostgreSQL / local media / SMTP / Khalti
+-> Django REST API response
+-> frontend UI update
 ```
 
-## Tech Stack
+Logical layers:
 
-Frontend:
+- Presentation: `frontend/app`, `frontend/components`, `frontend/lib`, `frontend/types`.
+- Application/API: Django apps in `backend/accounts`, `players`, `teams`, `venues`, `notifications`, `wishlists`.
+- Data/services: PostgreSQL, local media files, SMTP provider, Khalti.
 
-- Next.js
-- TypeScript
-- Tailwind CSS
+No architecture diagram is currently present.
 
-Backend:
+## 6. Repository Structure
 
-- Django
-- Django REST Framework
-- PostgreSQL
-- SimpleJWT
+```text
+.
+├── backend/
+│   ├── manage.py
+│   ├── requirements.txt
+│   ├── sportspot_api/      # Django settings and root URLs
+│   ├── accounts/           # User, JWT, OTP, password reset
+│   ├── players/            # PlayerProfile and Cricksal identity
+│   ├── teams/              # Teams, members, invitations, guests
+│   ├── venues/             # Venues, courts, slots, booking, Khalti, policies
+│   ├── notifications/      # Notification Centre and email delivery
+│   └── wishlists/          # Player saved venues/courts
+├── frontend/
+│   ├── app/                # Next.js routes
+│   ├── components/         # Navbar, Notification Centre, modals, toasts
+│   ├── lib/                # API, auth, dates, toast helpers
+│   ├── types/              # TypeScript domain types
+│   └── public/images/      # Logo/auth/home assets
+├── scripts/                # Windows helpers for Gmail/Khalti env setup
+├── .env.example
+├── .gitignore
+└── README.md
+```
 
-## Backend Setup
+## 7. Current Implementation Status
 
-From the project root:
+Status categories used here: Completed, Partially completed, In progress, Planned, Blocked, Needs verification.
 
-```bash
+### Authentication and Accounts
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Custom email user | Completed | `accounts.User` | Account suspension UI |
+| Player/Court Owner registration | Completed | `/api/auth/register/`, `/register` | UX polish only |
+| Admin public registration blocked | Completed | `RegisterSerializer.validate_role` | None known |
+| Email OTP verification | Completed | `EmailVerificationOTP`, `/verify-email` | SMTP must be configured per environment |
+| Login/JWT/refresh | Completed | `LoginSerializer`, `VerifiedTokenRefreshView` | Consider secure-cookie auth later |
+| Forgot/reset password | Completed | `PasswordResetToken`, `/forgot-password`, `/reset-password` | Production should use neutral account recovery messaging |
+| Logout | Completed | Frontend clears session | Backend refresh-token blacklist not implemented |
+| Account suspension | Planned | No full moderation flow found | Add admin user controls |
+
+### Player Profile
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| PlayerProfile | Completed | `players/models.py` | Future-compatible Futsal fields exist but are hidden in current UI |
+| SportSpot ID | Completed | `generate_sportspot_id` | Concurrency hardening later |
+| Profile view/update | Completed | `/api/players/profile/`, `/dashboard/player/profile` | Broader tests |
+| Profile photo upload | Completed | `profile_photo` and UI | Size/compression rules |
+| Reliability display | Partially completed | counters and labels | Real match/no-show engine missing |
+| Ratings | Partially completed | `average_rating` fields | Rating submission missing |
+### Team Management
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Create team | Completed | `TeamCreateView`, `/dashboard/player/teams/create` | More validation |
+| Captain membership | Completed | creator added as CAPTAIN | Role transfer not implemented |
+| Team photo | Completed | `team_photo` | Image size policy |
+| Invite by SportSpot ID | Completed | `/api/teams/players/lookup/`, `/invite/` | Optional invitation expiry |
+| Accept/reject invitation | Completed | `/api/teams/invitations/` | None known |
+| Guest player | Completed | `/members/guest/` | Extended guest lifecycle |
+| Remove member/invitation | Completed | status-based removal | Soft history improvements |
+| Public team browsing | Planned | No public team discovery backend | Needed for challenges |
+
+### Open Games
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Find Game page | Planned | `frontend/app/find-game/page.tsx` states later phase | Build models/API/UI |
+| Create open game | Planned | No backend model/API found | Define open-game domain |
+| Join requests | Planned | Notification types reserved only | Build request workflow |
+
+### Team Challenges
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Challenge pages | Planned | placeholder pages in `challenge-teams` | Build real challenge module |
+| Accept/counter/decline | Planned | no challenge model/API found | Add lifecycle and notifications |
+| Game Room creation | Planned | no match/game-room model found | Depends on challenge/open-game flow |
+
+### Venue and Court Discovery
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Approved venue listing | Completed | `/api/venues/venues/`, `/courts` | More real seed data |
+| Venue-first flow | Completed | venue cards and `/courts/[id]` | Card UX can improve |
+| Reference filters | Completed | `/api/venues/discovery/reference/`, `reference_data.py` | Add geolocation later |
+| District filter | Completed | Kathmandu, Lalitpur, Bhaktapur from backend | None known |
+| Area filter | Completed | district-dependent values | Searchable dropdown later |
+| Venue type filter | Completed | Indoor, Outdoor, Covered taxonomy | None known |
+| Facilities filter | Completed | backend catalogue | Align labels over time |
+| Date/time/duration filters | Completed | backend validation and URL params | Mobile filters apply immediately |
+| Price filter | Completed | real slot prices | Optional slider |
+| Rating filter/sort | Partially completed | rating fields/sort option | no real rating workflow |
+| Pagination | Completed | API and UI | None known |
+
+### Court Owner
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Owner dashboard states | Completed | `/dashboard/owner` | More operational polish |
+| Venue setup wizard | Completed | `/dashboard/owner/venue-setup` | More validation polish |
+| Draft and submit | Completed | `OwnerVenueView`, `OwnerVenueSubmitView` | None known |
+| Photos/proof upload | Completed | `VenuePhoto`, document fields, upload APIs | Production private storage |
+| Admin status handling | Completed | DRAFT/PENDING/NEEDS_CHANGES/APPROVED/REJECTED/SUSPENDED | Audit logs later |
+| Court management | Completed | owner court APIs/pages | Reactivation unclear |
+| Slot generation/pricing | Completed | `GenerateSlotsView` | No peak pricing |
+| Block/unblock slots | Completed | `SlotStatusView` | Richer calendar later |
+| Offline booking | Planned | navigation concept but no complete model/API | Build owner offline booking flow |
+
+### Booking
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Select court/date/slots | Completed | `/courts/[id]` | UX polish |
+| Multi-slot reservation | Completed | `BookingSlot`, `slot_ids` | More edge-case tests |
+| 10-minute hold | Completed | `reserved_until` | Scheduler needed in deployment |
+| Double-booking prevention | Completed | transactions and `select_for_update` | Load testing later |
+| Past-time blocking | Completed | `is_past`, backend validation | Timezone verification in deployment |
+| Khalti initiation | Completed | `KhaltiPaymentInitiateView` | Requires valid env key |
+| Khalti verification | Completed | lookup before confirmation | Needs live sandbox end-to-end verification |
+| Booking pass/history | Completed | player booking pages | Print/download later |
+| Cancellation | Completed | `BookingCancelView`, `policies.py` | More tests for all tiers |
+| Owner refund actions | Completed | owner refund APIs/page | Real money transfer not implemented |
+| Expiry/completion commands | Completed | `expire_reservations`, `complete_bookings`, `run_booking_maintenance` | Schedule in deployment |
+
+### Notifications and Feedback
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Notification Centre | Completed for connected modules | `notifications` app, `NotificationCenter.tsx` | Connect future modules later |
+| Seen/read behaviour | Completed | model timestamps and IntersectionObserver | Accessibility testing |
+| Bell badge and polling | Completed | Navbar polls unseen count | WebSockets future scope |
+| Notification actions | Partially completed | team invite/open actions | challenge/join actions await modules |
+| Transactional emails | Completed for connected modules | `email_service.py`, templates, `EmailDelivery` | Configure SMTP |
+| Global toast system | Completed | `ToastProvider`, `emitToast`, `FeedbackToast` | Some persistent page errors remain intentionally inline |
+
+### Administration
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Django admin | Completed | app admin files | Production hardening |
+| Frontend admin dashboard | Partially completed | `/dashboard/admin` | More metrics/actions |
+| Venue review | Completed | `/dashboard/admin/venues` and admin review API | Audit log |
+| User management | Planned | no dedicated page | Build moderation UI |
+| Booking oversight | Partially completed | backend permission logic exists | frontend admin booking page missing |
+| Reports/disputes | Planned | no models/pages | Build later |
+
+### Testing and Deployment
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Backend tests | Partially completed | tests in accounts, teams, venues, notifications, wishlists | Broaden coverage |
+| Frontend tests | Planned | no test runner found | Add Playwright or React tests |
+| API docs | Planned | no Swagger/OpenAPI | Add schema/docs |
+| Deployment | Planned | no Docker/CI/deployment config found | Build deployment pipeline |
+
+## 8. Completed Work
+
+Verified completed work includes:
+
+- Decoupled Next.js frontend and Django REST backend.
+- PostgreSQL-backed settings.
+- Email-based custom user model.
+- Public Player/Court Owner registration and admin-only superuser creation.
+- Email OTP verification and secure password recovery.
+- JWT authentication with verified-user and auth-version checks.
+- Cricksal player profile with SportSpot ID, photo, location, skill, role, availability, style, and trust counters.
+- Team creation, captain permissions, registered invitation by SportSpot ID, guest players, member cards, and invitation decisions.
+- Court owner venue setup, photo gallery, verification document upload, admin review, court setup, slot generation, and slot blocking.
+- Venue-first public discovery with stable backend filter reference data.
+- Consecutive multi-slot booking, 10-minute holds, Khalti payment verification, booking pass/history, cancellation, and owner-managed refund records.
+- Central Notification Centre and global toast feedback.
+- Transactional email service with delivery audit table.
+- Player wishlist for venues/courts.
+
+## 9. Partially Completed and In-Progress Work
+
+- Ratings/reliability are displayed but not calculated from real post-match ratings.
+- Challenge and open-game screens exist only as placeholders.
+- Game Room is not implemented.
+- Admin venue review works, but broader admin operations are incomplete.
+- Owner offline booking is not implemented as a full feature.
+- Khalti needs environment configuration and real end-to-end verification after credentials are added.
+- Media handling is local-development only.
+- Frontend lacks automated tests.
+
+## 10. Remaining Features and Prioritized Roadmap
+
+### Priority 0 - Critical correctness and security
+
+| Objective | Current status | Main tasks | Dependencies | Completion criteria |
+| --- | --- | --- | --- | --- |
+| Verify Khalti end-to-end | Needs verification | Configure env, reserve booking, pay, verify lookup | Khalti credentials | Confirmation only after verified payment |
+| Harden secrets | Partially completed | Review env, docs, frontend bundle | None | No secrets in git or user-facing screens |
+| Expand booking race tests | Partially completed | Add concurrent reservation tests | Booking API | Same slot cannot confirm twice |
+| Secure proof documents | Planned | Protected file access or private storage | Deployment/storage choice | Only owner/admin can access proof files |
+| Production recovery policy | Partially completed | Set neutral disclosure in prod | Env config | Unknown emails are not exposed |
+
+### Priority 1 - Complete core MVP
+
+| Objective | Current status | Main tasks | Dependencies | Completion criteria |
+| --- | --- | --- | --- | --- |
+| Finish booking UX QA | In progress | Test reservation, payment, cancellation, refund, notifications | Existing booking flow | Smooth player/owner booking lifecycle |
+| Complete owner operations | Partially completed | Offline booking/block-slot workflow | Venue/court slots | Owner can protect offline bookings |
+| Admin operations | Partially completed | Users/bookings/refund overview | Permissions | Admin can review operational risks |
+| Open games | Planned | Models, APIs, UI, join requests | Player/team modules | Players can find/request games |
+| Team challenges | Planned | Challenge lifecycle and notifications | Team module | Captains can accept/counter/decline |
+
+### Priority 2 - Operational completeness
+
+| Objective | Current status | Main tasks | Dependencies | Completion criteria |
+| --- | --- | --- | --- | --- |
+| Ratings/reliability | Planned | Rating model, eligibility, reliability updates | Completed games | Ratings affect trust displays |
+| Game Room | Planned | Match room model and UI | Challenge/open-game flow | Confirmed games have coordination page |
+| Disputes/reports | Planned | Models, admin review, notifications | Booking/match flows | Users can report serious issues |
+| Notification expansion | Partially completed | Connect only real future module events | New modules | No fake or broken notifications |
+
+### Priority 3 - Quality and production readiness
+
+| Objective | Current status | Main tasks | Dependencies | Completion criteria |
+| --- | --- | --- | --- | --- |
+| Frontend tests | Planned | Add Playwright/component tests | Stable UI | Core flows tested |
+| API docs | Planned | Add OpenAPI/Swagger or curated docs | Stable APIs | Developer can use endpoints easily |
+| Performance | Partially completed | Query review, indexes, pagination | More data | Discovery/dashboard stay fast |
+| Deployment | Planned | Hosting, envs, DB, media, static, scheduler | Infrastructure | Staging/prod runs reliably |
+| Monitoring | Planned | Logs, error monitoring, backups | Deployment | Operators can diagnose failures |
+## 11. Core User Workflows
+
+### Registration and email verification
+
+1. User registers as Player or Court Owner.
+2. Backend creates account with `email_verified=False`.
+3. Backend sends hashed 6-digit OTP by email.
+4. User enters OTP at `/verify-email`.
+5. Backend checks expiry, attempts, and hash.
+6. User can log in after verification.
+
+### Login and JWT authentication
+
+1. User enters email and password.
+2. Backend authenticates and blocks unverified accounts.
+3. Backend returns access and refresh tokens.
+4. Frontend stores session and redirects by role.
+5. API requests include bearer token.
+
+### Team creation and invitation
+
+1. Player completes profile.
+2. Player creates team and becomes captain.
+3. Captain looks up a player by SportSpot ID.
+4. Captain sends invitation.
+5. Invited player accepts or rejects.
+6. Accepted player becomes active member.
+
+### Open-game join request
+
+Status: Planned. No complete model/API exists yet.
+
+### Team challenge
+
+Status: Planned. Current pages are placeholders.
+
+### Venue onboarding and verification
+
+1. Court Owner completes venue setup.
+2. Owner adds courts and slots.
+3. Owner uploads photos and verification document.
+4. Owner submits for review.
+5. Admin approves, requests changes, rejects, or suspends.
+6. Approved active venues appear to players.
+
+### Venue discovery
+
+1. Guest/player opens `/courts`.
+2. Frontend requests `/api/venues/venues/`.
+3. Backend applies filters and availability logic.
+4. User opens venue detail.
+
+### Court and slot selection
+
+1. User selects venue.
+2. User selects court.
+3. User selects date and duration.
+4. UI shows available slots for that court/date.
+5. User selects consecutive slots.
+
+### Khalti booking payment
+
+1. Player reserves selected slots.
+2. Backend locks and rechecks slots transactionally.
+3. Booking is `RESERVED` for about 10 minutes.
+4. Player continues to Khalti.
+5. Backend verifies Khalti lookup after return.
+6. If complete, booking becomes `CONFIRMED` and slots become `BOOKED`.
+7. If failed/expired, booking is not confirmed and slots are released.
+
+### Booking cancellation
+
+1. User opens booking.
+2. UI shows refund/cancellation preview.
+3. Backend calculates policy outcome from booking snapshot.
+4. All booking slots are updated together.
+5. Notifications/emails are generated where connected.
+
+### Refund handling
+
+1. SportSpot calculates refund eligibility.
+2. Owner-caused paid cancellations require full refund.
+3. Owner records refund processing in `/dashboard/owner/refunds`.
+4. Player is notified of refund status.
+5. Real money transfer is not automated in this MVP.
+
+### Notification delivery
+
+1. Backend event calls `notifications/services.py`.
+2. Service creates a deduplicated notification.
+3. Navbar polls unseen count.
+4. Visible drawer cards become seen after about one second.
+5. Clicking or acting marks notifications read.
+
+### Rating after a completed match
+
+Status: Planned. Rating fields exist, but rating submission is not implemented.
+
+## 12. Court Discovery and Filtering Model
+
+Filter design uses two concepts:
+
+- Master/reference filter options: stable supported values from backend configuration.
+- Current result data: counts, prices, availability, and venue cards from the current query.
+
+Valid filter options must not disappear just because the current database has no matching venue.
+
+Implemented reference values:
+
+- Districts: Kathmandu, Lalitpur, Bhaktapur.
+- Areas: dependent on district.
+- Venue types: Indoor, Outdoor, Covered.
+- Facilities: controlled backend catalogue.
+- Time periods: Morning, Afternoon, Evening.
+- Durations: 1 hour, 2 hours, 3 hours.
+
+Implemented query features:
+
+- Search.
+- District and area.
+- Date with past-date prevention.
+- Preferred time and exact start time.
+- Duration with consecutive-slot availability.
+- Min/max price from real slot prices.
+- Venue type.
+- Facilities.
+- Sorting and pagination.
+- URL query parameters.
+- Zero-result states.
+
+Known limitation: mobile filters update immediately; a staged Apply flow would be better.
+
+## 13. Booking and Payment Rules
+
+Correct relationship:
+
+```text
+Venue -> Courts -> CourtSlots -> Booking
+```
+
+Implemented rules:
+
+- Booking uses one venue, one court, one date, and one or more consecutive slots.
+- Multiple courts or multiple dates in one booking are not supported.
+- Backend rechecks availability before reservation.
+- Reservation uses transaction locks.
+- Slots are held for about 10 minutes.
+- Khalti confirmation happens only after backend verification.
+- Failed payment does not confirm booking.
+- Expiry releases unpaid holds.
+- Cancellation updates all slots atomically.
+- Confirmed bookings can become completed after the final slot end time.
+
+Statuses:
+
+```text
+Booking: RESERVED, CONFIRMED, CANCELLED, EXPIRED, COMPLETED
+Payment: PENDING, PAID, CANCELLED, FAILED, REFUND_PENDING, REFUNDED, PARTIALLY_REFUNDED, NO_REFUND
+Refund: NOT_REQUIRED, PENDING_OWNER_ACTION, NOT_ELIGIBLE, REJECTED, REFUNDED, PARTIALLY_REFUNDED
+Slot: AVAILABLE, RESERVED, BOOKED, BLOCKED, CANCELLED
+```
+
+Cancellation policy:
+
+- Unpaid reservation cancellation releases slots and needs no refund.
+- Player cancellation before full-refund cutoff gets 100% refund.
+- Player cancellation inside partial-refund window gets configured partial percentage.
+- Late player cancellation gets no refund.
+- Venue-caused paid cancellation requires full refund.
+- Policy snapshot is saved on booking so later venue edits do not alter old bookings.
+
+Do not publish payment test phone numbers, PINs, one-time codes, or secret keys in this README.
+
+## 14. Notification and User Feedback Design
+
+### Notification Centre
+
+Persistent notifications are used for important records and actions:
+
+- Team invitation updates.
+- Venue verification updates.
+- Booking reservation, confirmation, payment failure, cancellation, completion.
+- Refund pending/completed or rejected owner-side outcome.
+- Important venue message for a booking.
+
+Notification Centre behaviour:
+
+- Navbar bell after login.
+- Badge counts unseen notifications.
+- Cards become seen after actual visibility in the drawer.
+- Clicking or acting marks read.
+- Filters and pagination exist.
+- Polling is used; WebSockets are future scope.
+
+### Toast Feedback
+
+Toasts are temporary immediate feedback:
+
+- Global `ToastProvider`.
+- Top-centre on mobile, top-right on desktop.
+- Types: success, error, warning, info.
+- Auto-dismiss and manual close.
+- Dedupe support.
+- ARIA live region.
+
+Field-specific validation should stay beside the relevant field.
+## 15. Environment Variables
+
+The backend reads `backend/.env`. The root `.env.example` is a safe template. The frontend reads `frontend/.env.local`.
+
+| Variable | Purpose | Required | Example placeholder |
+| --- | --- | --- | --- |
+| `SECRET_KEY` | Django secret | Yes | `replace-with-secure-secret` |
+| `DEBUG` | Local debug | Yes | `True` |
+| `DB_NAME` | PostgreSQL DB | Yes | `sportspot_db` |
+| `DB_USER` | DB user | Yes | `postgres` |
+| `DB_PASSWORD` | DB password | Yes | `your_database_password` |
+| `DB_HOST` | DB host | Yes | `127.0.0.1` |
+| `DB_PORT` | DB port | Yes | `5432` |
+| `FRONTEND_URL` | Frontend origin | Yes | `http://localhost:3000` |
+| `KHALTI_BASE_URL` | Khalti API URL | Payment | `https://dev.khalti.com/api/v2` |
+| `KHALTI_SECRET_KEY` | Khalti secret key | Payment | `your_khalti_secret_key` |
+| `KHALTI_WEBSITE_URL` | Website URL for Khalti | Payment | `http://localhost:3000` |
+| `KHALTI_RETURN_PATH` | Payment return path | Payment | `/dashboard/player/bookings/payment/khalti-return` |
+| `EMAIL_BACKEND` | Django email backend | Yes | `django.core.mail.backends.console.EmailBackend` |
+| `EMAIL_HOST` | SMTP host | SMTP | `smtp.gmail.com` |
+| `EMAIL_PORT` | SMTP port | SMTP | `587` |
+| `EMAIL_HOST_USER` | SMTP username | SMTP | `your_sender_email@example.com` |
+| `EMAIL_HOST_PASSWORD` | SMTP App Password | SMTP | `your_email_app_password` |
+| `EMAIL_USE_TLS` | SMTP TLS | SMTP | `True` |
+| `EMAIL_USE_SSL` | SMTP SSL | SMTP | `False` |
+| `EMAIL_TIMEOUT` | Email timeout | Optional | `10` |
+| `DEFAULT_FROM_EMAIL` | Sender identity | Yes | `SportSpot <no-reply@example.com>` |
+| `SPORTSPOT_SUPPORT_EMAIL` | Support email | Optional | `support@example.com` |
+| `ACCOUNT_RECOVERY_REVEAL_EMAIL_ERRORS` | Local/demo reset error visibility | Optional | `True` locally, `False` in production |
+| `NEXT_PUBLIC_API_URL` | Frontend API URL | Frontend | `http://127.0.0.1:8000` |
+
+Never commit real secrets.
+
+## 16. Local Development Setup
+
+Prerequisites:
+
+- Git.
+- Python 3.12 or compatible Python 3 version for Django 5.
+- PostgreSQL 17 or compatible PostgreSQL version.
+- Node.js compatible with Next.js 15.
+- npm.
+
+Backend on Windows:
+
+```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
 copy ..\.env.example .env
-```
-
-Create a PostgreSQL database matching your `.env` values. Example:
-
-```sql
-CREATE DATABASE sportspot_db;
-```
-
-Then run:
-
-```bash
-python manage.py makemigrations
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
 
-Backend API base URL:
-
-```text
-http://127.0.0.1:8000
-```
-
-## Backend Auth APIs
-
-Register:
-
-```http
-POST /api/auth/register/
-```
-
-Body:
-
-```json
-{
-  "full_name": "Dipak Example",
-  "email": "dipak@example.com",
-  "phone": "9800000000",
-  "password": "StrongPassword123!",
-  "role": "PLAYER",
-  "skill_level": "INTERMEDIATE",
-  "location": "Kathmandu"
-}
-```
-
-Registration creates an unverified account and sends a six-digit OTP. It does not return JWT tokens.
-
-Verify email:
-
-```http
-POST /api/auth/verify-email/
-```
-
-```json
-{
-  "email": "dipak@example.com",
-  "otp": "123456"
-}
-```
-
-Resend verification code:
-
-```http
-POST /api/auth/verify-email/resend/
-```
-
-```json
-{
-  "email": "dipak@example.com"
-}
-```
-
-Login:
-
-```http
-POST /api/auth/login/
-```
-
-Body:
-
-```json
-{
-  "email": "dipak@example.com",
-  "password": "strong-password"
-}
-```
-
-Current user:
-
-```http
-GET /api/auth/me/
-Authorization: Bearer <access_token>
-```
-
-Refresh token:
-
-```http
-POST /api/auth/token/refresh/
-```
-
-Forgot password:
-
-```http
-POST /api/auth/forgot-password/
-```
-
-This endpoint always returns a neutral response so it does not reveal whether an account exists.
-
-Validate a reset link:
-
-```http
-POST /api/auth/reset-password/validate/
-```
-
-Reset password:
-
-```http
-POST /api/auth/reset-password/
-```
-
-Required body:
-
-```json
-{
-  "token": "reset-link-token",
-  "email": "dipak@example.com",
-  "new_password": "NewStrongPassword123!",
-  "confirm_password": "NewStrongPassword123!"
-}
-```
-
-Email verification codes expire after 10 minutes, permit at most five incorrect attempts, and have a 60-second resend cooldown. Password-reset links are hashed in storage, expire after 15 minutes, and are single-use. A successful password reset increments the account security version so previously issued JWT access and refresh tokens stop working.
-
-Password reset safety:
-
-- The forgot-password API always returns the same response for every email, so attackers cannot check which emails are registered.
-- A reset email is sent only when the account exists, is active, and has already verified its email.
-- The reset form requires both the reset-link token and the matching SportSpot account email.
-- A valid token cannot reset a different user's password.
-- For local/FYP demo UX, set `ACCOUNT_RECOVERY_REVEAL_EMAIL_ERRORS=True` to show a clear error when the entered email is not registered or not verified.
-- For production, set `ACCOUNT_RECOVERY_REVEAL_EMAIL_ERRORS=False` to avoid exposing which emails are registered.
-
-## Transactional Email
-
-Development defaults to Django's console email backend. OTPs and email links appear in the backend terminal:
-
-```env
-EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-```
-
-For SMTP, set these only in `backend/.env`:
-
-```env
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.example.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=your-smtp-user
-EMAIL_HOST_PASSWORD=your-smtp-password
-EMAIL_USE_TLS=True
-DEFAULT_FROM_EMAIL=SportSpot <no-reply@example.com>
-SPORTSPOT_SUPPORT_EMAIL=support@example.com
-FRONTEND_URL=http://localhost:3000
-```
-
-Never commit real SMTP credentials. Transactional delivery is centralized, deduplicated, and audited in `notifications_emaildelivery`. Email-provider failures are logged without rolling back registrations, bookings, invitations, venue reviews, or refund operations.
-
-Current connected emails:
-
-- Verification OTP, email verified, password reset, and password changed
-- Team invitation
-- Booking confirmation for player and owner
-- Payment failure, booking cancellation, and owner-managed refund updates
-- Venue submitted and venue verification status
-- Important owner message about a valid booking
-- Upcoming confirmed booking reminder
-
-Run the reminder command periodically (for example, once per hour with Windows Task Scheduler or cron):
+Backend on Linux/macOS:
 
 ```bash
-python manage.py send_booking_reminders
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp ../.env.example .env
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
 ```
 
-The command and email service use deduplication keys, so rerunning it does not send the same 24-hour reminder twice.
+Create PostgreSQL database before migration if it does not exist:
 
-## Frontend Setup
+```sql
+CREATE DATABASE sportspot_db;
+```
 
-From the project root:
+Frontend:
 
-```bash
+```powershell
 cd frontend
 npm install
 copy .env.local.example .env.local
 npm run dev
 ```
 
-Frontend URL:
+Local URLs:
 
-```text
-http://localhost:3000
+- Frontend: `http://localhost:3000`
+- Backend: `http://127.0.0.1:8000`
+- Django admin: `http://127.0.0.1:8000/admin/`
+
+## 17. Database and Migrations
+
+Database engine: PostgreSQL.
+
+Main domain tables include accounts, email OTPs, password reset tokens, player profiles, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, notifications, email deliveries, and wishlist items.
+
+Migration commands:
+
+```powershell
+cd backend
+python manage.py makemigrations
+python manage.py migrate
 ```
 
-## Phase 1 Verification Checklist
+Lifecycle commands:
 
-- Backend dependencies install successfully.
-- PostgreSQL database exists and matches `.env`.
-- `python manage.py makemigrations` creates account migrations.
-- `python manage.py migrate` applies migrations.
-- `python manage.py createsuperuser` creates an admin account.
-- `python manage.py runserver` starts the API server.
-- Frontend dependencies install successfully.
-- `npm run dev` starts the Next.js app.
-- Register page can create `PLAYER` and `COURT_OWNER` users.
-- Register page does not allow public `ADMIN` registration.
-- Registration redirects to `/verify-email`.
-- The OTP is accepted once, expires after 10 minutes, and old codes stop working after resend.
-- Unverified accounts cannot log in or access protected APIs.
-- Verified login receives JWT tokens.
-- Forgot-password always shows the same neutral response.
-- A reset link works once and expires after 15 minutes.
-- Resetting a password invalidates previously issued JWT sessions.
-- Login redirects users based on role:
-  - `PLAYER` -> `/dashboard/player`
-  - `COURT_OWNER` -> `/dashboard/owner`
-  - `ADMIN` -> `/dashboard/admin`
-- Navbar changes after login and logout.
-
-## Product Identity
-
-SportSpot is not only a booking system. It is a sports coordination platform built around real local problems: finding courts, finding players, finding opponents, confirming matches, coordinating teams, and building trust through reliability.
-
----
-
-# Secure Account Email Flow
-
-New public `PLAYER` and `COURT_OWNER` accounts must verify their email before login or access to protected APIs.
-
-Registration flow:
-
-1. `POST /api/auth/register/` creates an unverified account.
-2. SportSpot sends a hashed, six-digit OTP through the configured Django email backend.
-3. The frontend opens `/verify-email`.
-4. `POST /api/auth/verify-email/` verifies the OTP and enables login.
-5. `POST /api/auth/verify-email/resend/` creates a new OTP and invalidates older codes.
-
-OTP security:
-
-- Valid for 10 minutes
-- Maximum 5 incorrect attempts
-- 60-second resend cooldown
-- Stored as a password hash, never returned by the API
-- Existing users created before this migration remain verified
-- Superusers created with `createsuperuser` are verified automatically
-
-Password recovery:
-
-- `POST /api/auth/forgot-password/`
-- `POST /api/auth/reset-password/validate/`
-- `POST /api/auth/reset-password/`
-- Frontend pages: `/forgot-password` and `/reset-password?token=...`
-
-Reset links are random, stored as SHA-256 digests, expire after 15 minutes, and are single-use. The reset endpoint checks that the entered account email matches the user who owns the reset token. A successful reset increments the user's authentication version, invalidating previously issued SportSpot JWT access and refresh sessions.
-
-Password recovery visibility:
-
-- Local/demo mode can show `No SportSpot account is registered with this email.`
-- Production mode should use a neutral response so attackers cannot discover registered account emails.
-
-## Transactional Email
-
-Normal platform activity remains in the navbar Notification Centre. Email is reserved for important account and business events.
-
-Connected working email events:
-
-- Verification OTP and verification success
-- Password reset and password-changed confirmation
-- Cricksal team invitation
-- Venue submitted, approved, needs changes, rejected, or suspended
-- Booking confirmed for player and venue owner
-- Mock payment failed
-- Booking cancelled by player, venue, or SportSpot admin
-- Refund pending and refund completed
-- Important venue message for a valid booking
-- Upcoming confirmed booking reminder
-
-Challenge and match emails are not connected yet because those business modules are not implemented. No fake email events or broken links are generated.
-
-Every delivery is created through `notifications/email_service.py`, rendered from shared HTML and text templates, and recorded in `notifications_emaildelivery`. Deduplication keys prevent duplicate email when an event endpoint is retried. Email errors are logged and recorded as `FAILED` without rolling back registration, booking, payment, team, refund, or venue transactions.
-
-Run booking reminders periodically:
-
-```bash
-cd backend
-python manage.py send_booking_reminders
-```
-
-For a deployed system, schedule this command hourly with the server's task scheduler. The deduplication key ensures each booking receives at most one 24-hour reminder.
-
-Run unpaid reservation expiry frequently:
-
-```bash
-cd backend
+```powershell
 python manage.py expire_reservations
-```
-
-For a deployed system, schedule this command every minute. It safely expires unpaid reservations, releases all selected slots, and avoids duplicate notifications on repeated runs.
-
-Run completed-booking processing periodically:
-
-```bash
-cd backend
 python manage.py complete_bookings
-```
-
-For a deployed system, schedule this command every 5-15 minutes or hourly. It marks paid confirmed bookings as completed after their final slot end time passes, keeps slot/payment history intact, and avoids duplicate notifications on repeated runs.
-
-For local development and FYP demo, the easiest all-in-one command is:
-
-```bash
-cd backend
+python manage.py send_booking_reminders
 python manage.py run_booking_maintenance
 ```
 
-It expires unpaid reservations, completes finished paid bookings, and sends eligible booking reminders in one run.
+No verified seed-data command or ER diagram is present.
 
-## Email Environment
+## 18. API Overview
 
-Development uses the console backend, which prints the email and OTP/reset link in the Django terminal:
+Authentication: `/api/auth/`
 
-```env
-EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-DEFAULT_FROM_EMAIL=SportSpot <no-reply@example.com>
-SPORTSPOT_SUPPORT_EMAIL=support@example.com
-```
+- `POST register/`
+- `POST login/`
+- `GET me/`
+- `POST verify-email/`
+- `POST verify-email/resend/`
+- `POST forgot-password/`
+- `POST reset-password/validate/`
+- `POST reset-password/`
+- `POST token/refresh/`
 
-For SMTP, keep credentials only in `backend/.env`:
+Players: `/api/players/`
 
-```env
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.example.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=your-smtp-user
-EMAIL_HOST_PASSWORD=your-smtp-password
-EMAIL_USE_TLS=True
-EMAIL_TIMEOUT=10
-DEFAULT_FROM_EMAIL=SportSpot <no-reply@your-domain.com>
-FRONTEND_URL=http://localhost:3000
-```
+- `GET/POST/PUT/PATCH profile/`
 
-Never commit `backend/.env`. For Gmail, use an app password rather than the normal Gmail account password.
+Teams: `/api/teams/`
 
-## Khalti Sandbox Payment
+- `GET my-teams/`
+- `POST /`
+- `GET/PUT/PATCH/DELETE {team_id}/`
+- `GET players/lookup/`
+- `POST {team_id}/invite/`
+- `POST {team_id}/members/guest/`
+- `DELETE {team_id}/members/{member_id}/`
+- `GET invitations/`
+- `POST invitations/{member_id}/accept/`
+- `POST invitations/{member_id}/reject/`
 
-SportSpot supports Khalti Web Checkout in sandbox mode for the booking payment flow.
+Venues/bookings: `/api/venues/`
 
-Backend environment variables:
+- Owner venue/courts/slots/bookings/refunds/message endpoints under `owner/`.
+- Admin venue review endpoints under `admin/venues/`.
+- Public discovery endpoints: `discovery/reference/`, `venues/`, `venues/{id}/`, `courts/`, `courts/{id}/`, `courts/{id}/slots/`.
+- Player booking endpoints: `bookings/reserve/`, `bookings/my/`, `bookings/{id}/`, `bookings/{id}/cancel/`, `bookings/{id}/khalti/initiate/`, `bookings/{id}/khalti/verify/`.
 
-```env
-KHALTI_BASE_URL=https://dev.khalti.com/api/v2
-KHALTI_SECRET_KEY=your-khalti-sandbox-live-secret-key
-KHALTI_WEBSITE_URL=http://localhost:3000
-KHALTI_RETURN_PATH=/dashboard/player/bookings/payment/khalti-return
-```
+Notifications: `/api/notifications/`
 
-Use the `live_secret_key` from the Khalti sandbox merchant dashboard. Do not put the Khalti dashboard Gmail password in the project.
+- list, unseen count, mark seen, mark read, mark all read, mark related read, action.
 
-To configure it safely on Windows:
+Wishlist: `/api/wishlist/`
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\configure_khalti.ps1
-```
+- list, summary, toggle, delete.
 
-Flow:
+No Swagger/OpenAPI documentation is present.
 
-1. Player reserves one or more consecutive slots.
-2. SportSpot creates a `RESERVED` booking for 10 minutes.
-3. Player clicks `Pay with Khalti Sandbox`.
-4. Backend calls Khalti initiate API and redirects the player to Khalti.
-5. Khalti returns the player to SportSpot.
-6. Backend calls Khalti lookup API.
-7. If Khalti reports `Completed`, SportSpot confirms the booking, marks payment as `PAID`, and locks all selected slots as `BOOKED`.
-8. If payment fails or expires, SportSpot releases all selected slots.
+## 19. Testing
 
-Khalti sandbox test wallet values are documented by Khalti:
+Existing backend tests:
 
-- Khalti ID: 9800000000 to 9800000005
-- MPIN: 1111
-- OTP: 987654
+- `backend/accounts/tests.py`
+- `backend/teams/tests.py`
+- `backend/venues/tests.py`
+- `backend/notifications/tests.py`
+- `backend/wishlists/tests.py`
 
-### Enable Real Gmail Delivery On Windows
-
-The console backend is a development preview only. It prints messages in the Django terminal and cannot deliver to an inbox. Delivery records created in this mode are labelled `CONSOLE_PREVIEW`, not `SENT`.
-
-1. Turn on 2-Step Verification for the Gmail account SportSpot will send from.
-2. Create a 16-character Google App Password for SportSpot.
-3. From the project root, run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\configure_gmail.ps1
-```
-
-4. Enter the sender Gmail address.
-5. Enter the App Password when prompted. Input is hidden.
-6. The script updates the ignored `backend/.env` and immediately sends a delivery test.
-7. Restart Django after a successful test.
-
-Never paste the Gmail App Password into chat, source code, README, or `.env.example`. Do not use the normal Gmail password.
-
-You can rerun the delivery test at any time:
+Run tests:
 
 ```powershell
 cd backend
-python manage.py check_email_delivery --to your-address@gmail.com
+python manage.py test accounts teams venues notifications wishlists --keepdb
 ```
 
-After SMTP works, an account stuck on `/verify-email` should click `Resend code`. A new OTP invalidates the old console-preview OTP. Password reset email is intentionally available only for active, verified accounts; the API still returns the same neutral response for every email address.
+Run checks/build:
 
-## Email Setup Commands
-
-```bash
+```powershell
 cd backend
-python manage.py migrate
 python manage.py check
-python manage.py test accounts notifications venues teams
-python manage.py runserver
 ```
 
-```bash
+```powershell
 cd frontend
-npm install
 npm run build
-npm run dev
 ```
 
-Manual verification:
+No frontend test runner is configured.
 
-1. Register a Player and inspect the console email for the OTP.
-2. Confirm login is blocked before verification.
-3. Verify with the OTP, then log in.
-4. Register and verify a Court Owner the same way.
-5. Request a new OTP after 60 seconds and confirm the old code fails.
-6. Request a password reset for both an existing and unknown email; confirm both API responses are neutral.
-7. Open the reset link, change the password, and confirm the link cannot be reused.
-8. Confirm an old JWT no longer accesses `/api/auth/me/` after password reset.
-9. Confirm team invitation, venue review, booking confirmation, cancellation, refund, and venue-message events create one matching email delivery.
-10. Temporarily use an invalid SMTP configuration and confirm the main business action succeeds while Django admin shows a failed email delivery.
+Recommended next tests: permissions, email reset edge cases, concurrent reservations, Khalti status mapping, cancellation tiers, refund transitions, notification seen/read security, and discovery zero-result filters.
+
+## 20. Known Issues and Limitations
+
+- Open games, challenge teams, Game Room, ratings, disputes, and recommendations are not implemented.
+- Several placeholder pages still exist for future modules.
+- Future-compatible Futsal fields remain in `PlayerProfile`, but current UI must stay Cricksal-only.
+- No production deployment files, Docker config, CI/CD, or monitoring.
+- No frontend tests.
+- Khalti requires environment credentials and manual end-to-end verification.
+- Media files are local and not production-secure.
+- Verification documents need private access control before production.
+- Owner offline booking is not complete.
+- Mobile discovery filters are not fully staged.
+- No formal architecture, ERD, use-case, API, or test documentation files exist.
+
+## 21. Security Notes
+
+Verified practices:
+
+- Django password hashing.
+- Email uniqueness.
+- Public admin registration blocked.
+- Email verification required before login/protected access.
+- OTPs stored as hashes.
+- Password reset tokens stored as digests.
+- Password reset tokens expire after 15 minutes and are single-use.
+- Password reset requires matching account email.
+- Password reset increments `auth_version`.
+- Verified JWT auth checks user verification and auth version.
+- Role-based permissions on main APIs.
+- Booking reservation uses transaction locking.
+- Khalti secret is environment-based.
+- `.env` and `.env.local` are gitignored.
+
+Remaining risks:
+
+- Tokens are stored client-side for development convenience.
+- No API rate limiting.
+- No full audit logging.
+- No production file scanning/private media storage.
+- Local CORS/allowed-host settings only.
+- No production monitoring.
+
+## 22. Deployment Status
+
+Current status: local development only.
+
+No staging or production deployment configuration was found.
+
+Production checklist:
+
+- Set `DEBUG=False`, secure `SECRET_KEY`, `ALLOWED_HOSTS`, and CORS.
+- Configure production PostgreSQL.
+- Configure HTTPS.
+- Configure SMTP.
+- Configure Khalti production credentials when ready.
+- Move media/static handling to production-ready storage.
+- Protect verification documents.
+- Schedule booking maintenance commands.
+- Add logging, backups, monitoring, CI/CD, and deployment docs.
+
+## 23. Documentation and Diagrams
+
+Found documentation:
+
+- `README.md`
+- `.env.example`
+- `frontend/.env.local.example`
+
+Found visual assets:
+
+- `frontend/public/images/logo.png`
+- `frontend/public/images/sportspot-logo.png`
+- `frontend/public/images/sportspot-mark.png`
+- `frontend/public/images/sportspot-auth-cricksal.png`
+
+No architecture diagram, ER diagram, use-case diagram, API documentation, report document, or testing document was found.
+
+## 24. Handover Guide for the Next Developer or AI Assistant
+
+Current branch: `main`.
+
+Most recently developed areas:
+
+- Court discovery filters and venue card UX.
+- Wishlist integration.
+- Booking lifecycle, cancellation, refunds, Khalti flow.
+- Notifications and toast feedback.
+- Email verification and password recovery.
+
+Inspect these first before changing major flows:
+
+- `backend/sportspot_api/settings.py`
+- `backend/sportspot_api/urls.py`
+- `backend/accounts/security.py`
+- `backend/accounts/serializers.py`
+- `backend/players/models.py`
+- `backend/teams/views.py`
+- `backend/venues/models.py`
+- `backend/venues/views.py`
+- `backend/venues/policies.py`
+- `backend/venues/services.py`
+- `backend/venues/reference_data.py`
+- `backend/venues/khalti.py`
+- `backend/notifications/services.py`
+- `backend/notifications/email_service.py`
+- `frontend/components/Navbar.tsx`
+- `frontend/components/NotificationCenter.tsx`
+- `frontend/components/ToastProvider.tsx`
+- `frontend/app/courts/page.tsx`
+- `frontend/app/courts/[id]/page.tsx`
+- `frontend/app/dashboard/owner/venue-setup/page.tsx`
+- `frontend/app/dashboard/player/bookings/payment/[bookingId]/page.tsx`
+
+Current blockers:
+
+- SMTP and Khalti secrets must be configured locally.
+- Production deployment is not designed.
+- Future modules need new models/APIs.
+
+Before implementing a feature, verify its current frontend, backend, database and permission status. Do not assume that a visible page means the feature is complete.
+
+Recommended next task: complete booking flow QA end-to-end with real local SMTP and Khalti development credentials, then add missing tests for reservation, cancellation, refund, notifications, and email delivery.
+
+Commands before new work:
+
+```powershell
+git status --short
+cd backend
+python manage.py check
+python manage.py test accounts teams venues notifications wishlists --keepdb
+cd ..\frontend
+npm run build
+```
+
+## 25. Git Workflow
+
+```powershell
+git status --short
+git checkout -b feature/short-feature-name
+git add -A
+git commit -m "Describe the completed feature or fix"
+git push origin feature/short-feature-name
+```
+
+Do not commit `.env`, `.env.local`, `node_modules/`, `.next/`, `.venv/`, uploaded media, passwords, App Passwords, OTPs, Khalti keys, JWT secrets, or database credentials.
+
+## 26. License or Academic Use
+
+No open-source license file is currently present.
+
+SportSpot is currently intended for academic or private development use. No open-source licence has been assigned.
