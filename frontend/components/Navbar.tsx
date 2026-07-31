@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import Logo from "@/components/Logo";
 import NotificationCenter from "@/components/NotificationCenter";
-import { clearAuthSession, getCurrentUser, getDashboardPath } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { clearAuthSession, getCurrentUser } from "@/lib/auth";
 import type { User } from "@/types/auth";
+import type { Venue, VenueStatus } from "@/types/venue";
 
 export default function Navbar() {
   const router = useRouter();
@@ -14,10 +17,22 @@ export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [unseenNotificationsCount, setUnseenNotificationsCount] = useState(0);
+  const [notificationToast, setNotificationToast] = useState("");
+  const [hasNewNotification, setHasNewNotification] = useState(false);
+  const [ownerVenueStatus, setOwnerVenueStatus] = useState<VenueStatus | "NONE">("NONE");
+  const bellRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    setUser(getCurrentUser());
+    const currentUser = getCurrentUser();
+    setUser(currentUser);
     setIsProfileOpen(false);
+    if (currentUser?.role === "COURT_OWNER") {
+      api
+        .get<{ venue: Venue | null }>("/api/venues/owner/venue/")
+        .then((response) => setOwnerVenueStatus(response.data.venue?.status || "NONE"))
+        .catch(() => setOwnerVenueStatus("NONE"));
+    }
   }, [pathname]);
 
   function handleLogout() {
@@ -25,32 +40,29 @@ export default function Navbar() {
     setUser(null);
     setIsProfileOpen(false);
     setIsNotificationsOpen(false);
+    setUnseenNotificationsCount(0);
     router.push("/");
   }
+
+  const handleNewNotification = useCallback((title: string) => {
+    setNotificationToast(title);
+    setHasNewNotification(true);
+    window.setTimeout(() => setNotificationToast(""), 3500);
+    window.setTimeout(() => setHasNewNotification(false), 1800);
+  }, []);
 
   return (
     <>
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
         <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <Link href="/" className="shrink-0 text-xl font-black tracking-tight text-sportNavy">
-            SportSpot
-          </Link>
+          <Logo markClassName="h-9 max-w-[150px]" textClassName="text-xl" />
 
           <div className="hidden items-center gap-6 text-sm font-semibold text-slate-700 lg:flex">
-            <Link className="hover:text-sportGreen" href="/courts">
-              Courts
-            </Link>
-            <Link className="hover:text-sportGreen" href="/find-game">
-              Find Game
-            </Link>
-            <Link className="hover:text-sportGreen" href="/challenge-teams">
-              Challenge Teams
-            </Link>
-            {!user ? (
-              <Link className="hover:text-sportGreen" href="#">
-                Register Venue
+            {getNavLinks(user, ownerVenueStatus).map((link) => (
+              <Link className="hover:text-sportGreen" href={link.href} key={link.href}>
+                {link.label}
               </Link>
-            ) : null}
+            ))}
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
@@ -69,13 +81,24 @@ export default function Navbar() {
             ) : (
               <>
                 <button
-                  aria-label="Open notification center"
-                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 hover:border-green-200 hover:bg-green-50 hover:text-sportGreen"
-                  onClick={() => setIsNotificationsOpen(true)}
+                  aria-controls="sportspot-notification-centre"
+                  aria-expanded={isNotificationsOpen}
+                  aria-label={`Open Notification Centre${unseenNotificationsCount ? `, ${unseenNotificationsCount} unseen` : ""}`}
+                  className={`relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen ${hasNewNotification ? "scale-110 border-green-300 text-sportGreen" : ""}`}
+                  onClick={() => {
+                    setIsNotificationsOpen(true);
+                    setHasNewNotification(false);
+                  }}
+                  ref={bellRef}
                   type="button"
                 >
                   <BellIcon />
-                  <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-sportGreen ring-2 ring-white" />
+                  {hasNewNotification ? <span aria-hidden="true" className="absolute inset-0 animate-ping rounded-full border border-green-400 opacity-50" /> : null}
+                  {unseenNotificationsCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-sportGreen px-1.5 text-[10px] font-black text-white ring-2 ring-white">
+                      {unseenNotificationsCount > 99 ? "99+" : unseenNotificationsCount}
+                    </span>
+                  ) : null}
                 </button>
 
                 <div className="relative">
@@ -92,14 +115,11 @@ export default function Navbar() {
                   </button>
                   {isProfileOpen ? (
                     <div className="absolute right-0 mt-3 w-56 rounded-md border border-slate-200 bg-white p-2 shadow-lg">
-                      <Link className="block rounded px-3 py-2 text-sm hover:bg-slate-100" href={getDashboardPath(user.role)}>
-                        Dashboard
-                      </Link>
-                      {user.role === "PLAYER" ? (
-                        <Link className="block rounded px-3 py-2 text-sm hover:bg-slate-100" href="/dashboard/player/profile">
-                          My Profile
+                      {getProfileLinks(user).map((link) => (
+                        <Link className="block rounded px-3 py-2 text-sm hover:bg-slate-100" href={link.href} key={link.label}>
+                          {link.label}
                         </Link>
-                      ) : null}
+                      ))}
                       <button
                         className="w-full rounded px-3 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
                         onClick={handleLogout}
@@ -117,10 +137,100 @@ export default function Navbar() {
       </header>
 
       {user ? (
-        <NotificationCenter isOpen={isNotificationsOpen} onClose={() => setIsNotificationsOpen(false)} />
+        <NotificationCenter
+          isOpen={isNotificationsOpen}
+          onClose={() => setIsNotificationsOpen(false)}
+          onNewNotification={handleNewNotification}
+          onUnseenCountChange={setUnseenNotificationsCount}
+          triggerRef={bellRef}
+          userId={user.id}
+        />
+      ) : null}
+      {notificationToast ? (
+        <div aria-live="polite" className="fixed right-4 top-20 z-40 max-w-sm rounded-md border border-green-200 bg-white px-4 py-3 shadow-xl">
+          <p className="text-xs font-black uppercase text-sportGreen">New notification</p>
+          <p className="mt-1 text-sm font-bold text-sportNavy">{notificationToast}</p>
+        </div>
       ) : null}
     </>
   );
+}
+
+function getNavLinks(user: User | null, ownerVenueStatus: VenueStatus | "NONE") {
+  if (!user) {
+    return [
+      { label: "Courts", href: "/courts" },
+      { label: "Find Game", href: "/find-game" },
+      { label: "Challenge Teams", href: "/challenge-teams" },
+      { label: "Register Venue", href: "/register" },
+    ];
+  }
+
+  if (user.role === "PLAYER") {
+    return [
+      { label: "Courts", href: "/courts" },
+      { label: "Find Game", href: "/find-game" },
+      { label: "Challenge Teams", href: "/challenge-teams" },
+      { label: "Wishlist", href: "/dashboard/player/wishlist" },
+    ];
+  }
+
+  if (user.role === "COURT_OWNER") {
+    if (ownerVenueStatus === "APPROVED") {
+      return [
+        { label: "Courts", href: "/courts" },
+        { label: "Owner Dashboard", href: "/dashboard/owner" },
+        { label: "Manage Venue", href: "/dashboard/owner/venue" },
+        { label: "Manage Courts", href: "/dashboard/owner/courts" },
+        { label: "Bookings", href: "/dashboard/owner/bookings" },
+        { label: "Refunds", href: "/dashboard/owner/refunds" },
+        { label: "Slot Calendar", href: "/dashboard/owner/calendar" },
+      ];
+    }
+
+    const setupLabel =
+      ownerVenueStatus === "DRAFT"
+        ? "Continue Venue Setup"
+        : ownerVenueStatus === "PENDING"
+          ? "Venue Status"
+          : ownerVenueStatus === "NEEDS_CHANGES"
+            ? "Fix Venue Submission"
+            : "Complete Venue Setup";
+
+    return [
+      { label: "Courts", href: "/courts" },
+      { label: setupLabel, href: "/dashboard/owner/venue-setup" },
+    ];
+  }
+
+  return [
+    { label: "Admin Dashboard", href: "/dashboard/admin" },
+    { label: "Venue Approvals", href: "/dashboard/admin/venues" },
+    { label: "Bookings", href: "/dashboard/owner/bookings" },
+    { label: "Users", href: "/dashboard/admin" },
+  ];
+}
+
+function getProfileLinks(user: User) {
+  if (user.role === "PLAYER") {
+    return [
+      { label: "Dashboard", href: "/dashboard/player" },
+      { label: "My Profile", href: "/dashboard/player/profile" },
+    ];
+  }
+
+  if (user.role === "COURT_OWNER") {
+    return [
+      { label: "Owner Dashboard", href: "/dashboard/owner" },
+      { label: "Manage Venue", href: "/dashboard/owner/venue" },
+      { label: "My Account", href: "/dashboard/owner" },
+    ];
+  }
+
+  return [
+    { label: "Admin Dashboard", href: "/dashboard/admin" },
+    { label: "Venue Approvals", href: "/dashboard/admin/venues" },
+  ];
 }
 
 function BellIcon() {
@@ -144,3 +254,4 @@ function ChevronDownIcon() {
     </svg>
   );
 }
+

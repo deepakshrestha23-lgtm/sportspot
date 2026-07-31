@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import FeedbackToast from "@/components/FeedbackToast";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getCurrentUser } from "@/lib/auth";
@@ -66,6 +67,8 @@ export default function PlayerProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const feedbackMessage = error || success;
+  const feedbackType = error ? "error" : success ? "success" : "info";
 
   useEffect(() => {
     setUser(getCurrentUser());
@@ -188,8 +191,7 @@ export default function PlayerProfilePage() {
 
   return (
     <div className="space-y-6">
-      {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
-      {success ? <p className="rounded-md bg-green-50 p-3 text-sm font-semibold text-green-800">{success}</p> : null}
+      <FeedbackToast message={feedbackMessage} onClose={() => { setError(""); setSuccess(""); }} type={feedbackType} />
 
       <form className="space-y-6" onSubmit={handleSubmit}>
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

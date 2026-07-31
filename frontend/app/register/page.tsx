@@ -4,9 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
+import AuthShell from "@/components/AuthShell";
+import FeedbackToast from "@/components/FeedbackToast";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
-import type { RegisterPayload } from "@/types/auth";
+import { savePendingEmailVerification } from "@/lib/emailVerification";
+import type { RegisterPayload, RegisterResponse } from "@/types/auth";
 
 type RegisterRole = RegisterPayload["role"];
 type SkillLevel = "Beginner" | "Intermediate" | "Advanced";
@@ -192,9 +195,15 @@ export default function RegisterPage() {
     setIsSubmitting(true);
 
     try {
-      await api.post("/api/auth/register/", payload);
-      setSuccess("Account created successfully. Redirecting to login...");
-      setTimeout(() => router.push("/login"), 900);
+      const response = await api.post<RegisterResponse>("/api/auth/register/", payload);
+      savePendingEmailVerification(
+        response.data.user.email,
+        response.data.masked_email,
+        response.data.expires_in,
+        response.data.resend_available_in,
+      );
+      setSuccess("Account created. Check your email for the verification code.");
+      router.push("/verify-email");
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, "Registration failed. Please check your details and try again."));
     } finally {
@@ -203,25 +212,18 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-73px)] bg-slate-50 px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-2xl">
-        <Link href="/" className="mb-7 flex flex-col items-center gap-2 text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-sportGreen text-lg font-black text-white shadow-sm">
-            SS
-          </span>
-          <span className="text-2xl font-black tracking-tight text-sportNavy">SportSpot</span>
-        </Link>
-
-        <form
-          className="overflow-hidden rounded-xl border border-slate-200 border-t-4 border-t-sportGreen bg-white p-6 shadow-xl shadow-slate-200/70 sm:p-8"
-          onSubmit={handleSubmit}
-        >
-          <div className="text-center">
-            <h1 className="text-3xl font-black tracking-tight text-sportNavy">Create Account</h1>
-            <p className="mt-3 text-sm text-slate-600">Join Nepal&apos;s premier sports matchmaking network.</p>
+    <AuthShell
+      contentClassName="max-w-[660px]"
+      contentPlacement="start"
+      eyebrow="Sign up"
+      title="Create your account"
+      subtitle="Join SportSpot to book Cricksal courts, manage teams, or start onboarding your verified venue."
+    >
+      <form className="w-full" onSubmit={handleSubmit}>
+          <div className="mb-3 flex items-center gap-3">
+            <p className="text-sm font-black text-sportNavy">Join as</p>
           </div>
-
-          <div className="mx-auto mt-7 grid max-w-md grid-cols-2 rounded-full bg-slate-100 p-1">
+          <div className="grid max-w-md grid-cols-2 rounded-full bg-slate-200/70 p-1">
             <RoleButton active={role === "PLAYER"} icon="player" label="Player" onClick={() => handleRoleChange("PLAYER")} />
             <RoleButton
               active={role === "COURT_OWNER"}
@@ -231,10 +233,7 @@ export default function RegisterPage() {
             />
           </div>
 
-          {error ? <p className="mt-6 rounded-md bg-red-50 p-3 text-sm font-medium text-red-700">{error}</p> : null}
-          {success ? (
-            <p className="mt-6 rounded-md bg-green-50 p-3 text-sm font-medium text-green-700">{success}</p>
-          ) : null}
+          <FeedbackToast message={error || success} onClose={() => { setError(""); setSuccess(""); }} type={error ? "error" : "success"} />
 
           {role === "PLAYER" ? (
             <div className="mt-8 grid gap-5 sm:grid-cols-2">
@@ -493,14 +492,13 @@ export default function RegisterPage() {
               Login here
             </Link>
           </div>
-        </form>
-      </div>
-    </main>
+      </form>
+    </AuthShell>
   );
 }
 
 const baseInputClassName =
-  "mt-2 h-12 w-full rounded-md border bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2";
+  "mt-2 h-12 w-full rounded-lg border bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-4";
 
 function getInputClassName(hasError = false) {
   return `${baseInputClassName} ${
@@ -530,9 +528,9 @@ function Field({
 
 function ReadOnlySportBadge() {
   return (
-    <div className="mt-2 flex h-12 items-center justify-between rounded-md border border-green-200 bg-green-50 px-4 text-sm">
+    <div className="mt-2 flex h-12 items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 text-sm">
       <span className="font-black text-sportNavy">Cricksal</span>
-      <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-sportGreen">SportSpot Sport</span>
+      <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-sportGreen">Fixed</span>
     </div>
   );
 }
@@ -578,7 +576,7 @@ function SegmentedControl<T extends string>({
   onSelect: (option: T) => void;
 }) {
   return (
-    <div className="mt-2 grid h-12 grid-cols-3 rounded-md bg-slate-100 p-1">
+    <div className="mt-2 grid h-12 grid-cols-3 rounded-lg bg-slate-100 p-1">
       {options.map((option) => (
         <button
           className={`rounded text-xs font-semibold transition ${

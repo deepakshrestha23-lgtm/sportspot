@@ -23,7 +23,10 @@ INSTALLED_APPS = [
     "corsheaders",
     "accounts",
     "players",
+    "teams",
+    "notifications",
     "venues",
+    "wishlists",
 ]
 
 MIDDLEWARE = [
@@ -92,7 +95,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "accounts.authentication.VerifiedJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.AllowAny",
@@ -106,8 +109,36 @@ SIMPLE_JWT = {
 }
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+KHALTI_BASE_URL = os.getenv("KHALTI_BASE_URL", "https://dev.khalti.com/api/v2")
+KHALTI_SECRET_KEY = os.getenv("KHALTI_SECRET_KEY", "")
+KHALTI_WEBSITE_URL = os.getenv("KHALTI_WEBSITE_URL", FRONTEND_URL)
+KHALTI_RETURN_PATH = os.getenv(
+    "KHALTI_RETURN_PATH",
+    "/dashboard/player/bookings/payment/khalti-return",
+)
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False").lower() == "true"
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "SportSpot <no-reply@sportspot.local>")
+SPORTSPOT_SUPPORT_EMAIL = os.getenv("SPORTSPOT_SUPPORT_EMAIL", "support@sportspot.local")
+ACCOUNT_RECOVERY_REVEAL_EMAIL_ERRORS = os.getenv(
+    "ACCOUNT_RECOVERY_REVEAL_EMAIL_ERRORS",
+    "True" if DEBUG else "False",
+).lower() == "true"
+
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise ValueError("EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.")
 CORS_ALLOWED_ORIGINS = [
     FRONTEND_URL,
     "http://127.0.0.1:3000",
     "http://localhost:3000",
 ]
+

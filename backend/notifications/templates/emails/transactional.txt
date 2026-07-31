@@ -1,0 +1,23 @@
+SportSpot
+
+{{ title }}
+
+Hi {{ recipient_name }},
+
+{{ message }}
+
+{% if highlight %}{{ highlight }}
+
+{% endif %}{% for label, value in details %}{{ label }}: {{ value }}
+{% endfor %}
+{% if action_url %}
+{{ action_label }}: {{ action_url }}
+{% endif %}
+
+Security note:
+{{ security_note }}
+
+{{ footer_reason }}
+
+SportSpot - Find Courts. Join Games. Challenge Teams. Play with Trust.
+{{ frontend_url }}

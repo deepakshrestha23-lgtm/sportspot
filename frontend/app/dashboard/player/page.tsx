@@ -10,9 +10,10 @@ import type { PlayerProfile, PlayerProfileResponse } from "@/types/playerProfile
 import type { User } from "@/types/auth";
 
 const quickActions = [
+  { label: "My Teams", href: "/dashboard/player/teams", description: "View and manage your Cricksal teams." },
   { label: "Find Game", href: "/find-game", description: "Browse open Cricksal player slots." },
   { label: "Book Court", href: "/courts", description: "Find available Cricksal courts." },
-  { label: "Create Team", href: "/dashboard/player/teams", description: "Cricksal team setup starts in a later phase." },
+  { label: "Create Team", href: "/dashboard/player/teams/create", description: "Start a Cricksal team as captain." },
   { label: "Challenge Team", href: "/challenge-teams", description: "Cricksal challenge flow starts in a later phase." },
 ];
 
@@ -57,7 +58,6 @@ export default function PlayerDashboardPage() {
         </p>
       </section>
 
-      {error ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
 
       {isLoading ? (
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -122,7 +122,7 @@ export default function PlayerDashboardPage() {
         </section>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <Link
           className="rounded-lg border border-green-200 bg-green-50 p-5 shadow-sm hover:border-sportGreen"
           href="/dashboard/player/profile"

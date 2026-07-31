@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ subject }}</title>
+  </head>
+  <body style="margin:0;background:#f1f5f9;color:#0f172a;font-family:Arial,Helvetica,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{{ preheader }}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #dbe3ed;border-radius:8px;overflow:hidden;">
+            <tr>
+              <td style="background:#071526;padding:24px 32px;border-top:4px solid #16a34a;">
+                <div style="font-size:22px;font-weight:800;color:#ffffff;">Sport<span style="color:#4ade80;">Spot</span></div>
+                <div style="margin-top:6px;font-size:12px;color:#94a3b8;">Cricksal coordination and court booking</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;">
+                <h1 style="margin:0;font-size:26px;line-height:1.25;color:#071526;">{{ title }}</h1>
+                <p style="margin:20px 0 0;font-size:15px;line-height:1.7;color:#475569;">Hi {{ recipient_name }},</p>
+                <p style="margin:10px 0 0;font-size:15px;line-height:1.7;color:#475569;">{{ message }}</p>
+
+                {% if highlight %}
+                  <div style="margin:24px 0;padding:18px;text-align:center;border:1px solid #bbf7d0;border-radius:8px;background:#f0fdf4;font-size:34px;font-weight:800;letter-spacing:8px;color:#15803d;">
+                    {{ highlight }}
+                  </div>
+                {% endif %}
+
+                {% if details %}
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:24px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                    {% for label, value in details %}
+                      <tr>
+                        <td style="padding:11px 14px;border-bottom:1px solid #e2e8f0;background:#f8fafc;font-size:12px;font-weight:700;text-transform:uppercase;color:#64748b;width:38%;">{{ label }}</td>
+                        <td style="padding:11px 14px;border-bottom:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#0f172a;">{{ value }}</td>
+                      </tr>
+                    {% endfor %}
+                  </table>
+                {% endif %}
+
+                {% if action_url %}
+                  <div style="margin-top:26px;">
+                    <a href="{{ action_url }}" style="display:inline-block;padding:13px 20px;border-radius:6px;background:#15803d;color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;">{{ action_label }}</a>
+                  </div>
+                {% endif %}
+
+                <div style="margin-top:28px;padding:14px 16px;border-left:3px solid #16a34a;background:#f8fafc;font-size:13px;line-height:1.6;color:#475569;">
+                  <strong style="color:#0f172a;">Security note</strong><br>
+                  {{ security_note }}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px;background:#071526;font-size:12px;line-height:1.6;color:#94a3b8;">
+                {{ footer_reason }}<br>
+                <span style="color:#cbd5e1;">SportSpot - Find Courts. Join Games. Challenge Teams. Play with Trust.</span><br>
+                <a href="{{ frontend_url }}" style="color:#4ade80;text-decoration:none;">{{ frontend_url }}</a>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:14px 0 0;font-size:11px;color:#94a3b8;">&copy; {{ current_year }} SportSpot</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

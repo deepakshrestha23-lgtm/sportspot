@@ -20,3 +20,32 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+@keyframes sportspot-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sportspot-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.sportspot-reveal {
+  animation: sportspot-reveal 700ms ease-out both;
+}
+
+.sportspot-float {
+  animation: sportspot-float 6s ease-in-out infinite;
+}

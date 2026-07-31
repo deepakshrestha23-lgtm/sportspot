@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
+import AppChrome from "@/components/AppChrome";
 
 export const metadata: Metadata = {
   title: "SportSpot",
@@ -15,8 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Navbar />
-        {children}
+        <AppChrome>{children}</AppChrome>
       </body>
     </html>
   );
