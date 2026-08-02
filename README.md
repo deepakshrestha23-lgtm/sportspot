@@ -2,7 +2,7 @@
 
 SportSpot is a Nepal-focused sports web application for Cricksal players, teams, court owners, and administrators.
 
-Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, and a dedicated Venue Owner top bar exist in the repository. Open games, team challenges, Game Room, rating submission, disputes, production deployment, owner sidebar redesign, and several admin operations are not complete.
+Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, and a dedicated Venue Manager workspace shell with top bar, sidebar, Overview, and Calendar exist in the repository. Open games, team challenges, Game Room, rating submission, disputes, production deployment, owner offline booking, and several admin operations are not complete.
 
 Current sport scope: Cricksal only.
 
@@ -41,7 +41,7 @@ Outside current scope:
 | --- | --- | --- | --- |
 | Guest | Public visitor | View homepage and public court discovery, register, log in, request password reset | Cannot book, save wishlist, manage teams, or access dashboards |
 | Player | Cricksal participant | Verify email, log in, use the Player Dashboard, maintain profile, upload profile photo, create teams, invite by SportSpot ID, add guests, accept/reject invitations, view member profile cards, save wishlist items, discover venues, reserve consecutive slots, pay with Khalti, view bookings, cancel eligible bookings, receive notifications | Cannot manage venues, slots, owner refunds, or admin review |
-| Court Owner | Venue operator | Verify email, use the Venue Manager top bar, set up venue, upload photos/proof, submit for review, manage own courts, generate/block/unblock slots, view bookings, cancel own bookings, send booking messages, process owner-side refund records | Cannot create player teams or approve venues |
+| Court Owner | Venue operator | Verify email, use the Venue Manager workspace, set up venue, upload photos/proof, submit for review, manage own courts, generate/block/unblock slots, view operational calendar, view bookings, cancel own bookings, send booking messages, process owner-side refund records | Cannot create player teams or approve venues |
 | Admin | Internal reviewer | Django admin access, frontend admin dashboard, venue approval/request-changes/rejection/suspension | Public registration is blocked; full users/bookings/reports/disputes admin is incomplete |
 
 ## 4. Technology Stack
@@ -98,7 +98,7 @@ No architecture diagram is currently present.
 ├── frontend/
 │   ├── app/                # Next.js routes
 │   ├── components/         # Navbar, dashboard shell, Notification Centre, modals, toasts
-│   │   ├── owner/          # Venue Owner workspace top bar
+│   │   ├── owner/          # Venue Manager top bar, sidebar, dashboard shell
 │   ├── lib/                # API, auth, dates, toast helpers
 │   ├── types/              # TypeScript domain types
 │   └── public/images/      # Logo/auth/home assets
@@ -126,7 +126,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Ratings & Reliability page | Partially completed | `/dashboard/player/ratings` | Real rating submission/reliability events incomplete |
 | Player Settings page | Completed | `/dashboard/player/settings` | Dual-role/account-mode support later |
 | Player Wishlist access | Completed | `/dashboard/player/wishlist`, Player navbar link | Expand saved-item types later |
-| Venue Owner top bar | Completed | `frontend/components/owner/VenueOwnerTopBar.tsx` | Owner sidebar/dashboard redesign pending |
+| Venue Manager shell/sidebar/top bar | Completed | `frontend/components/owner/*`, `/dashboard/owner/*` | Continue destination-page implementation |
 
 ### Authentication and Accounts
 
@@ -201,15 +201,16 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 
 | Feature | Status | Evidence | Remaining work |
 | --- | --- | --- | --- |
-| Owner dashboard states | Completed | `/dashboard/owner` | More operational polish |
-| Dedicated owner top bar | Completed | `VenueOwnerTopBar`, `/api/venues/owner/venue/` | Owner sidebar redesign not implemented yet |
+| Venue Manager Overview | Completed | `/dashboard/owner`, `/api/venues/owner/overview/` | More operational polish and tests |
+| Dedicated owner top bar/sidebar | Completed | `VenueOwnerTopBar`, `VenueOwnerSidebar`, `/api/venues/owner/venue/` | Destination pages still need full build-out |
 | Venue setup wizard | Completed | `/dashboard/owner/venue-setup` | More validation polish |
 | Draft and submit | Completed | `OwnerVenueView`, `OwnerVenueSubmitView` | None known |
 | Photos/proof upload | Completed | `VenuePhoto`, document fields, upload APIs | Production private storage |
 | Admin status handling | Completed | DRAFT/PENDING/NEEDS_CHANGES/APPROVED/REJECTED/SUSPENDED | Audit logs later |
 | Court management | Completed | owner court APIs/pages | Reactivation unclear |
 | Slot generation/pricing | Completed | `GenerateSlotsView` | No peak pricing |
-| Block/unblock slots | Completed | `SlotStatusView` | Richer calendar later |
+| Block/unblock slots | Completed | `SlotStatusView`, block metadata on `CourtSlot` | Court-closure model can be added later |
+| Owner operations calendar | Completed | `/dashboard/owner/calendar`, `/api/venues/owner/calendar/`, `/api/venues/owner/calendar/block/` | Manual booking creation not implemented |
 | Offline booking | Planned | navigation concept but no complete model/API | Build owner offline booking flow |
 
 ### Booking
@@ -273,13 +274,13 @@ Verified completed work includes:
 - Player Dashboard shell with Overview, My Profile, My Teams, My Games, My Bookings, Ratings & Reliability, Settings, and Help & Support navigation.
 - Player Settings page with horizontal sections, explicit Account edit/cancel mode, safer email-change verification, separate password updates, notification/privacy preferences, and account deactivation.
 - Team creation, redesigned Create Team page, captain permissions, registered invitation by SportSpot ID, guest players, member cards, and invitation decisions.
-- Court owner venue setup, photo gallery, verification document upload, admin review, court setup, slot generation, and slot blocking.
+- Court owner venue setup, photo gallery, verification document upload, admin review, court setup, slot generation, slot blocking, Venue Manager shell/sidebar, Overview, and operational Calendar.
 - Venue-first public discovery with stable backend filter reference data.
 - Consecutive multi-slot booking, 10-minute holds, Khalti payment verification, booking pass/history, cancellation, and owner-managed refund records.
 - Central Notification Centre and global toast feedback.
 - Transactional email service with delivery audit table.
 - Player wishlist for venues/courts, exposed from the logged-in Player top navbar.
-- Dedicated Venue Owner top navigation for `/dashboard/owner/*`, including venue identity/status, contextual venue actions, owner notifications, and owner profile dropdown.
+- Dedicated Venue Manager navigation for `/dashboard/owner/*`, including top bar, stable lifecycle-aware sidebar, venue identity/status, contextual venue actions, owner notifications, profile dropdown, and responsive mobile drawer.
 
 ## 9. Partially Completed and In-Progress Work
 
@@ -288,7 +289,7 @@ Verified completed work includes:
 - Game Room is not implemented.
 - Admin venue review works, but broader admin operations are incomplete.
 - Owner offline booking is not implemented as a full feature.
-- Venue Owner top bar is implemented, but the owner sidebar/dashboard page redesign is still pending.
+- Venue Manager top bar, sidebar, mobile drawer, Overview, and Calendar are implemented; the remaining owner destination pages still need full workflow refinement.
 - Dual-role account switching is not supported by the current backend user model, so “Switch to Player Mode” is intentionally hidden.
 - Khalti needs environment configuration and real end-to-end verification after credentials are added.
 - Media handling is local-development only.
@@ -311,7 +312,7 @@ Verified completed work includes:
 | Objective | Current status | Main tasks | Dependencies | Completion criteria |
 | --- | --- | --- | --- | --- |
 | Finish booking UX QA | In progress | Test reservation, payment, cancellation, refund, notifications | Existing booking flow | Smooth player/owner booking lifecycle |
-| Complete owner operations | Partially completed | Offline booking/block-slot workflow and owner sidebar/dashboard refinement | Venue/court slots | Owner can protect offline bookings and use a polished management workspace |
+| Complete owner operations | Partially completed | Build offline booking, refine owner destination pages, add deeper tests for calendar blocking/conflicts | Venue/court slots | Owner can protect offline bookings and use a polished management workspace |
 | Admin operations | Partially completed | Users/bookings/refund overview | Permissions | Admin can review operational risks |
 | Open games | Planned | Models, APIs, UI, join requests | Player/team modules | Players can find/request games |
 | Team challenges | Planned | Challenge lifecycle and notifications | Team module | Captains can accept/counter/decline |
@@ -388,12 +389,31 @@ Status: Planned. Current pages are placeholders.
 
 1. Court Owner opens any `/dashboard/owner/*` route.
 2. `AppChrome` renders `VenueOwnerTopBar` instead of the public/player navbar.
-3. Top bar fetches `/api/venues/owner/venue/`.
+3. Top bar fetches `/api/venues/owner/venue/` once for the owner workspace and keeps the venue identity stable while navigating.
 4. If no venue exists, it shows `Setup Incomplete` with no fake venue name.
 5. If a venue exists, it shows the real venue name and status label.
 6. Contextual actions change by status: preview, review feedback, view public venue, or support.
 7. Owner notification bell uses the existing Notification Centre for the authenticated owner account.
 8. Owner profile dropdown provides owner profile/account entry points, support, and logout.
+
+### Venue Manager shell and sidebar
+
+1. Court Owner routes under `/dashboard/owner/*` use `VenueOwnerDashboardLayout`.
+2. Desktop shows a persistent lifecycle-aware sidebar; mobile uses an accessible drawer opened from the owner top bar menu button.
+3. Approved/active venues show Overview, Calendar, Bookings, Venue & Courts, Availability & Pricing, Payments & Refunds, Reports, Settings, and Help & Support.
+4. No-venue, setup, pending, changes-required, suspended, and inactive states show reduced navigation appropriate to that lifecycle.
+5. Sidebar active state is route-derived and remains stable during navigation; venue data is not refetched on every sidebar click to avoid visual flicker.
+
+### Venue Manager calendar
+
+1. Owner opens `/dashboard/owner/calendar`.
+2. Frontend requests `/api/venues/owner/calendar/?date=YYYY-MM-DD&view=day|week`.
+3. Backend returns the owner venue, courts, generated slots, operational bookings, blocked periods, calendar stats, and server time.
+4. Day view displays time vertically and courts as columns; week view groups real bookings and blocked periods by day.
+5. Clicking a booking opens an owner-safe booking details drawer.
+6. `Block Court Time` posts to `/api/venues/owner/calendar/block/` and blocks overlapping generated available slots.
+7. If selected time overlaps reserved or booked slots, the API returns a conflict warning and does not hide customer bookings.
+8. Block metadata is stored on `CourtSlot`; public venue discovery serializers must not expose slot-only block fields on venue records.
 
 ### Venue onboarding and verification
 
@@ -659,7 +679,7 @@ Local URLs:
 
 Database engine: PostgreSQL.
 
-Main domain tables include accounts, email OTPs, password reset tokens, player profiles, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, notifications, email deliveries, and wishlist items.
+Main domain tables include accounts, email OTPs, password reset tokens, player profiles, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, notifications, email deliveries, and wishlist items. Court slots now also store block metadata (`block_type`, `block_reason`, `block_note`, `blocked_at`, `blocked_by`) for owner calendar maintenance/closure periods.
 
 Migration commands:
 
@@ -729,6 +749,7 @@ Teams: `/api/teams/`
 Venues/bookings: `/api/venues/`
 
 - Owner venue/courts/slots/bookings/refunds/message endpoints under `owner/`.
+- Owner overview/calendar endpoints: `owner/overview/`, `owner/calendar/`, `owner/calendar/block/`.
 - Admin venue review endpoints under `admin/venues/`.
 - Public discovery endpoints: `discovery/reference/`, `venues/`, `venues/{id}/`, `courts/`, `courts/{id}/`, `courts/{id}/slots/`.
 - Player booking endpoints: `bookings/reserve/`, `bookings/my/`, `bookings/{id}/`, `bookings/{id}/cancel/`, `bookings/{id}/khalti/initiate/`, `bookings/{id}/khalti/verify/`.
@@ -862,7 +883,7 @@ Most recently developed areas:
 - Player Dashboard UI pages and shared shell refinement.
 - Player Settings edit/cancel behavior and safe email-change flow.
 - Redesigned Player Create Team page.
-- Dedicated Venue Owner top bar for owner workspace routes.
+- Dedicated Venue Manager top bar, sidebar, mobile drawer, Overview, and Calendar for owner workspace routes.
 - Court discovery filters and venue card UX.
 - Wishlist integration in Player top navigation.
 - Booking lifecycle, cancellation, refunds, Khalti flow.
@@ -888,6 +909,10 @@ Inspect these first before changing major flows:
 - `frontend/components/Navbar.tsx`
 - `frontend/components/AppChrome.tsx`
 - `frontend/components/owner/VenueOwnerTopBar.tsx`
+- `frontend/components/owner/VenueOwnerDashboardLayout.tsx`
+- `frontend/components/owner/VenueOwnerSidebar.tsx`
+- `frontend/app/dashboard/owner/page.tsx`
+- `frontend/app/dashboard/owner/calendar/page.tsx`
 - `frontend/components/NotificationCenter.tsx`
 - `frontend/components/ToastProvider.tsx`
 - `frontend/app/courts/page.tsx`
@@ -904,7 +929,7 @@ Current blockers:
 
 Before implementing a feature, verify its current frontend, backend, database and permission status. Do not assume that a visible page means the feature is complete.
 
-Recommended next task: continue Venue Owner workspace refinement by redesigning the owner sidebar and dashboard pages to match the new dedicated owner top bar, then complete booking flow QA end-to-end with real local SMTP and Khalti development credentials.
+Recommended next task: continue Venue Owner workspace refinement by implementing the remaining owner destination pages (`Bookings`, `Venue & Courts`, `Availability & Pricing`, `Payments & Refunds`, `Reports`, `Settings`) and then complete booking flow QA end-to-end with real local SMTP and Khalti development credentials.
 
 Commands before new work:
 

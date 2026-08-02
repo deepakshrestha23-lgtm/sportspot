@@ -1,5 +1,6 @@
 export type VenueStatus = "DRAFT" | "PENDING" | "NEEDS_CHANGES" | "APPROVED" | "REJECTED" | "SUSPENDED";
 export type SlotStatus = "AVAILABLE" | "RESERVED" | "BOOKED" | "BLOCKED" | "CANCELLED";
+export type SlotBlockType = "MAINTENANCE" | "TEMPORARY_CLOSURE" | "PRIVATE_USE" | "VENUE_UNAVAILABLE" | "OTHER";
 export type BookingStatus = "RESERVED" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "COMPLETED";
 export type PaymentStatus = "PENDING" | "PAID" | "CANCELLED" | "FAILED" | "REFUND_PENDING" | "REFUNDED" | "PARTIALLY_REFUNDED" | "NO_REFUND";
 export type RefundStatus = "NOT_REQUIRED" | "PENDING_OWNER_ACTION" | "NOT_ELIGIBLE" | "REJECTED" | "REFUNDED" | "PARTIALLY_REFUNDED";
@@ -191,6 +192,11 @@ export type CourtSlot = {
   slot_duration_minutes: number;
   price: string;
   status: SlotStatus;
+  block_type: SlotBlockType | "";
+  block_type_display: string;
+  block_reason: string;
+  blocked_at: string | null;
+  blocked_by_name: string;
   is_past: boolean;
   active_booking: SlotBookingSummary | null;
   reserved_until: string | null;
@@ -297,4 +303,129 @@ export type BookingSlotSummary = {
   slot_duration_minutes: number;
   price: string;
 };
+export type OwnerLifecycleState =
+  | "NO_VENUE"
+  | "SETUP_INCOMPLETE"
+  | "PENDING_VERIFICATION"
+  | "CHANGES_REQUIRED"
+  | "ACTIVE"
+  | "TEMPORARILY_INACTIVE"
+  | "SUSPENDED";
 
+export type OwnerOverviewSummary = {
+  today_bookings: number;
+  today_expected_revenue: string;
+  courts_in_use: number;
+  total_active_courts: number;
+  pending_refund_requests: number;
+};
+
+export type OwnerScheduleItem = {
+  id: number;
+  booking_code: string;
+  player_name: string;
+  court_name: string;
+  start_at: string | null;
+  end_at: string | null;
+  display_time: string;
+  duration_minutes: number;
+  booking_status: BookingStatus;
+  payment_status: PaymentStatus;
+  amount: string;
+  action_url: string;
+};
+
+export type OwnerNextBooking = {
+  id: number;
+  booking_code: string;
+  player_name: string;
+  court_name: string;
+  start_at: string | null;
+  end_at: string | null;
+  display_time: string;
+  payment_status: PaymentStatus;
+  amount: string;
+  action_url: string;
+};
+
+export type OwnerPendingAction = {
+  id: string;
+  title: string;
+  reason: string;
+  priority: "NORMAL" | "IMPORTANT" | "URGENT";
+  action_label: string;
+  action_url: string;
+};
+
+export type OwnerCourtStatus = {
+  court_id: number;
+  court_name: string;
+  status: "AVAILABLE" | "OCCUPIED" | "BLOCKED" | "UNDER_MAINTENANCE" | "INACTIVE";
+  status_label: string;
+  current_booking_end_at: string | null;
+  next_booking_start_at: string | null;
+  next_booking_label: string;
+};
+
+export type OwnerRecentActivity = {
+  id: number;
+  title: string;
+  message: string;
+  created_at: string;
+  priority: "NORMAL" | "IMPORTANT" | "URGENT";
+  action_url: string;
+};
+
+export type OwnerQuickAction = {
+  label: string;
+  href: string;
+  tone: "primary" | "secondary" | "warning";
+};
+
+export type OwnerOverviewResponse = {
+  server_now: string;
+  local_date: string;
+  venue: Venue | null;
+  lifecycle_state: OwnerLifecycleState;
+  summary: OwnerOverviewSummary;
+  today_schedule: OwnerScheduleItem[];
+  next_booking: OwnerNextBooking | null;
+  pending_actions: OwnerPendingAction[];
+  court_statuses: OwnerCourtStatus[];
+  recent_activity: OwnerRecentActivity[];
+  quick_actions: OwnerQuickAction[];
+};
+
+export type OwnerCalendarViewMode = "day" | "week";
+
+export type OwnerCalendarStats = {
+  bookings_count: number;
+  confirmed_bookings: number;
+  reserved_holds: number;
+  blocked_slots: number;
+  available_slots: number;
+};
+
+export type OwnerCalendarResponse = {
+  server_now: string;
+  date: string;
+  view: OwnerCalendarViewMode;
+  week_start: string;
+  week_end: string;
+  venue: Venue | null;
+  courts: Court[];
+  slots: CourtSlot[];
+  bookings: Booking[];
+  opening_time: string | null;
+  closing_time: string | null;
+  stats: OwnerCalendarStats;
+};
+
+export type OwnerCalendarBlockConflict = {
+  slot_id: number;
+  court_name: string;
+  date: string;
+  display_time: string;
+  status: SlotStatus;
+  booking: SlotBookingSummary | null;
+};

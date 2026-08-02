@@ -11,7 +11,10 @@ from .views import (
     KhaltiPaymentInitiateView,
     KhaltiPaymentVerifyView,
     OwnerBookingMessageView,
+    OwnerOverviewView,
     OwnerBookingsView,
+    OwnerCalendarBlockView,
+    OwnerCalendarView,
     OwnerCourtDeactivateView,
     OwnerCourtDetailView,
     OwnerCourtListCreateView,
@@ -33,6 +36,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("owner/overview/", OwnerOverviewView.as_view(), name="owner-overview"),
     path("owner/venue/", OwnerVenueView.as_view(), name="owner-venue"),
     path("owner/venue/deactivate/", OwnerVenueDeactivateView.as_view(), name="owner-venue-deactivate"),
     path("owner/venue/submit/", OwnerVenueSubmitView.as_view(), name="owner-venue-submit"),
@@ -42,6 +46,8 @@ urlpatterns = [
     path("owner/courts/<int:court_id>/", OwnerCourtDetailView.as_view(), name="owner-court-detail"),
     path("owner/courts/<int:court_id>/deactivate/", OwnerCourtDeactivateView.as_view(), name="owner-court-deactivate"),
     path("owner/courts/<int:court_id>/slots/generate/", GenerateSlotsView.as_view(), name="owner-generate-slots"),
+    path("owner/calendar/", OwnerCalendarView.as_view(), name="owner-calendar"),
+    path("owner/calendar/block/", OwnerCalendarBlockView.as_view(), name="owner-calendar-block"),
     path("owner/slots/", OwnerSlotListView.as_view(), name="owner-slots"),
     path("owner/slots/<int:slot_id>/<str:action>/", SlotStatusView.as_view(), name="owner-slot-status"),
     path("owner/bookings/", OwnerBookingsView.as_view(), name="owner-bookings"),

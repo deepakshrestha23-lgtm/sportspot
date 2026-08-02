@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -11,6 +11,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from notifications.models import Notification
 from notifications.services import (
     notify_admins_venue_submitted,
     notify_booking_cancelled,
@@ -30,7 +31,7 @@ from .khalti import (
     npr_to_paisa,
 )
 from .models import Booking, BookingMessage, BookingSlot, Court, CourtSlot, Venue, VenuePhoto
-from .policies import build_cancellation_policy_snapshot, get_cancellation_quote
+from .policies import build_cancellation_policy_snapshot, get_booking_start_at, get_cancellation_quote
 from .reference_data import (
     SPORTSPOT_AREAS_BY_DISTRICT,
     SPORTSPOT_DISTRICTS,
@@ -101,6 +102,101 @@ class OwnerVenueView(APIView):
         venue.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+
+
+class OwnerOverviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+
+    def get(self, request):
+        now = timezone.now()
+        today = timezone.localdate()
+        venue = (
+            Venue.objects.filter(owner=request.user)
+            .select_related("owner")
+            .prefetch_related("courts", "photos")
+            .first()
+        )
+
+        if not venue:
+            return Response(
+                {
+                    "server_now": now.isoformat(),
+                    "local_date": today.isoformat(),
+                    "venue": None,
+                    "lifecycle_state": "NO_VENUE",
+                    "summary": empty_owner_summary(),
+                    "today_schedule": [],
+                    "next_booking": None,
+                    "pending_actions": [
+                        {
+                            "id": "create-venue",
+                            "title": "Complete venue setup",
+                            "reason": "Add your venue details, courts, availability and verification proof.",
+                            "priority": "IMPORTANT",
+                            "action_label": "Complete Setup",
+                            "action_url": "/dashboard/owner/venue-setup",
+                        }
+                    ],
+                    "court_statuses": [],
+                    "recent_activity": [],
+                    "quick_actions": [
+                        {"label": "Complete Venue Setup", "href": "/dashboard/owner/venue-setup", "tone": "primary"}
+                    ],
+                }
+            )
+
+        bookings = list(
+            Booking.objects.filter(venue=venue)
+            .select_related("player", "venue", "court", "slot")
+            .prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos")
+        )
+        for booking in bookings:
+            if booking.status in [Booking.BookingStatus.RESERVED, Booking.BookingStatus.CONFIRMED]:
+                refresh_booking_lifecycle(booking)
+
+        bookings = list(
+            Booking.objects.filter(venue=venue)
+            .select_related("player", "venue", "court", "slot")
+            .prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos")
+        )
+        courts = list(venue.courts.all())
+        today_revenue = (
+            Booking.objects.filter(
+                venue=venue,
+                slot__date=today,
+                status__in=[Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED],
+                payment_status=Booking.PaymentStatus.PAID,
+            ).aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+        pending_refunds_count = Booking.objects.filter(
+            venue=venue,
+            status=Booking.BookingStatus.CANCELLED,
+            refund_status=Booking.RefundStatus.PENDING_OWNER_ACTION,
+        ).count()
+
+        court_statuses = build_court_statuses(courts, bookings, now)
+        return Response(
+            {
+                "server_now": now.isoformat(),
+                "local_date": today.isoformat(),
+                "venue": VenueSerializer(venue, context={"request": request}).data,
+                "lifecycle_state": get_owner_lifecycle_state(venue),
+                "summary": {
+                    "today_bookings": count_today_bookings(bookings, today),
+                    "today_expected_revenue": str(today_revenue),
+                    "courts_in_use": sum(1 for item in court_statuses if item["status"] == "OCCUPIED"),
+                    "total_active_courts": sum(1 for court in courts if court.is_active),
+                    "pending_refund_requests": pending_refunds_count,
+                },
+                "today_schedule": build_today_schedule(bookings, today)[:5],
+                "next_booking": build_next_booking(bookings, now),
+                "pending_actions": build_owner_pending_actions(venue, courts, pending_refunds_count),
+                "court_statuses": court_statuses,
+                "recent_activity": build_owner_recent_activity(request.user),
+                "quick_actions": build_owner_quick_actions(venue, pending_refunds_count),
+            }
+        )
 
 class OwnerVenueSubmitView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
@@ -322,6 +418,191 @@ class GenerateSlotsView(APIView):
         )
 
 
+class OwnerCalendarView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+
+    def get(self, request):
+        selected_date = parse_date_value(request.query_params.get("date")) or timezone.localdate()
+        view_mode = str(request.query_params.get("view") or "day").lower()
+        if view_mode not in ["day", "week"]:
+            return Response({"detail": "Choose either day or week view."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if view_mode == "week":
+            start_date = selected_date - timedelta(days=selected_date.weekday())
+            end_date = start_date + timedelta(days=6)
+        else:
+            start_date = selected_date
+            end_date = selected_date
+
+        now = timezone.now()
+        venue = get_owner_venue(request.user)
+        if not venue:
+            return Response(
+                {
+                    "server_now": now.isoformat(),
+                    "date": selected_date.isoformat(),
+                    "view": view_mode,
+                    "week_start": start_date.isoformat(),
+                    "week_end": end_date.isoformat(),
+                    "venue": None,
+                    "courts": [],
+                    "slots": [],
+                    "bookings": [],
+                    "opening_time": None,
+                    "closing_time": None,
+                    "stats": empty_calendar_stats(),
+                }
+            )
+
+        courts = Court.objects.filter(venue=venue).order_by("name")
+        slots = list(
+            CourtSlot.objects.filter(court__venue=venue, date__range=(start_date, end_date))
+            .select_related("court", "court__venue", "blocked_by")
+            .prefetch_related("booking_items__booking", "bookings")
+            .order_by("date", "start_time", "court__name")
+        )
+        release_expired_reservations(slots)
+
+        bookings = list(
+            Booking.objects.filter(
+                Q(slot__date__range=(start_date, end_date)) | Q(slot_items__slot__date__range=(start_date, end_date)),
+                venue=venue,
+                status__in=[
+                    Booking.BookingStatus.RESERVED,
+                    Booking.BookingStatus.CONFIRMED,
+                    Booking.BookingStatus.COMPLETED,
+                ],
+            )
+            .select_related("player", "venue", "court", "slot")
+            .prefetch_related("slot_items__slot", "venue__photos")
+            .distinct()
+            .order_by("slot__date", "slot__start_time")
+        )
+        for booking in bookings:
+            if booking.status in [Booking.BookingStatus.RESERVED, Booking.BookingStatus.CONFIRMED]:
+                refresh_booking_lifecycle(booking)
+
+        bookings = list(
+            Booking.objects.filter(
+                Q(slot__date__range=(start_date, end_date)) | Q(slot_items__slot__date__range=(start_date, end_date)),
+                venue=venue,
+                status__in=[
+                    Booking.BookingStatus.RESERVED,
+                    Booking.BookingStatus.CONFIRMED,
+                    Booking.BookingStatus.COMPLETED,
+                ],
+            )
+            .select_related("player", "venue", "court", "slot")
+            .prefetch_related("slot_items__slot", "venue__photos")
+            .distinct()
+            .order_by("slot__date", "slot__start_time")
+        )
+
+        return Response(
+            {
+                "server_now": timezone.now().isoformat(),
+                "date": selected_date.isoformat(),
+                "view": view_mode,
+                "week_start": start_date.isoformat(),
+                "week_end": end_date.isoformat(),
+                "venue": VenueSerializer(venue, context={"request": request}).data,
+                "courts": CourtSerializer(courts, many=True, context={"request": request}).data,
+                "slots": SlotSerializer(slots, many=True, context={"request": request}).data,
+                "bookings": BookingSerializer(bookings, many=True, context={"request": request}).data,
+                "opening_time": get_calendar_opening_time(venue, slots),
+                "closing_time": get_calendar_closing_time(venue, slots),
+                "stats": build_calendar_stats(slots, bookings),
+            }
+        )
+
+
+class OwnerCalendarBlockView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+
+    def post(self, request):
+        court_id = request.data.get("court_id")
+        start_date = parse_date_value(request.data.get("start_date"))
+        end_date = parse_date_value(request.data.get("end_date") or request.data.get("start_date"))
+        start_time = parse_time(request.data.get("start_time"))
+        end_time = parse_time(request.data.get("end_time"))
+        block_type = str(request.data.get("block_type") or "OTHER").upper()
+        reason = str(request.data.get("reason") or "").strip()
+        note = str(request.data.get("internal_note") or "").strip()
+
+        if not court_id or not start_date or not end_date or not start_time or not end_time:
+            return Response({"detail": "Choose a court, date, start time and end time."}, status=status.HTTP_400_BAD_REQUEST)
+        if block_type not in CourtSlot.BlockType.values:
+            return Response({"detail": "Choose a valid block type."}, status=status.HTTP_400_BAD_REQUEST)
+        if not reason:
+            return Response({"detail": "Add a short reason for blocking this time."}, status=status.HTTP_400_BAD_REQUEST)
+        if start_date > end_date:
+            return Response({"detail": "End date must be after the start date."}, status=status.HTTP_400_BAD_REQUEST)
+
+        start_at = timezone.make_aware(datetime.combine(start_date, start_time), timezone.get_current_timezone())
+        end_at = timezone.make_aware(datetime.combine(end_date, end_time), timezone.get_current_timezone())
+        if end_at <= start_at:
+            return Response({"detail": "End time must be after start time."}, status=status.HTTP_400_BAD_REQUEST)
+        if start_at < timezone.now():
+            return Response({"detail": "Choose a future time to block."}, status=status.HTTP_400_BAD_REQUEST)
+
+        court = get_owner_court(request.user, court_id)
+        with transaction.atomic():
+            slots = list(
+                CourtSlot.objects.select_for_update()
+                .select_related("court", "court__venue")
+                .filter(court=court, date__range=(start_date, end_date))
+                .order_by("date", "start_time")
+            )
+            release_expired_reservations(slots)
+            affected_slots = [slot for slot in slots if slot_overlaps_period(slot, start_at, end_at)]
+            if not affected_slots:
+                return Response(
+                    {"detail": "No generated slots match this time. Generate availability before blocking it."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            conflicting_slots = [slot for slot in affected_slots if slot.status in [CourtSlot.Status.RESERVED, CourtSlot.Status.BOOKED]]
+            if conflicting_slots:
+                return Response(
+                    {
+                        "detail": "This time includes an existing booking or payment hold. Review the affected booking before blocking the court.",
+                        "conflicts": [build_slot_conflict(slot) for slot in conflicting_slots],
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            slots_to_block = [slot for slot in affected_slots if slot.status == CourtSlot.Status.AVAILABLE]
+            if not slots_to_block:
+                return Response({"detail": "The selected time is already unavailable."}, status=status.HTTP_400_BAD_REQUEST)
+
+            now = timezone.now()
+            for slot in slots_to_block:
+                slot.status = CourtSlot.Status.BLOCKED
+                slot.block_type = block_type
+                slot.block_reason = reason[:180]
+                slot.block_note = note
+                slot.blocked_at = now
+                slot.blocked_by = request.user
+                slot.save(
+                    update_fields=[
+                        "status",
+                        "block_type",
+                        "block_reason",
+                        "block_note",
+                        "blocked_at",
+                        "blocked_by",
+                        "updated_at",
+                    ]
+                )
+
+        return Response(
+            {
+                "blocked_count": len(slots_to_block),
+                "slots": SlotSerializer(slots_to_block, many=True, context={"request": request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
 class OwnerSlotListView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
 
@@ -351,12 +632,24 @@ class SlotStatusView(APIView):
             if slot.status != CourtSlot.Status.AVAILABLE:
                 return Response({"detail": "Only available slots can be blocked."}, status=status.HTTP_400_BAD_REQUEST)
             slot.status = CourtSlot.Status.BLOCKED
-            slot.save(update_fields=["status", "updated_at"])
+            slot.block_type = str(request.data.get("block_type") or CourtSlot.BlockType.OTHER).upper()
+            if slot.block_type not in CourtSlot.BlockType.values:
+                slot.block_type = CourtSlot.BlockType.OTHER
+            slot.block_reason = str(request.data.get("reason") or "Blocked by venue owner.").strip()[:180]
+            slot.block_note = str(request.data.get("internal_note") or "").strip()
+            slot.blocked_at = timezone.now()
+            slot.blocked_by = request.user
+            slot.save(update_fields=["status", "block_type", "block_reason", "block_note", "blocked_at", "blocked_by", "updated_at"])
         elif action == "unblock":
             if slot.status != CourtSlot.Status.BLOCKED:
                 return Response({"detail": "Only blocked slots can be unblocked."}, status=status.HTTP_400_BAD_REQUEST)
             slot.status = CourtSlot.Status.AVAILABLE
-            slot.save(update_fields=["status", "updated_at"])
+            slot.block_type = ""
+            slot.block_reason = ""
+            slot.block_note = ""
+            slot.blocked_at = None
+            slot.blocked_by = None
+            slot.save(update_fields=["status", "block_type", "block_reason", "block_note", "blocked_at", "blocked_by", "updated_at"])
         else:
             return Response({"detail": "Invalid slot action."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1502,6 +1795,357 @@ class BookingCancelView(APIView):
         return Response({"booking": BookingSerializer(booking, context={"request": request}).data})
 
 
+
+def empty_owner_summary():
+    return {
+        "today_bookings": 0,
+        "today_expected_revenue": "0.00",
+        "courts_in_use": 0,
+        "total_active_courts": 0,
+        "pending_refund_requests": 0,
+    }
+
+
+def get_owner_lifecycle_state(venue):
+    if not venue:
+        return "NO_VENUE"
+    if venue.status == Venue.Status.SUSPENDED:
+        return "SUSPENDED"
+    if venue.status == Venue.Status.APPROVED and not venue.is_active:
+        return "TEMPORARILY_INACTIVE"
+    if venue.status == Venue.Status.APPROVED:
+        return "ACTIVE"
+    if venue.status == Venue.Status.PENDING:
+        return "PENDING_VERIFICATION"
+    if venue.status in [Venue.Status.NEEDS_CHANGES, Venue.Status.REJECTED]:
+        return "CHANGES_REQUIRED"
+    return "SETUP_INCOMPLETE"
+
+
+def count_today_bookings(bookings, today):
+    return sum(
+        1
+        for booking in bookings
+        if booking.slot.date == today
+        and booking.status in [
+            Booking.BookingStatus.RESERVED,
+            Booking.BookingStatus.CONFIRMED,
+            Booking.BookingStatus.COMPLETED,
+        ]
+    )
+
+
+def build_today_schedule(bookings, today):
+    schedule = []
+    for booking in bookings:
+        if booking.slot.date != today:
+            continue
+        if booking.status not in [
+            Booking.BookingStatus.RESERVED,
+            Booking.BookingStatus.CONFIRMED,
+            Booking.BookingStatus.COMPLETED,
+            Booking.BookingStatus.CANCELLED,
+        ]:
+            continue
+        window = build_booking_window(booking)
+        schedule.append(
+            {
+                "id": booking.id,
+                "booking_code": booking.booking_code,
+                "player_name": booking.player.full_name,
+                "court_name": booking.court.name,
+                "start_at": window["start_at"],
+                "end_at": window["end_at"],
+                "display_time": window["display_time"],
+                "duration_minutes": window["duration_minutes"],
+                "booking_status": booking.status,
+                "payment_status": booking.payment_status,
+                "amount": str(booking.amount),
+                "action_url": f"/dashboard/owner/bookings?booking={booking.id}",
+            }
+        )
+    return sorted(schedule, key=lambda item: item["start_at"] or "")
+
+
+def build_next_booking(bookings, now):
+    candidates = []
+    for booking in bookings:
+        if booking.status != Booking.BookingStatus.CONFIRMED:
+            continue
+        window = build_booking_window(booking)
+        start_at = parse_iso_datetime(window["start_at"])
+        end_at = parse_iso_datetime(window["end_at"])
+        if not start_at or not end_at or end_at <= now:
+            continue
+        candidates.append(
+            {
+                "id": booking.id,
+                "booking_code": booking.booking_code,
+                "player_name": booking.player.full_name,
+                "court_name": booking.court.name,
+                "start_at": window["start_at"],
+                "end_at": window["end_at"],
+                "display_time": window["display_time"],
+                "payment_status": booking.payment_status,
+                "amount": str(booking.amount),
+                "action_url": f"/dashboard/owner/bookings?booking={booking.id}",
+                "sort_at": start_at,
+            }
+        )
+    candidates.sort(key=lambda item: item["sort_at"])
+    if not candidates:
+        return None
+    next_booking = candidates[0]
+    next_booking.pop("sort_at", None)
+    return next_booking
+
+
+def build_court_statuses(courts, bookings, now):
+    statuses = []
+    for court in courts:
+        if not court.is_active:
+            statuses.append(
+                {
+                    "court_id": court.id,
+                    "court_name": court.name,
+                    "status": "INACTIVE",
+                    "status_label": "Inactive",
+                    "current_booking_end_at": None,
+                    "next_booking_start_at": None,
+                    "next_booking_label": "Hidden from players",
+                }
+            )
+            continue
+
+        current_booking = None
+        next_booking = None
+        for booking in bookings:
+            if booking.court_id != court.id or booking.status != Booking.BookingStatus.CONFIRMED:
+                continue
+            window = build_booking_window(booking)
+            start_at = parse_iso_datetime(window["start_at"])
+            end_at = parse_iso_datetime(window["end_at"])
+            if not start_at or not end_at:
+                continue
+            if start_at <= now < end_at:
+                current_booking = {"booking": booking, "window": window}
+                break
+            if start_at > now and (not next_booking or start_at < next_booking["start_at"]):
+                next_booking = {"start_at": start_at, "window": window}
+
+        if current_booking:
+            statuses.append(
+                {
+                    "court_id": court.id,
+                    "court_name": court.name,
+                    "status": "OCCUPIED",
+                    "status_label": "Occupied",
+                    "current_booking_end_at": current_booking["window"]["end_at"],
+                    "next_booking_start_at": None,
+                    "next_booking_label": f"Until {current_booking['window']['end_time_label']}",
+                }
+            )
+            continue
+
+        blocked_slot = CourtSlot.objects.filter(
+            court=court,
+            date=timezone.localdate(),
+            status=CourtSlot.Status.BLOCKED,
+            start_time__lte=timezone.localtime().time(),
+            end_time__gt=timezone.localtime().time(),
+        ).first()
+        if blocked_slot:
+            statuses.append(
+                {
+                    "court_id": court.id,
+                    "court_name": court.name,
+                    "status": "BLOCKED",
+                    "status_label": "Blocked",
+                    "current_booking_end_at": None,
+                    "next_booking_start_at": None,
+                    "next_booking_label": f"Blocked until {format_time_for_owner(blocked_slot.end_time)}",
+                }
+            )
+            continue
+
+        statuses.append(
+            {
+                "court_id": court.id,
+                "court_name": court.name,
+                "status": "AVAILABLE",
+                "status_label": "Available",
+                "current_booking_end_at": None,
+                "next_booking_start_at": next_booking["window"]["start_at"] if next_booking else None,
+                "next_booking_label": f"Next at {next_booking['window']['start_time_label']}" if next_booking else "No upcoming booking",
+            }
+        )
+    return statuses
+
+
+def build_owner_pending_actions(venue, courts, pending_refunds_count):
+    actions = []
+    lifecycle_state = get_owner_lifecycle_state(venue)
+    if lifecycle_state == "SETUP_INCOMPLETE":
+        actions.append(
+            {
+                "id": "continue-setup",
+                "title": "Finish venue setup",
+                "reason": "Complete the remaining venue, court, availability and verification details.",
+                "priority": "IMPORTANT",
+                "action_label": "Continue Setup",
+                "action_url": "/dashboard/owner/venue-setup",
+            }
+        )
+    if lifecycle_state == "PENDING_VERIFICATION":
+        actions.append(
+            {
+                "id": "pending-verification",
+                "title": "Verification in progress",
+                "reason": "Your venue is under review. Players can book after approval.",
+                "priority": "NORMAL",
+                "action_label": "View Submission",
+                "action_url": "/dashboard/owner/venue",
+            }
+        )
+    if lifecycle_state == "CHANGES_REQUIRED":
+        actions.append(
+            {
+                "id": "review-feedback",
+                "title": "Review admin feedback",
+                "reason": venue.admin_review_note or "Changes are required before your venue can be approved.",
+                "priority": "URGENT",
+                "action_label": "Review Feedback",
+                "action_url": "/dashboard/owner/venue-setup",
+            }
+        )
+    if lifecycle_state == "SUSPENDED":
+        actions.append(
+            {
+                "id": "venue-suspended",
+                "title": "Venue access restricted",
+                "reason": "Your venue cannot accept new bookings while suspended.",
+                "priority": "URGENT",
+                "action_label": "Get Support",
+                "action_url": "/support",
+            }
+        )
+    if pending_refunds_count:
+        actions.append(
+            {
+                "id": "pending-refunds",
+                "title": "Refund request awaiting action",
+                "reason": f"{pending_refunds_count} paid cancellation needs your refund update.",
+                "priority": "URGENT",
+                "action_label": "Review Refunds",
+                "action_url": "/dashboard/owner/refunds",
+            }
+        )
+    courts_without_slots = [court for court in courts if not court.slots.exists()]
+    if venue and courts_without_slots:
+        actions.append(
+            {
+                "id": "courts-without-slots",
+                "title": "Court availability missing",
+                "reason": f"{len(courts_without_slots)} court needs slots and pricing before players can book it.",
+                "priority": "IMPORTANT",
+                "action_label": "Manage Availability",
+                "action_url": "/dashboard/owner/availability",
+            }
+        )
+    if venue and venue.status == Venue.Status.APPROVED and venue.is_active and not CourtSlot.objects.filter(
+        court__venue=venue,
+        court__is_active=True,
+        date__gte=timezone.localdate(),
+        status=CourtSlot.Status.AVAILABLE,
+    ).exists():
+        actions.append(
+            {
+                "id": "no-future-availability",
+                "title": "No bookable slots available",
+                "reason": "Add future availability so players can reserve your courts.",
+                "priority": "IMPORTANT",
+                "action_label": "Add Availability",
+                "action_url": "/dashboard/owner/availability",
+            }
+        )
+    priority_order = {"URGENT": 0, "IMPORTANT": 1, "NORMAL": 2}
+    return sorted(actions, key=lambda item: priority_order.get(item["priority"], 3))[:5]
+
+
+def build_owner_recent_activity(user):
+    notifications = Notification.objects.filter(
+        recipient=user,
+        category__in=[Notification.Category.BOOKINGS, Notification.Category.SYSTEM],
+    ).order_by("-created_at")[:5]
+    return [
+        {
+            "id": notification.id,
+            "title": notification.title,
+            "message": notification.message,
+            "created_at": notification.created_at.isoformat(),
+            "priority": notification.priority,
+            "action_url": notification.action_url,
+        }
+        for notification in notifications
+    ]
+
+
+def build_owner_quick_actions(venue, pending_refunds_count):
+    lifecycle_state = get_owner_lifecycle_state(venue)
+    if lifecycle_state == "NO_VENUE":
+        return [{"label": "Complete Venue Setup", "href": "/dashboard/owner/venue-setup", "tone": "primary"}]
+    if lifecycle_state in ["SETUP_INCOMPLETE", "CHANGES_REQUIRED", "PENDING_VERIFICATION"]:
+        return [
+            {"label": "Continue Setup", "href": "/dashboard/owner/venue-setup", "tone": "primary"},
+            {"label": "View Venue Details", "href": "/dashboard/owner/venue", "tone": "secondary"},
+            {"label": "Add Court", "href": "/dashboard/owner/courts/create", "tone": "secondary"},
+        ]
+    if lifecycle_state == "SUSPENDED":
+        return [
+            {"label": "Get Support", "href": "/support", "tone": "primary"},
+            {"label": "View Venue Details", "href": "/dashboard/owner/venue", "tone": "secondary"},
+        ]
+
+    actions = [
+        {"label": "View Calendar", "href": "/dashboard/owner/calendar", "tone": "primary"},
+        {"label": "Block Court Time", "href": "/dashboard/owner/calendar", "tone": "secondary"},
+        {"label": "Add Court", "href": "/dashboard/owner/courts/create", "tone": "secondary"},
+        {"label": "Manage Availability", "href": "/dashboard/owner/availability", "tone": "secondary"},
+    ]
+    if pending_refunds_count:
+        actions.append({"label": "Review Refund Requests", "href": "/dashboard/owner/refunds", "tone": "warning"})
+    return actions
+
+
+def build_booking_window(booking):
+    slots = booking.booked_slots
+    start_at = get_booking_start_at(booking)
+    end_at = None
+    duration_minutes = 0
+    if slots:
+        end_at = timezone.make_aware(
+            datetime.combine(slots[-1].date, slots[-1].end_time),
+            timezone.get_current_timezone(),
+        )
+        duration_minutes = sum(slot.slot_duration_minutes for slot in slots)
+    return {
+        "start_at": start_at.isoformat() if start_at else None,
+        "end_at": end_at.isoformat() if end_at else None,
+        "display_time": f"{format_time_for_owner(slots[0].start_time)} - {format_time_for_owner(slots[-1].end_time)}" if slots else "",
+        "start_time_label": format_time_for_owner(slots[0].start_time) if slots else "",
+        "end_time_label": format_time_for_owner(slots[-1].end_time) if slots else "",
+        "duration_minutes": duration_minutes,
+    }
+
+
+def parse_iso_datetime(value):
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
+
+
+def format_time_for_owner(time_value):
+    return time_value.strftime("%I:%M %p").lstrip("0") if hasattr(time_value, "strftime") else ""
 def get_owner_venue(user):
     return Venue.objects.filter(owner=user).first()
 
@@ -1760,6 +2404,102 @@ def normalize_request_data(data):
         normalized["declaration_accepted"] = False
     return normalized
 
+
+def parse_date_value(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def slot_start_end_at(slot):
+    current_timezone = timezone.get_current_timezone()
+    start_at = timezone.make_aware(datetime.combine(slot.date, slot.start_time), current_timezone)
+    end_at = timezone.make_aware(datetime.combine(slot.date, slot.end_time), current_timezone)
+    return start_at, end_at
+
+
+def slot_overlaps_period(slot, start_at, end_at):
+    slot_start_at, slot_end_at = slot_start_end_at(slot)
+    return slot_start_at < end_at and slot_end_at > start_at
+
+
+def empty_calendar_stats():
+    return {
+        "bookings_count": 0,
+        "confirmed_bookings": 0,
+        "reserved_holds": 0,
+        "blocked_slots": 0,
+        "available_slots": 0,
+    }
+
+
+def build_calendar_stats(slots, bookings):
+    return {
+        "bookings_count": len(bookings),
+        "confirmed_bookings": len([booking for booking in bookings if booking.status in [Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED]]),
+        "reserved_holds": len([booking for booking in bookings if booking.status == Booking.BookingStatus.RESERVED]),
+        "blocked_slots": len([slot for slot in slots if slot.status == CourtSlot.Status.BLOCKED]),
+        "available_slots": len([slot for slot in slots if slot.status == CourtSlot.Status.AVAILABLE]),
+    }
+
+
+def get_calendar_opening_time(venue, slots):
+    if venue.opening_time:
+        return venue.opening_time.strftime("%H:%M")
+    if slots:
+        return min(slot.start_time for slot in slots).strftime("%H:%M")
+    return None
+
+
+def get_calendar_closing_time(venue, slots):
+    if venue.closing_time:
+        return venue.closing_time.strftime("%H:%M")
+    if slots:
+        return max(slot.end_time for slot in slots).strftime("%H:%M")
+    return None
+
+
+def build_slot_conflict(slot):
+    return {
+        "slot_id": slot.id,
+        "court_name": slot.court.name,
+        "date": slot.date.isoformat(),
+        "display_time": slot.display_time,
+        "status": slot.status,
+        "booking": get_slot_active_booking_summary(slot),
+    }
+
+
+def get_slot_active_booking_summary(slot):
+    booking_statuses = [
+        Booking.BookingStatus.RESERVED,
+        Booking.BookingStatus.CONFIRMED,
+        Booking.BookingStatus.COMPLETED,
+    ]
+    booking_item = (
+        slot.booking_items.select_related("booking", "booking__player")
+        .filter(booking__status__in=booking_statuses)
+        .order_by("-booking__created_at")
+        .first()
+    )
+    booking = booking_item.booking if booking_item else (
+        slot.bookings.select_related("player")
+        .filter(status__in=booking_statuses)
+        .order_by("-created_at")
+        .first()
+    )
+    if not booking:
+        return None
+    return {
+        "id": booking.id,
+        "booking_code": booking.booking_code,
+        "player_name": booking.player.full_name,
+        "status": booking.status,
+        "payment_status": booking.payment_status,
+    }
 
 def parse_time(value):
     if not value:

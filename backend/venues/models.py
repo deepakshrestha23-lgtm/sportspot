@@ -211,6 +211,13 @@ class CourtSlot(models.Model):
         BLOCKED = "BLOCKED", "Blocked"
         CANCELLED = "CANCELLED", "Cancelled"
 
+    class BlockType(models.TextChoices):
+        MAINTENANCE = "MAINTENANCE", "Maintenance"
+        TEMPORARY_CLOSURE = "TEMPORARY_CLOSURE", "Temporary closure"
+        PRIVATE_USE = "PRIVATE_USE", "Private use"
+        VENUE_UNAVAILABLE = "VENUE_UNAVAILABLE", "Venue unavailable"
+        OTHER = "OTHER", "Other"
+
     court = models.ForeignKey(Court, on_delete=models.CASCADE, related_name="slots")
     date = models.DateField()
     start_time = models.TimeField()
@@ -219,6 +226,17 @@ class CourtSlot(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.AVAILABLE)
     reserved_until = models.DateTimeField(blank=True, null=True)
+    block_type = models.CharField(max_length=30, choices=BlockType.choices, blank=True)
+    block_reason = models.CharField(max_length=180, blank=True)
+    block_note = models.TextField(blank=True)
+    blocked_at = models.DateTimeField(blank=True, null=True)
+    blocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="blocked_court_slots",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

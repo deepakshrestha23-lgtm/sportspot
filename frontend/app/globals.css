@@ -49,3 +49,27 @@ a {
 .sportspot-float {
   animation: sportspot-float 6s ease-in-out infinite;
 }
+
+@layer components {
+  .owner-primary-button {
+    @apply inline-flex min-h-11 items-center justify-center rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .owner-secondary-button {
+    @apply inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-black text-sportNavy transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-100 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .calendar-nav-button {
+    @apply inline-flex h-11 w-11 items-center justify-center rounded-md border border-slate-200 bg-white text-base font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-100;
+  }
+
+  .calendar-field {
+    @apply flex flex-col gap-2 text-sm font-black text-sportNavy;
+  }
+
+  .calendar-field input,
+  .calendar-field select,
+  .calendar-field textarea {
+    @apply min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
+  }
+}

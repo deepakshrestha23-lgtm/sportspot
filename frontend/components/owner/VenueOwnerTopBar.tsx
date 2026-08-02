@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import Logo from "@/components/Logo";
@@ -24,7 +24,6 @@ type ContextAction = {
 
 export default function VenueOwnerTopBar() {
   const router = useRouter();
-  const pathname = usePathname();
   const bellRef = useRef<HTMLButtonElement>(null);
   const [user, setUser] = useState<User | null>(null);
   const [venue, setVenue] = useState<Venue | null>(null);
@@ -65,7 +64,7 @@ export default function VenueOwnerTopBar() {
     return () => {
       mounted = false;
     };
-  }, [pathname]);
+  }, []);
 
   const handleNewNotification = useCallback((title: string) => {
     setNotificationToast(title);

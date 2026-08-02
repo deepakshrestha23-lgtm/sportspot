@@ -97,6 +97,8 @@ class SlotSerializer(serializers.ModelSerializer):
     court_name = serializers.CharField(source="court.name", read_only=True)
     venue_name = serializers.CharField(source="court.venue.name", read_only=True)
     display_time = serializers.CharField(read_only=True)
+    block_type_display = serializers.CharField(source="get_block_type_display", read_only=True)
+    blocked_by_name = serializers.CharField(source="blocked_by.full_name", read_only=True)
     is_past = serializers.SerializerMethodField()
     active_booking = serializers.SerializerMethodField()
 
@@ -114,13 +116,31 @@ class SlotSerializer(serializers.ModelSerializer):
             "slot_duration_minutes",
             "price",
             "status",
+            "block_type",
+            "block_type_display",
+            "block_reason",
+            "blocked_at",
+            "blocked_by_name",
             "is_past",
             "active_booking",
             "reserved_until",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "court_name", "venue_name", "display_time", "is_past", "active_booking", "reserved_until", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "court_name",
+            "venue_name",
+            "display_time",
+            "block_type_display",
+            "blocked_at",
+            "blocked_by_name",
+            "is_past",
+            "active_booking",
+            "reserved_until",
+            "created_at",
+            "updated_at",
+        )
 
     def get_is_past(self, slot):
         today = timezone.localdate()
