@@ -31,7 +31,7 @@ export default function RoleGate({ allowedRoles, children }: { allowedRoles: Use
     return (
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-sm">
-          Checking dashboard access...
+          Checking your access...
         </div>
       </div>
     );

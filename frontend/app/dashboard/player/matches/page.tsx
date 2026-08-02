@@ -1,5 +1,10 @@
 import { PlaceholderDashboardPage } from "@/components/PlaceholderDashboardPage";
 
 export default function PlayerMatchesPage() {
-  return <PlaceholderDashboardPage title="My Matches / Game Rooms" description="Cricksal match and Game Room placeholders for notification navigation." />;
+  return (
+    <PlaceholderDashboardPage
+      title="My Games"
+      description="Confirmed Cricksal games and Game Rooms will live in this section as the games workflow is completed."
+    />
+  );
 }

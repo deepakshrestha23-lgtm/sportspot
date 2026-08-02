@@ -41,6 +41,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     full_name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
+    pending_email = models.EmailField(unique=True, blank=True, null=True)
+    pending_email_requested_at = models.DateTimeField(blank=True, null=True)
     phone = models.CharField(max_length=20, blank=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.PLAYER)
     email_verified = models.BooleanField(default=False)
@@ -61,6 +63,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class EmailVerificationOTP(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="email_verification_otps")
+    email = models.EmailField(blank=True)
     code_hash = models.CharField(max_length=128)
     expires_at = models.DateTimeField()
     attempts = models.PositiveSmallIntegerField(default=0)
@@ -72,6 +75,7 @@ class EmailVerificationOTP(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["user", "-created_at"], name="account_otp_user_created_idx"),
+            models.Index(fields=["email", "-created_at"], name="account_otp_email_created_idx"),
         ]
 
     @property
@@ -106,3 +110,28 @@ class PasswordResetToken(models.Model):
 
     def __str__(self):
         return f"Password reset for user {self.user_id}"
+
+
+class AccountSettings(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="account_settings")
+
+    notify_team_invitations = models.BooleanField(default=True)
+    notify_join_requests = models.BooleanField(default=True)
+    notify_team_challenges = models.BooleanField(default=True)
+    notify_game_updates = models.BooleanField(default=True)
+    notify_booking_updates = models.BooleanField(default=True)
+    notify_cancellation_refunds = models.BooleanField(default=True)
+    notify_rating_reminders = models.BooleanField(default=True)
+    email_notifications = models.BooleanField(default=True)
+
+    public_profile_visible = models.BooleanField(default=True)
+    location_visible = models.BooleanField(default=True)
+    reliability_visible = models.BooleanField(default=True)
+    rating_visible = models.BooleanField(default=True)
+    allow_team_invitations = models.BooleanField(default=True)
+    allow_team_challenges = models.BooleanField(default=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Settings for {self.user.email}"

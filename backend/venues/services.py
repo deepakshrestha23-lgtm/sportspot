@@ -96,7 +96,7 @@ def complete_confirmed_booking(booking_id, *, now=None, notify=True):
             return False
 
         booking.status = Booking.BookingStatus.COMPLETED
-        booking.completed_at = now
+        booking.completed_at = end_at
         booking.save(update_fields=["status", "completed_at", "updated_at"])
         completed_booking = booking
 
@@ -130,10 +130,12 @@ def expire_expired_reservations(*, now=None, limit=100, notify=True):
 
 def complete_finished_bookings(*, now=None, limit=100, notify=True):
     now = now or timezone.now()
+    local_today = timezone.localdate(now)
     candidate_ids = list(
         Booking.objects.filter(
             status=Booking.BookingStatus.CONFIRMED,
             payment_status=Booking.PaymentStatus.PAID,
+            slot__date__lte=local_today,
         )
         .order_by("slot__date", "slot__end_time", "id")
         .values_list("id", flat=True)[:limit]

@@ -2,7 +2,7 @@
 
 SportSpot is a Nepal-focused sports web application for Cricksal players, teams, court owners, and administrators.
 
-Current development status: active local development. Authentication, email verification, password recovery, player profiles, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, and wishlist support exist in the repository. Open games, team challenges, Game Room, rating submission, disputes, production deployment, and several admin operations are not complete.
+Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, and a dedicated Venue Owner top bar exist in the repository. Open games, team challenges, Game Room, rating submission, disputes, production deployment, owner sidebar redesign, and several admin operations are not complete.
 
 Current sport scope: Cricksal only.
 
@@ -40,8 +40,8 @@ Outside current scope:
 | Role | Purpose | Verified capabilities | Restrictions |
 | --- | --- | --- | --- |
 | Guest | Public visitor | View homepage and public court discovery, register, log in, request password reset | Cannot book, save wishlist, manage teams, or access dashboards |
-| Player | Cricksal participant | Verify email, log in, maintain profile, upload profile photo, create teams, invite by SportSpot ID, add guests, accept/reject invitations, view member profile cards, save wishlist items, discover venues, reserve consecutive slots, pay with Khalti, view bookings, cancel eligible bookings, receive notifications | Cannot manage venues, slots, owner refunds, or admin review |
-| Court Owner | Venue operator | Verify email, set up venue, upload photos/proof, submit for review, manage own courts, generate/block/unblock slots, view bookings, cancel own bookings, send booking messages, process owner-side refund records | Cannot create player teams or approve venues |
+| Player | Cricksal participant | Verify email, log in, use the Player Dashboard, maintain profile, upload profile photo, create teams, invite by SportSpot ID, add guests, accept/reject invitations, view member profile cards, save wishlist items, discover venues, reserve consecutive slots, pay with Khalti, view bookings, cancel eligible bookings, receive notifications | Cannot manage venues, slots, owner refunds, or admin review |
+| Court Owner | Venue operator | Verify email, use the Venue Manager top bar, set up venue, upload photos/proof, submit for review, manage own courts, generate/block/unblock slots, view bookings, cancel own bookings, send booking messages, process owner-side refund records | Cannot create player teams or approve venues |
 | Admin | Internal reviewer | Django admin access, frontend admin dashboard, venue approval/request-changes/rejection/suspension | Public registration is blocked; full users/bookings/reports/disputes admin is incomplete |
 
 ## 4. Technology Stack
@@ -97,7 +97,8 @@ No architecture diagram is currently present.
 │   └── wishlists/          # Player saved venues/courts
 ├── frontend/
 │   ├── app/                # Next.js routes
-│   ├── components/         # Navbar, Notification Centre, modals, toasts
+│   ├── components/         # Navbar, dashboard shell, Notification Centre, modals, toasts
+│   │   ├── owner/          # Venue Owner workspace top bar
 │   ├── lib/                # API, auth, dates, toast helpers
 │   ├── types/              # TypeScript domain types
 │   └── public/images/      # Logo/auth/home assets
@@ -110,6 +111,22 @@ No architecture diagram is currently present.
 ## 7. Current Implementation Status
 
 Status categories used here: Completed, Partially completed, In progress, Planned, Blocked, Needs verification.
+
+### Frontend Navigation and Dashboards
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Global public/player navbar | Completed | `frontend/components/Navbar.tsx` | Continue route-level polish |
+| Player Dashboard shell/sidebar | Completed | `frontend/components/player-dashboard/`, `/dashboard/player/*` | Detailed content can continue per section |
+| Player Dashboard Overview | Completed | `/dashboard/player/page.tsx` | Broader backend aggregation later |
+| Player My Profile page | Completed | `/dashboard/player/profile` | Public profile route polish |
+| Player My Teams page | Completed | `/dashboard/player/teams` | Team discovery later |
+| Player My Games page | Partially completed | `/dashboard/player/games` | Open-game/challenge backend still planned |
+| Player My Bookings page | Completed | `/dashboard/player/bookings` | More cancellation/refund QA |
+| Ratings & Reliability page | Partially completed | `/dashboard/player/ratings` | Real rating submission/reliability events incomplete |
+| Player Settings page | Completed | `/dashboard/player/settings` | Dual-role/account-mode support later |
+| Player Wishlist access | Completed | `/dashboard/player/wishlist`, Player navbar link | Expand saved-item types later |
+| Venue Owner top bar | Completed | `frontend/components/owner/VenueOwnerTopBar.tsx` | Owner sidebar/dashboard redesign pending |
 
 ### Authentication and Accounts
 
@@ -134,11 +151,12 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Profile photo upload | Completed | `profile_photo` and UI | Size/compression rules |
 | Reliability display | Partially completed | counters and labels | Real match/no-show engine missing |
 | Ratings | Partially completed | `average_rating` fields | Rating submission missing |
+
 ### Team Management
 
 | Feature | Status | Evidence | Remaining work |
 | --- | --- | --- | --- |
-| Create team | Completed | `TeamCreateView`, `/dashboard/player/teams/create` | More validation |
+| Create team | Completed | `TeamCreateView`, redesigned `/dashboard/player/teams/create` | More backend validation and optional naming rules |
 | Captain membership | Completed | creator added as CAPTAIN | Role transfer not implemented |
 | Team photo | Completed | `team_photo` | Image size policy |
 | Invite by SportSpot ID | Completed | `/api/teams/players/lookup/`, `/invite/` | Optional invitation expiry |
@@ -184,6 +202,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Feature | Status | Evidence | Remaining work |
 | --- | --- | --- | --- |
 | Owner dashboard states | Completed | `/dashboard/owner` | More operational polish |
+| Dedicated owner top bar | Completed | `VenueOwnerTopBar`, `/api/venues/owner/venue/` | Owner sidebar redesign not implemented yet |
 | Venue setup wizard | Completed | `/dashboard/owner/venue-setup` | More validation polish |
 | Draft and submit | Completed | `OwnerVenueView`, `OwnerVenueSubmitView` | None known |
 | Photos/proof upload | Completed | `VenuePhoto`, document fields, upload APIs | Production private storage |
@@ -218,7 +237,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Bell badge and polling | Completed | Navbar polls unseen count | WebSockets future scope |
 | Notification actions | Partially completed | team invite/open actions | challenge/join actions await modules |
 | Transactional emails | Completed for connected modules | `email_service.py`, templates, `EmailDelivery` | Configure SMTP |
-| Global toast system | Completed | `ToastProvider`, `emitToast`, `FeedbackToast` | Some persistent page errors remain intentionally inline |
+| Global toast system | Completed | `ToastProvider`, `emitToast`; newer dashboard actions use global toasts | Some persistent page errors remain intentionally inline |
 
 ### Administration
 
@@ -251,13 +270,16 @@ Verified completed work includes:
 - Email OTP verification and secure password recovery.
 - JWT authentication with verified-user and auth-version checks.
 - Cricksal player profile with SportSpot ID, photo, location, skill, role, availability, style, and trust counters.
-- Team creation, captain permissions, registered invitation by SportSpot ID, guest players, member cards, and invitation decisions.
+- Player Dashboard shell with Overview, My Profile, My Teams, My Games, My Bookings, Ratings & Reliability, Settings, and Help & Support navigation.
+- Player Settings page with horizontal sections, explicit Account edit/cancel mode, safer email-change verification, separate password updates, notification/privacy preferences, and account deactivation.
+- Team creation, redesigned Create Team page, captain permissions, registered invitation by SportSpot ID, guest players, member cards, and invitation decisions.
 - Court owner venue setup, photo gallery, verification document upload, admin review, court setup, slot generation, and slot blocking.
 - Venue-first public discovery with stable backend filter reference data.
 - Consecutive multi-slot booking, 10-minute holds, Khalti payment verification, booking pass/history, cancellation, and owner-managed refund records.
 - Central Notification Centre and global toast feedback.
 - Transactional email service with delivery audit table.
-- Player wishlist for venues/courts.
+- Player wishlist for venues/courts, exposed from the logged-in Player top navbar.
+- Dedicated Venue Owner top navigation for `/dashboard/owner/*`, including venue identity/status, contextual venue actions, owner notifications, and owner profile dropdown.
 
 ## 9. Partially Completed and In-Progress Work
 
@@ -266,6 +288,8 @@ Verified completed work includes:
 - Game Room is not implemented.
 - Admin venue review works, but broader admin operations are incomplete.
 - Owner offline booking is not implemented as a full feature.
+- Venue Owner top bar is implemented, but the owner sidebar/dashboard page redesign is still pending.
+- Dual-role account switching is not supported by the current backend user model, so “Switch to Player Mode” is intentionally hidden.
 - Khalti needs environment configuration and real end-to-end verification after credentials are added.
 - Media handling is local-development only.
 - Frontend lacks automated tests.
@@ -287,7 +311,7 @@ Verified completed work includes:
 | Objective | Current status | Main tasks | Dependencies | Completion criteria |
 | --- | --- | --- | --- | --- |
 | Finish booking UX QA | In progress | Test reservation, payment, cancellation, refund, notifications | Existing booking flow | Smooth player/owner booking lifecycle |
-| Complete owner operations | Partially completed | Offline booking/block-slot workflow | Venue/court slots | Owner can protect offline bookings |
+| Complete owner operations | Partially completed | Offline booking/block-slot workflow and owner sidebar/dashboard refinement | Venue/court slots | Owner can protect offline bookings and use a polished management workspace |
 | Admin operations | Partially completed | Users/bookings/refund overview | Permissions | Admin can review operational risks |
 | Open games | Planned | Models, APIs, UI, join requests | Player/team modules | Players can find/request games |
 | Team challenges | Planned | Challenge lifecycle and notifications | Team module | Captains can accept/counter/decline |
@@ -310,6 +334,7 @@ Verified completed work includes:
 | Performance | Partially completed | Query review, indexes, pagination | More data | Discovery/dashboard stay fast |
 | Deployment | Planned | Hosting, envs, DB, media, static, scheduler | Infrastructure | Staging/prod runs reliably |
 | Monitoring | Planned | Logs, error monitoring, backups | Deployment | Operators can diagnose failures |
+
 ## 11. Core User Workflows
 
 ### Registration and email verification
@@ -332,11 +357,14 @@ Verified completed work includes:
 ### Team creation and invitation
 
 1. Player completes profile.
-2. Player creates team and becomes captain.
-3. Captain looks up a player by SportSpot ID.
-4. Captain sends invitation.
-5. Invited player accepts or rejects.
-6. Accepted player becomes active member.
+2. Player opens `/dashboard/player/teams/create`.
+3. Player fills the redesigned Create Team form, optionally uploads a team photo, and submits.
+4. Backend creates the team and makes the creator captain.
+5. Frontend redirects to the team detail page.
+6. Captain looks up a player by SportSpot ID from the team detail flow.
+7. Captain sends invitation.
+8. Invited player accepts or rejects.
+9. Accepted player becomes active member.
 
 ### Open-game join request
 
@@ -345,6 +373,27 @@ Status: Planned. No complete model/API exists yet.
 ### Team challenge
 
 Status: Planned. Current pages are placeholders.
+
+### Player settings
+
+1. Player opens `/dashboard/player/settings` or `/dashboard/settings` redirect.
+2. Settings sections are controlled through URL query state such as `?section=account`.
+3. Account details are read-only by default.
+4. Player clicks `Edit Account` to change full name, phone, or email.
+5. Cancel restores the last saved values.
+6. Changing email requires the current password and starts OTP verification for the new address.
+7. Security, notification, privacy, and account-management actions remain separate.
+
+### Venue owner top navigation
+
+1. Court Owner opens any `/dashboard/owner/*` route.
+2. `AppChrome` renders `VenueOwnerTopBar` instead of the public/player navbar.
+3. Top bar fetches `/api/venues/owner/venue/`.
+4. If no venue exists, it shows `Setup Incomplete` with no fake venue name.
+5. If a venue exists, it shows the real venue name and status label.
+6. Contextual actions change by status: preview, review feedback, view public venue, or support.
+7. Owner notification bell uses the existing Notification Centre for the authenticated owner account.
+8. Owner profile dropdown provides owner profile/account entry points, support, and logout.
 
 ### Venue onboarding and verification
 
@@ -629,6 +678,21 @@ python manage.py send_booking_reminders
 python manage.py run_booking_maintenance
 ```
 
+For near real-time reservation expiry, booking completion, booking-completed notifications, and reminders during local development, keep a separate terminal running:
+
+```powershell
+.\scripts\run_booking_worker.ps1
+```
+
+Equivalent backend command:
+
+```powershell
+cd backend
+python manage.py run_booking_maintenance --watch --interval 10 --reminder-every 300
+```
+
+In production, run the same maintenance command through a process manager, scheduler, or background worker so lifecycle events are not delayed until another page request happens.
+
 No verified seed-data command or ER diagram is present.
 
 ## 18. API Overview
@@ -769,7 +833,7 @@ Production checklist:
 - Configure Khalti production credentials when ready.
 - Move media/static handling to production-ready storage.
 - Protect verification documents.
-- Schedule booking maintenance commands.
+- Run booking maintenance as a managed background process in deployment.
 - Add logging, backups, monitoring, CI/CD, and deployment docs.
 
 ## 23. Documentation and Diagrams
@@ -795,8 +859,12 @@ Current branch: `main`.
 
 Most recently developed areas:
 
+- Player Dashboard UI pages and shared shell refinement.
+- Player Settings edit/cancel behavior and safe email-change flow.
+- Redesigned Player Create Team page.
+- Dedicated Venue Owner top bar for owner workspace routes.
 - Court discovery filters and venue card UX.
-- Wishlist integration.
+- Wishlist integration in Player top navigation.
 - Booking lifecycle, cancellation, refunds, Khalti flow.
 - Notifications and toast feedback.
 - Email verification and password recovery.
@@ -818,6 +886,8 @@ Inspect these first before changing major flows:
 - `backend/notifications/services.py`
 - `backend/notifications/email_service.py`
 - `frontend/components/Navbar.tsx`
+- `frontend/components/AppChrome.tsx`
+- `frontend/components/owner/VenueOwnerTopBar.tsx`
 - `frontend/components/NotificationCenter.tsx`
 - `frontend/components/ToastProvider.tsx`
 - `frontend/app/courts/page.tsx`
@@ -830,10 +900,11 @@ Current blockers:
 - SMTP and Khalti secrets must be configured locally.
 - Production deployment is not designed.
 - Future modules need new models/APIs.
+- Dual-role account switching requires backend support before it can be shown in the owner profile menu.
 
 Before implementing a feature, verify its current frontend, backend, database and permission status. Do not assume that a visible page means the feature is complete.
 
-Recommended next task: complete booking flow QA end-to-end with real local SMTP and Khalti development credentials, then add missing tests for reservation, cancellation, refund, notifications, and email delivery.
+Recommended next task: continue Venue Owner workspace refinement by redesigning the owner sidebar and dashboard pages to match the new dedicated owner top bar, then complete booking flow QA end-to-end with real local SMTP and Khalti development credentials.
 
 Commands before new work:
 

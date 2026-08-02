@@ -4,6 +4,7 @@ from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
+from accounts.models import AccountSettings
 from notifications.models import EmailDelivery, Notification
 from notifications.services import create_notification, notify_team_invitation
 from teams.models import Team, TeamMember
@@ -196,3 +197,31 @@ class NotificationApiTests(APITestCase):
         self.assertEqual(deliveries.get().status, EmailDelivery.Status.SENT)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(self.team.name, mail.outbox[0].body)
+    def test_player_preferences_can_suppress_invitation_notification_and_optional_email(self):
+        opted_out = get_user_model().objects.create_user(
+            email="opted-out@example.com",
+            password="test-password",
+            full_name="Opted Out Player",
+            phone="9800000045",
+            role="PLAYER",
+        )
+        AccountSettings.objects.create(
+            user=opted_out,
+            notify_team_invitations=False,
+            email_notifications=False,
+        )
+        invitation = TeamMember.objects.create(
+            team=self.team,
+            user=opted_out,
+            member_type=TeamMember.MemberType.REGISTERED,
+            role_in_team=TeamMember.TeamRole.PLAYER,
+            cricksal_role=TeamMember.CricksalRole.BATSMAN,
+            status=TeamMember.MemberStatus.INVITED,
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            notification = notify_team_invitation(invitation, self.captain)
+
+        self.assertIsNone(notification)
+        self.assertFalse(Notification.objects.filter(recipient=opted_out).exists())
+        self.assertFalse(EmailDelivery.objects.filter(recipient=opted_out).exists())

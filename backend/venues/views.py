@@ -22,7 +22,6 @@ from notifications.services import (
     notify_refund_updated,
     notify_venue_message,
 )
-from players.models import PlayerProfile
 from .khalti import (
     KhaltiAPIError,
     KhaltiConfigurationError,
@@ -371,7 +370,7 @@ class OwnerBookingsView(APIView):
         venue = get_owner_venue(request.user)
         if not venue:
             return Response({"bookings": []})
-        bookings = Booking.objects.filter(venue=venue).select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender")
+        bookings = Booking.objects.filter(venue=venue).select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos")
         for booking in bookings:
             refresh_booking_lifecycle(booking)
         return Response({"bookings": BookingSerializer(bookings, many=True, context={"request": request}).data})
@@ -1143,7 +1142,7 @@ class PlayerBookingsView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def get(self, request):
-        bookings = Booking.objects.filter(player=request.user).select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender")
+        bookings = Booking.objects.filter(player=request.user).select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos")
         for booking in bookings:
             refresh_booking_lifecycle(booking)
         return Response({"bookings": BookingSerializer(bookings, many=True, context={"request": request}).data})
@@ -1153,7 +1152,7 @@ class BookingDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, booking_id):
-        booking = get_object_or_404(Booking.objects.select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender"), pk=booking_id)
+        booking = get_object_or_404(Booking.objects.select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos"), pk=booking_id)
         if request.user.role == "PLAYER" and booking.player_id != request.user.id:
             return Response({"detail": "You can only view your own bookings."}, status=status.HTTP_403_FORBIDDEN)
         if request.user.role == "COURT_OWNER" and booking.venue.owner_id != request.user.id:
@@ -1497,9 +1496,6 @@ class BookingCancelView(APIView):
 
         CourtSlot.objects.filter(id__in=slot_ids).update(status=cancellation_outcome["slot_status"], reserved_until=None, updated_at=now)
 
-        if cancellation_outcome["late_cancellation"]:
-            apply_player_late_cancellation_penalty(booking.player)
-
         if booking.refund_status == Booking.RefundStatus.PENDING_OWNER_ACTION:
             notify_owner_refund_requested(booking, request.user)
         notify_booking_cancelled(booking, request.user)
@@ -1725,15 +1721,6 @@ def get_default_cancellation_reason(role, payment_status):
     return "Admin cancelled the booking."
 
 
-def apply_player_late_cancellation_penalty(player):
-    try:
-        profile = player.player_profile
-    except PlayerProfile.DoesNotExist:
-        return
-
-    profile.late_cancellation_count += 1
-    profile.reliability_score = max(60, profile.reliability_score - 5)
-    profile.save(update_fields=["late_cancellation_count", "reliability_score", "updated_at"])
 
 
 def can_permanently_delete_court(court):
@@ -1835,15 +1822,3 @@ def normalize_compare_value(value):
 
 def parse_bool(value):
     return value in [True, "true", "True", "1", "on", "yes", "YES"]
-
-
-
-
-
-
-
-
-
-
-
-

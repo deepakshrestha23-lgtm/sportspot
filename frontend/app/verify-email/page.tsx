@@ -7,6 +7,7 @@ import { ClipboardEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState }
 import AuthShell from "@/components/AuthShell";
 import FeedbackToast from "@/components/FeedbackToast";
 import { api } from "@/lib/api";
+import { clearAuthSession } from "@/lib/auth";
 import { getApiErrorField, getApiErrorMessage } from "@/lib/apiErrors";
 import {
   clearPendingEmailVerification,
@@ -96,6 +97,7 @@ export default function VerifyEmailPage() {
     try {
       await api.post("/api/auth/verify-email/", { email, otp });
       clearPendingEmailVerification();
+      clearAuthSession();
       setSuccess("Email verified successfully. Redirecting you to sign in...");
       window.setTimeout(() => router.replace("/login?verified=1"), 1000);
     } catch (requestError) {

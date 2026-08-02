@@ -9,6 +9,7 @@ from .views import (
     RegisteredPlayerInviteView,
     TeamCreateView,
     TeamDetailView,
+    TeamLeaveView,
     TeamMemberRemoveView,
 )
 
@@ -21,6 +22,7 @@ urlpatterns = [
     path("", TeamCreateView.as_view(), name="team-create"),
     path("<int:team_id>/", TeamDetailView.as_view(), name="team-detail"),
     path("<int:team_id>/invite/", RegisteredPlayerInviteView.as_view(), name="team-registered-player-invite"),
+    path("<int:team_id>/leave/", TeamLeaveView.as_view(), name="team-leave"),
     path("<int:team_id>/members/guest/", GuestMemberCreateView.as_view(), name="team-guest-member-create"),
     path("<int:team_id>/members/<int:member_id>/", TeamMemberRemoveView.as_view(), name="team-member-remove"),
 ]

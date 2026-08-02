@@ -160,7 +160,7 @@ function getNavLinks(user: User | null, ownerVenueStatus: VenueStatus | "NONE") 
   if (!user) {
     return [
       { label: "Courts", href: "/courts" },
-      { label: "Find Game", href: "/find-game" },
+      { label: "Find Games", href: "/find-game" },
       { label: "Challenge Teams", href: "/challenge-teams" },
       { label: "Register Venue", href: "/register" },
     ];
@@ -169,7 +169,7 @@ function getNavLinks(user: User | null, ownerVenueStatus: VenueStatus | "NONE") 
   if (user.role === "PLAYER") {
     return [
       { label: "Courts", href: "/courts" },
-      { label: "Find Game", href: "/find-game" },
+      { label: "Find Games", href: "/find-game" },
       { label: "Challenge Teams", href: "/challenge-teams" },
       { label: "Wishlist", href: "/dashboard/player/wishlist" },
     ];
@@ -216,6 +216,7 @@ function getProfileLinks(user: User) {
     return [
       { label: "Dashboard", href: "/dashboard/player" },
       { label: "My Profile", href: "/dashboard/player/profile" },
+      { label: "Settings", href: "/dashboard/player/settings" },
     ];
   }
 
@@ -254,4 +255,3 @@ function ChevronDownIcon() {
     </svg>
   );
 }
-

@@ -436,6 +436,9 @@ class BookingSerializer(serializers.ModelSerializer):
     venue_address = serializers.CharField(source="venue.address", read_only=True)
     venue_area = serializers.CharField(source="venue.area", read_only=True)
     venue_city = serializers.CharField(source="venue.city", read_only=True)
+    venue_map_location = serializers.CharField(source="venue.map_location", read_only=True)
+    court_photo = serializers.ImageField(source="court.court_photo", read_only=True)
+    venue_primary_image = serializers.SerializerMethodField()
     venue_cancellation_policy = serializers.SerializerMethodField()
     cancelled_by_name = serializers.CharField(source="cancelled_by.full_name", read_only=True)
     refund_reviewed_by_name = serializers.CharField(source="refund_reviewed_by.full_name", read_only=True)
@@ -469,6 +472,9 @@ class BookingSerializer(serializers.ModelSerializer):
             "venue_address",
             "venue_area",
             "venue_city",
+            "venue_map_location",
+            "court_photo",
+            "venue_primary_image",
             "venue_cancellation_policy",
             "court",
             "court_name",
@@ -522,6 +528,15 @@ class BookingSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = fields
+
+    def get_venue_primary_image(self, booking):
+        photo = booking.venue.photos.order_by("id").first()
+        if photo and photo.image:
+            return photo.image.url
+        for image_field in [booking.venue.front_photo, booking.venue.court_area_photo, booking.venue.additional_photo, booking.court.court_photo]:
+            if image_field:
+                return image_field.url
+        return ""
 
     def get_slots(self, booking):
         return BookingSlotSerializer(get_booking_slots(booking), many=True).data

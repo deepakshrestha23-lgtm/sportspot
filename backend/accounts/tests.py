@@ -11,7 +11,7 @@ from rest_framework.test import APITestCase
 
 from notifications.models import EmailDelivery
 
-from .models import EmailVerificationOTP, PasswordResetToken
+from .models import AccountSettings, EmailVerificationOTP, PasswordResetToken
 
 
 class FailingEmailBackend(BaseEmailBackend):
@@ -357,3 +357,150 @@ class AccountSecurityFlowTests(APITestCase):
             email_type=EmailDelivery.EmailType.EMAIL_VERIFICATION_OTP
         )
         self.assertEqual(delivery.status, EmailDelivery.Status.FAILED)
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class PlayerSettingsApiTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            email="settings-player@example.com",
+            password="StrongPass123!",
+            full_name="Settings Player",
+            phone="9800000101",
+            role="PLAYER",
+            email_verified=True,
+            email_verified_at=timezone.now(),
+        )
+        self.client.force_authenticate(self.user)
+
+    def test_player_can_load_and_persist_notification_and_privacy_settings(self):
+        response = self.client.get(reverse("auth-player-settings"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["notifications"]["team_invitations"])
+        self.assertTrue(response.data["privacy"]["public_profile_visible"])
+
+        notification_response = self.client.patch(
+            reverse("auth-settings-notifications"),
+            {
+                "team_invitations": False,
+                "join_requests": True,
+                "team_challenges": False,
+                "game_updates": True,
+                "booking_updates": True,
+                "cancellation_refunds": True,
+                "rating_reminders": False,
+                "email_notifications": False,
+            },
+            format="json",
+        )
+        privacy_response = self.client.patch(
+            reverse("auth-settings-privacy"),
+            {
+                "public_profile_visible": True,
+                "location_visible": False,
+                "reliability_visible": True,
+                "rating_visible": False,
+                "allow_team_invitations": True,
+                "allow_team_challenges": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(notification_response.status_code, 200)
+        self.assertEqual(privacy_response.status_code, 200)
+        settings = AccountSettings.objects.get(user=self.user)
+        self.assertFalse(settings.notify_team_invitations)
+        self.assertFalse(settings.notify_team_challenges)
+        self.assertFalse(settings.rating_visible)
+        self.assertFalse(settings.location_visible)
+
+        refreshed = self.client.get(reverse("auth-player-settings"))
+        self.assertFalse(refreshed.data["notifications"]["team_invitations"])
+        self.assertFalse(refreshed.data["notifications"]["email_notifications"])
+        self.assertFalse(refreshed.data["privacy"]["location_visible"])
+
+    def test_email_change_requires_new_verification_and_keeps_current_email_active(self):
+        old_auth_version = self.user.auth_version
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.patch(
+                reverse("auth-settings-account"),
+                {
+                    "full_name": "Settings Player Updated",
+                    "email": "settings-updated@example.com",
+                    "phone": "9800000102",
+                    "current_password": "StrongPass123!",
+                },
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["email_verification_required"])
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "settings-player@example.com")
+        self.assertEqual(self.user.pending_email, "settings-updated@example.com")
+        self.assertTrue(self.user.email_verified)
+        self.assertEqual(self.user.auth_version, old_auth_version)
+        otp = EmailVerificationOTP.objects.get(user=self.user, invalidated_at__isnull=True)
+        self.assertEqual(otp.email, "settings-updated@example.com")
+        self.assertEqual(mail.outbox[-1].to, ["settings-updated@example.com"])
+    def test_pending_email_verification_replaces_primary_email_after_otp(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.patch(
+                reverse("auth-settings-account"),
+                {
+                    "full_name": "Settings Player",
+                    "email": "settings-final@example.com",
+                    "phone": "9800000101",
+                    "current_password": "StrongPass123!",
+                },
+                format="json",
+            )
+        self.assertEqual(response.status_code, 200)
+        otp_value_match = re.search(r"\b(\d{6})\b", mail.outbox[-1].body)
+        self.assertIsNotNone(otp_value_match)
+
+        verify_response = self.client.post(
+            reverse("auth-verify-email"),
+            {"email": "settings-final@example.com", "otp": otp_value_match.group(1)},
+            format="json",
+        )
+
+        self.assertEqual(verify_response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "settings-final@example.com")
+        self.assertIsNone(self.user.pending_email)
+        self.assertTrue(self.user.email_verified)
+        self.assertEqual(self.user.auth_version, 2)
+
+    def test_password_change_and_deactivation_require_current_password(self):
+        wrong_password = self.client.post(
+            reverse("auth-settings-password"),
+            {
+                "current_password": "wrong-password",
+                "new_password": "NewSettingsPass456!",
+                "confirm_password": "NewSettingsPass456!",
+            },
+            format="json",
+        )
+        self.assertEqual(wrong_password.status_code, 400)
+
+        password_response = self.client.post(
+            reverse("auth-settings-password"),
+            {
+                "current_password": "StrongPass123!",
+                "new_password": "NewSettingsPass456!",
+                "confirm_password": "NewSettingsPass456!",
+            },
+            format="json",
+        )
+        self.assertEqual(password_response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewSettingsPass456!"))
+
+        deactivate_response = self.client.post(
+            reverse("auth-settings-deactivate"),
+            {"password": "NewSettingsPass456!"},
+            format="json",
+        )
+        self.assertEqual(deactivate_response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)

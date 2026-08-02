@@ -52,6 +52,53 @@ TYPE_CATEGORY = {
 }
 
 
+
+
+def notification_allowed_for_recipient(recipient, notification_type):
+    try:
+        settings = recipient.account_settings
+    except Exception:
+        return True
+
+    preference_map = {
+        Notification.NotificationType.TEAM_INVITATION_RECEIVED: "notify_team_invitations",
+        Notification.NotificationType.TEAM_INVITATION_ACCEPTED: "notify_team_invitations",
+        Notification.NotificationType.TEAM_INVITATION_REJECTED: "notify_team_invitations",
+        Notification.NotificationType.TEAM_MEMBER_JOINED: "notify_team_invitations",
+        Notification.NotificationType.TEAM_MEMBER_REMOVED: "notify_team_invitations",
+        Notification.NotificationType.JOIN_REQUEST_RECEIVED: "notify_join_requests",
+        Notification.NotificationType.JOIN_REQUEST_ACCEPTED: "notify_join_requests",
+        Notification.NotificationType.JOIN_REQUEST_REJECTED: "notify_join_requests",
+        Notification.NotificationType.CHALLENGE_RECEIVED: "notify_team_challenges",
+        Notification.NotificationType.CHALLENGE_ACCEPTED: "notify_team_challenges",
+        Notification.NotificationType.CHALLENGE_REJECTED: "notify_team_challenges",
+        Notification.NotificationType.CHALLENGE_COUNTERED: "notify_team_challenges",
+        Notification.NotificationType.CHALLENGE_EXPIRED: "notify_team_challenges",
+        Notification.NotificationType.MATCH_SCHEDULED: "notify_game_updates",
+        Notification.NotificationType.MATCH_UPDATED: "notify_game_updates",
+        Notification.NotificationType.MATCH_CANCELLED: "notify_game_updates",
+        Notification.NotificationType.MATCH_REMINDER: "notify_game_updates",
+        Notification.NotificationType.GAME_ROOM_CREATED: "notify_game_updates",
+        Notification.NotificationType.GAME_ROOM_UPDATED: "notify_game_updates",
+        Notification.NotificationType.RATING_REQUIRED: "notify_rating_reminders",
+        Notification.NotificationType.BOOKING_RESERVED: "notify_booking_updates",
+        Notification.NotificationType.BOOKING_CONFIRMED: "notify_booking_updates",
+        Notification.NotificationType.BOOKING_PAYMENT_FAILED: "notify_booking_updates",
+        Notification.NotificationType.BOOKING_REMINDER: "notify_booking_updates",
+        Notification.NotificationType.BOOKING_COMPLETED: "notify_booking_updates",
+        Notification.NotificationType.BOOKING_CANCELLED_BY_PLAYER: "notify_cancellation_refunds",
+        Notification.NotificationType.BOOKING_CANCELLED_BY_OWNER: "notify_cancellation_refunds",
+        Notification.NotificationType.REFUND_PENDING: "notify_cancellation_refunds",
+        Notification.NotificationType.REFUND_APPROVED: "notify_cancellation_refunds",
+        Notification.NotificationType.REFUND_REJECTED: "notify_cancellation_refunds",
+        Notification.NotificationType.REFUND_COMPLETED: "notify_cancellation_refunds",
+        Notification.NotificationType.VENUE_MESSAGE: "notify_booking_updates",
+    }
+    field_name = preference_map.get(notification_type)
+    if not field_name:
+        return True
+    return bool(getattr(settings, field_name, True))
+
 def create_notification(
     *,
     recipient,
@@ -70,6 +117,8 @@ def create_notification(
     deduplication_key=None,
 ):
     if not recipient or not recipient.is_active:
+        return None
+    if not notification_allowed_for_recipient(recipient, notification_type):
         return None
 
     values = {

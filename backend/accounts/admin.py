@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import EmailVerificationOTP, PasswordResetToken, User
+from .models import AccountSettings, EmailVerificationOTP, PasswordResetToken, User
 
 
 @admin.register(User)
@@ -54,3 +54,18 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
     list_filter = ("used_at", "invalidated_at", "created_at")
     search_fields = ("user__email",)
     readonly_fields = ("token_hash",)
+
+
+@admin.register(AccountSettings)
+class AccountSettingsAdmin(admin.ModelAdmin):
+    list_display = ("user", "public_profile_visible", "allow_team_invitations", "email_notifications", "updated_at")
+    list_filter = (
+        "notify_team_invitations",
+        "notify_team_challenges",
+        "notify_booking_updates",
+        "email_notifications",
+        "public_profile_visible",
+        "allow_team_invitations",
+    )
+    search_fields = ("user__email", "user__full_name")
+    readonly_fields = ("updated_at",)

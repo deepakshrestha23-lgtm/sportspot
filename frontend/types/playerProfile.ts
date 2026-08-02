@@ -1,6 +1,8 @@
 export type PreferredSport = "CRICKSAL";
 export type SkillLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
 export type CricksalRole = "BATSMAN" | "BOWLER" | "ALL_ROUNDER" | "WICKETKEEPER" | "NONE";
+export type AvailabilityDay = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
+export type AvailabilityTimePeriod = "MORNING" | "AFTERNOON" | "EVENING" | "FLEXIBLE";
 
 export interface PlayerProfile {
   id: number;
@@ -13,7 +15,10 @@ export interface PlayerProfile {
   skill_level: SkillLevel;
   location: string;
   weekly_availability: string;
+  availability_days: AvailabilityDay[];
+  availability_time_periods: AvailabilityTimePeriod[];
   playing_style: string;
+  bio: string;
   preferred_cricksal_role: CricksalRole;
   preferred_futsal_role?: string;
   reliability_score: number;
@@ -39,6 +44,10 @@ export interface PlayerProfilePayload {
   skill_level: SkillLevel;
   location: string;
   weekly_availability: string;
+  availability_days: AvailabilityDay[];
+  availability_time_periods: AvailabilityTimePeriod[];
   playing_style: string;
+  bio: string;
   preferred_cricksal_role: CricksalRole;
+  remove_profile_photo?: boolean;
 }

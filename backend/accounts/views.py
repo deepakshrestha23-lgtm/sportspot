@@ -6,9 +6,15 @@ from rest_framework.views import APIView
 from .authentication import VerifiedTokenRefreshSerializer
 from .security import OTP_EXPIRY_MINUTES, OTP_RESEND_COOLDOWN_SECONDS, mask_email
 from .serializers import (
+    AccountDeactivateSerializer,
+    AccountUpdateSerializer,
     ForgotPasswordSerializer,
     LoginSerializer,
+    NotificationSettingsSerializer,
+    PasswordChangeSerializer,
     PasswordResetTokenValidationSerializer,
+    PlayerSettingsSerializer,
+    PrivacySettingsSerializer,
     RegisterSerializer,
     ResendEmailVerificationSerializer,
     ResetPasswordSerializer,
@@ -51,6 +57,86 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(UserSerializer(request.user).data, status=status.HTTP_200_OK)
+
+
+
+
+class PlayerSettingsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != "PLAYER":
+            return Response({"detail": "This settings page is available for player accounts."}, status=status.HTTP_403_FORBIDDEN)
+        return Response(PlayerSettingsSerializer(request.user).data, status=status.HTTP_200_OK)
+
+
+class AccountSettingsUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        if request.user.role != "PLAYER":
+            return Response({"detail": "Only player accounts can update player settings."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = AccountUpdateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        user, email_changed = serializer.save()
+        return Response(
+            {
+                "detail": "Your account settings have been updated.",
+                "email_verification_required": email_changed,
+                "masked_email": mask_email(user.pending_email) if email_changed and user.pending_email else "",
+                "pending_email": user.pending_email or "",
+                "expires_in": OTP_EXPIRY_MINUTES * 60 if email_changed else 0,
+                "resend_available_in": OTP_RESEND_COOLDOWN_SECONDS if email_changed else 0,
+                "user": UserSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordChangeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PasswordChangeSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Your password has been changed."}, status=status.HTTP_200_OK)
+
+
+class NotificationSettingsUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        if request.user.role != "PLAYER":
+            return Response({"detail": "Only player accounts can update player settings."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = NotificationSettingsSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Your notification preferences have been saved."}, status=status.HTTP_200_OK)
+
+
+class PrivacySettingsUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        if request.user.role != "PLAYER":
+            return Response({"detail": "Only player accounts can update player settings."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = PrivacySettingsSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Your privacy settings have been saved."}, status=status.HTTP_200_OK)
+
+
+class AccountDeactivateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != "PLAYER":
+            return Response({"detail": "Only player accounts can deactivate this way."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = AccountDeactivateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Your account has been deactivated."}, status=status.HTTP_200_OK)
 
 
 class VerifyEmailView(APIView):

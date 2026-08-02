@@ -16,6 +16,40 @@ def frontend_url(path=""):
     return f"{settings.FRONTEND_URL.rstrip('/')}/{str(path).lstrip('/')}"
 
 
+
+def email_allowed_for_recipient(recipient, email_type):
+    account_email_types = {
+        EmailDelivery.EmailType.EMAIL_VERIFICATION_OTP,
+        EmailDelivery.EmailType.EMAIL_VERIFIED,
+        EmailDelivery.EmailType.PASSWORD_RESET,
+        EmailDelivery.EmailType.PASSWORD_CHANGED,
+    }
+    if email_type in account_email_types:
+        return True
+
+    try:
+        preferences = recipient.account_settings
+    except Exception:
+        return True
+
+    if not preferences.email_notifications:
+        return False
+
+    preference_map = {
+        EmailDelivery.EmailType.TEAM_INVITATION: "notify_team_invitations",
+        EmailDelivery.EmailType.BOOKING_CONFIRMED: "notify_booking_updates",
+        EmailDelivery.EmailType.BOOKING_PAYMENT_FAILED: "notify_booking_updates",
+        EmailDelivery.EmailType.BOOKING_REMINDER: "notify_booking_updates",
+        EmailDelivery.EmailType.BOOKING_CANCELLED: "notify_cancellation_refunds",
+        EmailDelivery.EmailType.REFUND_PENDING: "notify_cancellation_refunds",
+        EmailDelivery.EmailType.REFUND_COMPLETED: "notify_cancellation_refunds",
+        EmailDelivery.EmailType.VENUE_MESSAGE: "notify_booking_updates",
+    }
+    field_name = preference_map.get(email_type)
+    if not field_name:
+        return True
+    return bool(getattr(preferences, field_name, True))
+
 def schedule_transactional_email(**kwargs):
     transaction.on_commit(lambda: send_transactional_email(**kwargs))
 
@@ -37,8 +71,12 @@ def send_transactional_email(
     related_entity_type="",
     related_entity_id=None,
     highlight="",
+    recipient_email="",
 ):
-    if not recipient or not recipient.is_active or not recipient.email:
+    recipient_email = recipient_email or getattr(recipient, "email", "")
+    if not recipient or not recipient.is_active or not recipient_email:
+        return None
+    if not email_allowed_for_recipient(recipient, email_type):
         return None
 
     delivery, created = EmailDelivery.objects.get_or_create(
@@ -46,7 +84,7 @@ def send_transactional_email(
         defaults={
             "recipient": recipient,
             "email_type": email_type,
-            "recipient_email": recipient.email,
+            "recipient_email": recipient_email,
             "subject": subject,
             "related_entity_type": related_entity_type,
             "related_entity_id": related_entity_id,
@@ -80,7 +118,7 @@ def send_transactional_email(
             subject=subject,
             body=text_body,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[recipient.email],
+            to=[recipient_email],
         )
         email.attach_alternative(html_body, "text/html")
         email.send(fail_silently=False)
@@ -113,6 +151,7 @@ def schedule_email_verification_otp(user, otp, code):
         preheader="Your SportSpot verification code expires in 10 minutes.",
         message="Enter this six-digit code to finish creating your SportSpot account.",
         highlight=code,
+        recipient_email=otp.email or user.email,
         details=[
             ("Expires in", "10 minutes"),
             ("Incorrect attempts allowed", "5"),

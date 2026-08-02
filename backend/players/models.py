@@ -1,8 +1,9 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import FileExtensionValidator
+from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Max
+from django.utils import timezone
 
 
 class PlayerProfile(models.Model):
@@ -45,7 +46,10 @@ class PlayerProfile(models.Model):
     skill_level = models.CharField(max_length=20, choices=SkillLevel.choices)
     location = models.CharField(max_length=120)
     weekly_availability = models.TextField(blank=True)
+    availability_days = models.JSONField(default=list, blank=True)
+    availability_time_periods = models.JSONField(default=list, blank=True)
     playing_style = models.TextField(blank=True)
+    bio = models.TextField(blank=True, max_length=500)
     preferred_cricksal_role = models.CharField(
         max_length=20,
         choices=CricksalRole.choices,
@@ -95,7 +99,8 @@ class PlayerProfile(models.Model):
             self.preferred_sport,
             self.skill_level,
             self.location,
-            self.weekly_availability,
+            self.availability_days or self.weekly_availability,
+            self.availability_time_periods or self.weekly_availability,
             self.playing_style,
         ]
 
@@ -120,3 +125,190 @@ class PlayerProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.full_name} ({self.sportspot_id})"
+
+class ReliabilityEvent(models.Model):
+    class EventType(models.TextChoices):
+        GAME_COMPLETED_ATTENDED = "GAME_COMPLETED_ATTENDED", "Game Completed - Attended"
+        GAME_LATE_CANCELLATION = "GAME_LATE_CANCELLATION", "Game Late Cancellation"
+        GAME_NO_SHOW = "GAME_NO_SHOW", "Game No-Show"
+        GAME_WITHDRAWAL_ON_TIME = "GAME_WITHDRAWAL_ON_TIME", "Game Withdrawal On Time"
+        GAME_CANCELLED_BY_OTHER_PARTY = "GAME_CANCELLED_BY_OTHER_PARTY", "Game Cancelled By Other Party"
+        MANUAL_ADJUSTMENT = "MANUAL_ADJUSTMENT", "Manual Adjustment"
+
+    class Impact(models.TextChoices):
+        POSITIVE = "POSITIVE", "Positive"
+        NEGATIVE = "NEGATIVE", "Negative"
+        NO_IMPACT = "NO_IMPACT", "No Impact"
+        NEUTRAL = "NEUTRAL", "Neutral"
+
+    player = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reliability_events",
+    )
+    event_type = models.CharField(max_length=40, choices=EventType.choices)
+    impact = models.CharField(max_length=20, choices=Impact.choices, default=Impact.NEUTRAL)
+    title = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    points_delta = models.SmallIntegerField(default=0)
+    related_entity_type = models.CharField(max_length=60, blank=True)
+    related_entity_id = models.PositiveIntegerField(blank=True, null=True)
+    dedupe_key = models.CharField(max_length=160, unique=True, blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    occurred_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="created_reliability_events",
+        blank=True,
+        null=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-occurred_at", "-id"]
+        indexes = [
+            models.Index(fields=["player", "-occurred_at"]),
+            models.Index(fields=["event_type", "related_entity_type", "related_entity_id"]),
+        ]
+
+    def clean(self):
+        if self.player_id and self.player.role != "PLAYER":
+            raise ValidationError("Only player accounts can have reliability events.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.player.email} - {self.event_type}"
+
+class PlayerRating(models.Model):
+    ALLOWED_FEEDBACK_TAGS = {
+        "PUNCTUAL",
+        "RESPECTFUL",
+        "TEAM_PLAYER",
+        "GOOD_COMMUNICATION",
+        "RELIABLE",
+        "SPORTSMANLIKE",
+    }
+
+    rater = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ratings_given",
+    )
+    rated_player = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ratings_received",
+    )
+    rating = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+    feedback_tags = models.JSONField(default=list, blank=True)
+    comment = models.TextField(blank=True, max_length=500)
+    related_entity_type = models.CharField(max_length=60)
+    related_entity_id = models.PositiveIntegerField()
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["rater", "rated_player", "related_entity_type", "related_entity_id"],
+                name="unique_player_rating_per_context",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["rated_player", "-created_at"]),
+            models.Index(fields=["related_entity_type", "related_entity_id"]),
+        ]
+
+    def clean(self):
+        if self.rater_id and self.rater.role != "PLAYER":
+            raise ValidationError("Only player accounts can submit ratings.")
+        if self.rated_player_id and self.rated_player.role != "PLAYER":
+            raise ValidationError("Only player accounts can receive ratings.")
+        if self.rater_id and self.rated_player_id and self.rater_id == self.rated_player_id:
+            raise ValidationError("Players cannot rate themselves.")
+        if self.rating < 1 or self.rating > 5:
+            raise ValidationError("Rating must be between 1 and 5.")
+        if not self.related_entity_type or not self.related_entity_id:
+            raise ValidationError("Ratings must be linked to a verified completed game or match.")
+        if not isinstance(self.feedback_tags, list):
+            raise ValidationError("Feedback tags must be a list.")
+        invalid_tags = set(self.feedback_tags) - self.ALLOWED_FEEDBACK_TAGS
+        if invalid_tags:
+            raise ValidationError("Choose valid feedback tags.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.rated_player.email} rated {self.rating}/5"
+
+class PlayerRatingEligibility(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        SUBMITTED = "SUBMITTED", "Submitted"
+        EXPIRED = "EXPIRED", "Expired"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    rater = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="rating_eligibilities",
+    )
+    rated_player = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="rating_requests_received",
+    )
+    title = models.CharField(max_length=160)
+    related_entity_type = models.CharField(max_length=60)
+    related_entity_id = models.PositiveIntegerField()
+    match_date = models.DateTimeField(blank=True, null=True)
+    deadline_at = models.DateTimeField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    submitted_rating = models.ForeignKey(
+        PlayerRating,
+        on_delete=models.SET_NULL,
+        related_name="eligibility_records",
+        blank=True,
+        null=True,
+    )
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["rater", "rated_player", "related_entity_type", "related_entity_id"],
+                name="unique_rating_eligibility_per_context",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["rater", "status", "-created_at"]),
+            models.Index(fields=["related_entity_type", "related_entity_id"]),
+        ]
+
+    def clean(self):
+        if self.rater_id and self.rater.role != "PLAYER":
+            raise ValidationError("Only player accounts can receive rating requests.")
+        if self.rated_player_id and self.rated_player.role != "PLAYER":
+            raise ValidationError("Only player accounts can be rated.")
+        if self.rater_id and self.rated_player_id and self.rater_id == self.rated_player_id:
+            raise ValidationError("Players cannot rate themselves.")
+        if not self.related_entity_type or not self.related_entity_id:
+            raise ValidationError("Rating eligibility must be linked to a completed game or match.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.rater.email} -> {self.rated_player.email} ({self.status})"

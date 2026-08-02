@@ -50,12 +50,18 @@ def normalize_email(email):
 
 
 @transaction.atomic
-def issue_email_verification_otp(user, *, enforce_cooldown=True):
+def issue_email_verification_otp(user, *, enforce_cooldown=True, email=None):
     locked_user = User.objects.select_for_update().get(pk=user.pk)
-    if locked_user.email_verified:
-        raise VerificationError("This email address is already verified.", "ALREADY_VERIFIED")
+    target_email = normalize_email(email or locked_user.pending_email or locked_user.email)
+    is_primary_verification = target_email == normalize_email(locked_user.email)
+    is_pending_verification = bool(locked_user.pending_email) and target_email == normalize_email(locked_user.pending_email)
 
-    latest = locked_user.email_verification_otps.first()
+    if is_primary_verification and locked_user.email_verified and not is_pending_verification:
+        raise VerificationError("This email address is already verified.", "ALREADY_VERIFIED")
+    if not is_primary_verification and not is_pending_verification:
+        raise VerificationError("This email address is not pending verification.", "EMAIL_NOT_PENDING")
+
+    latest = locked_user.email_verification_otps.filter(email__iexact=target_email).first()
     if enforce_cooldown and latest:
         elapsed = (timezone.now() - latest.created_at).total_seconds()
         if elapsed < OTP_RESEND_COOLDOWN_SECONDS:
@@ -75,6 +81,7 @@ def issue_email_verification_otp(user, *, enforce_cooldown=True):
     code = f"{secrets.randbelow(1_000_000):06d}"
     otp = EmailVerificationOTP.objects.create(
         user=locked_user,
+        email=target_email,
         code_hash=make_password(code),
         expires_at=now + timedelta(minutes=OTP_EXPIRY_MINUTES),
     )
@@ -82,20 +89,37 @@ def issue_email_verification_otp(user, *, enforce_cooldown=True):
     return otp
 
 
+def find_user_for_email_verification(email):
+    normalized_email = normalize_email(email)
+    return User.objects.select_for_update().filter(
+        email__iexact=normalized_email,
+        is_active=True,
+    ).first() or User.objects.select_for_update().filter(
+        pending_email__iexact=normalized_email,
+        is_active=True,
+    ).first()
+
+
 def verify_email_otp(email, code):
     pending_error = None
     result = None
+    target_email = normalize_email(email)
 
     with transaction.atomic():
-        user = User.objects.select_for_update().filter(email__iexact=normalize_email(email)).first()
+        user = find_user_for_email_verification(target_email)
         if not user:
             pending_error = VerificationError("The verification code is invalid.", "INVALID_OTP")
-        elif user.email_verified:
+        elif user.email_verified and normalize_email(user.email) == target_email and not user.pending_email:
             result = (user, False)
         else:
             otp = (
                 EmailVerificationOTP.objects.select_for_update()
-                .filter(user=user, used_at__isnull=True, invalidated_at__isnull=True)
+                .filter(
+                    user=user,
+                    email__iexact=target_email,
+                    used_at__isnull=True,
+                    invalidated_at__isnull=True,
+                )
                 .first()
             )
             if not otp:
@@ -135,20 +159,33 @@ def verify_email_otp(email, code):
                 now = timezone.now()
                 otp.used_at = now
                 otp.save(update_fields=["used_at"])
-                user.email_verified = True
-                user.email_verified_at = now
-                user.save(update_fields=["email_verified", "email_verified_at"])
+                changed = True
+                if user.pending_email and normalize_email(user.pending_email) == target_email:
+                    if User.objects.filter(email__iexact=target_email).exclude(pk=user.pk).exists():
+                        pending_error = VerificationError("Another SportSpot account already uses this email.", "EMAIL_ALREADY_USED")
+                    else:
+                        user.email = target_email
+                        user.pending_email = None
+                        user.pending_email_requested_at = None
+                        user.email_verified = True
+                        user.email_verified_at = now
+                        user.auth_version += 1
+                        user.save(update_fields=["email", "pending_email", "pending_email_requested_at", "email_verified", "email_verified_at", "auth_version"])
+                else:
+                    user.email_verified = True
+                    user.email_verified_at = now
+                    user.save(update_fields=["email_verified", "email_verified_at"])
                 user.email_verification_otps.filter(
                     used_at__isnull=True,
                     invalidated_at__isnull=True,
                 ).exclude(pk=otp.pk).update(invalidated_at=now)
-                schedule_email_verified(user)
-                result = (user, True)
+                if not pending_error:
+                    schedule_email_verified(user)
+                    result = (user, changed)
 
     if pending_error:
         raise pending_error
     return result
-
 
 def token_digest(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()

@@ -108,7 +108,7 @@ export default function NotificationCenter({
 
   useEffect(() => {
     loadCount();
-    const intervalId = window.setInterval(loadCount, 15000);
+    const intervalId = window.setInterval(loadCount, 10000);
     const handleFocus = () => loadCount();
     const handleVisibility = () => {
       if (document.visibilityState === "visible") loadCount();
@@ -139,6 +139,14 @@ export default function NotificationCenter({
       document.body.style.overflow = previousOverflow;
     };
   }, [isOpen, activeFilter, pathname, loadNotifications]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const intervalId = window.setInterval(() => {
+      loadNotifications(activeFilter, false);
+    }, 10000);
+    return () => window.clearInterval(intervalId);
+  }, [activeFilter, isOpen, loadNotifications]);
 
   useEffect(() => {
     return () => {

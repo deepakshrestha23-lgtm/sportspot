@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import PlayerProfile
+from .models import PlayerProfile, PlayerRating, PlayerRatingEligibility, ReliabilityEvent
 
 
 @admin.register(PlayerProfile)
@@ -27,3 +27,48 @@ class PlayerProfileAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
+
+@admin.register(ReliabilityEvent)
+class ReliabilityEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "player",
+        "event_type",
+        "impact",
+        "points_delta",
+        "related_entity_type",
+        "related_entity_id",
+        "occurred_at",
+    )
+    list_filter = ("event_type", "impact", "related_entity_type", "occurred_at")
+    search_fields = ("player__full_name", "player__email", "title", "description", "dedupe_key")
+    readonly_fields = ("created_at",)
+
+@admin.register(PlayerRating)
+class PlayerRatingAdmin(admin.ModelAdmin):
+    list_display = (
+        "rated_player",
+        "rater",
+        "rating",
+        "related_entity_type",
+        "related_entity_id",
+        "created_at",
+    )
+    list_filter = ("rating", "related_entity_type", "created_at")
+    search_fields = ("rated_player__full_name", "rated_player__email", "rater__full_name", "rater__email", "comment")
+    readonly_fields = ("created_at", "updated_at")
+
+@admin.register(PlayerRatingEligibility)
+class PlayerRatingEligibilityAdmin(admin.ModelAdmin):
+    list_display = (
+        "rater",
+        "rated_player",
+        "title",
+        "status",
+        "related_entity_type",
+        "related_entity_id",
+        "deadline_at",
+        "created_at",
+    )
+    list_filter = ("status", "related_entity_type", "created_at", "deadline_at")
+    search_fields = ("rater__full_name", "rater__email", "rated_player__full_name", "rated_player__email", "title")
+    readonly_fields = ("created_at", "updated_at")

@@ -34,6 +34,13 @@ class TeamAccessMixin:
     def get_team_for_member(self, user, team_id):
         return get_object_or_404(self.get_member_teams_queryset(user), pk=team_id)
 
+    def get_visible_team_for_player(self, user, team_id):
+        teams = Team.objects.filter(
+            members__user=user,
+            members__status__in=[TeamMember.MemberStatus.ACTIVE, TeamMember.MemberStatus.INVITED],
+        ).select_related("captain").distinct()
+        return get_object_or_404(teams, pk=team_id)
+
     def ensure_player_profile(self, user):
         return PlayerProfile.objects.filter(user=user).exists()
 
@@ -83,7 +90,7 @@ class TeamDetailView(TeamAccessMixin, APIView):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get(self, request, team_id):
-        team = self.get_team_for_member(request.user, team_id)
+        team = self.get_visible_team_for_player(request.user, team_id)
         return Response({"team": TeamDetailSerializer(team, context={"request": request}).data})
 
     def put(self, request, team_id):
@@ -156,6 +163,27 @@ class TeamMemberRemoveView(TeamAccessMixin, APIView):
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+class TeamLeaveView(TeamAccessMixin, APIView):
+    def post(self, request, team_id):
+        member = TeamMember.objects.filter(
+            team_id=team_id,
+            user=request.user,
+            member_type=TeamMember.MemberType.REGISTERED,
+            status=TeamMember.MemberStatus.ACTIVE,
+        ).select_related("team").first()
+
+        if not member:
+            return Response({"detail": "Team membership not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if member.role_in_team == TeamMember.TeamRole.CAPTAIN:
+            return Response(
+                {"detail": "The captain cannot leave the team before transferring captaincy or deleting the team."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        member.status = TeamMember.MemberStatus.LEFT
+        member.save(update_fields=["status"])
+        return Response({"detail": "You have left the team."}, status=status.HTTP_200_OK)
 
 class PlayerLookupView(TeamAccessMixin, APIView):
     def get(self, request):

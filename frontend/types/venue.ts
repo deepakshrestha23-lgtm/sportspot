@@ -216,6 +216,9 @@ export type Booking = {
   venue_address: string;
   venue_area: string;
   venue_city: string;
+  venue_map_location: string;
+  court_photo: string;
+  venue_primary_image: string;
   venue_cancellation_policy: string;
   court: number;
   court_name: string;
@@ -294,6 +297,4 @@ export type BookingSlotSummary = {
   slot_duration_minutes: number;
   price: string;
 };
-
-
 
