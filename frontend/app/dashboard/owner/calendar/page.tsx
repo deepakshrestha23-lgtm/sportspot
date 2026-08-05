@@ -197,8 +197,20 @@ function WeekCalendarGrid({ calendar, onSelectBooking }: { calendar: OwnerCalend
 }
 
 function CalendarBlock({ block, onSelectBooking }: { block: VisualBlock; onSelectBooking: (booking: Booking) => void }) {
-  const content = <div className={`relative h-full rounded-md border p-3 shadow-sm ${blockTone(block.kind)}`}><p className="text-[11px] font-black uppercase tracking-[0.12em]">{block.statusLabel}</p><p className="mt-1 line-clamp-2 text-sm font-black">{block.title}</p><p className="mt-1 text-xs font-semibold opacity-80">{block.subtitle}</p><p className="absolute bottom-2 left-3 right-3 text-xs font-bold opacity-80">{block.timeLabel}</p></div>;
-  return <div className="absolute left-3 right-3 z-10" style={{ top: `${block.top}px`, height: `${block.height}px` }}>{block.booking ? <button className="h-full w-full text-left" onClick={() => onSelectBooking(block.booking as Booking)} type="button">{content}</button> : content}</div>;
+  const isCompact = block.height < 74;
+  const isTiny = block.height < 52;
+  const content = (
+    <div className={`flex h-full min-h-0 flex-col overflow-hidden rounded-md border shadow-sm ${isCompact ? "px-3 py-2" : "p-3"} ${blockTone(block.kind)}`}>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-[10px] font-black uppercase tracking-[0.1em]">{block.statusLabel}</p>
+        {isTiny ? <p className="shrink-0 text-[10px] font-bold opacity-75">{block.timeLabel}</p> : null}
+      </div>
+      <p className={`${isCompact ? "mt-0.5 text-xs" : "mt-1 text-sm"} min-w-0 truncate font-black leading-tight`}>{block.title}</p>
+      {!isTiny ? <p className="mt-0.5 min-w-0 truncate text-[11px] font-semibold leading-tight opacity-80">{block.timeLabel}</p> : null}
+      {!isCompact ? <p className="mt-auto min-w-0 truncate pt-1 text-[11px] font-semibold leading-tight opacity-70">{block.subtitle}</p> : null}
+    </div>
+  );
+  return <div className="absolute left-3 right-3 z-10" style={{ top: `${block.top}px`, height: `${block.height}px` }}>{block.booking ? <button className="h-full w-full text-left focus:outline-none focus:ring-2 focus:ring-sportGreen focus:ring-offset-1" onClick={() => onSelectBooking(block.booking as Booking)} type="button">{content}</button> : content}</div>;
 }
 
 function MobileAgenda({ calendar, onSelectBooking, viewMode }: { calendar: OwnerCalendarResponse; onSelectBooking: (booking: Booking) => void; viewMode: OwnerCalendarViewMode }) {

@@ -274,7 +274,7 @@ Verified completed work includes:
 - Player Dashboard shell with Overview, My Profile, My Teams, My Games, My Bookings, Ratings & Reliability, Settings, and Help & Support navigation.
 - Player Settings page with horizontal sections, explicit Account edit/cancel mode, safer email-change verification, separate password updates, notification/privacy preferences, and account deactivation.
 - Team creation, redesigned Create Team page, captain permissions, registered invitation by SportSpot ID, guest players, member cards, and invitation decisions.
-- Court owner venue setup, photo gallery, verification document upload, admin review, court setup, slot generation, slot blocking, Venue Manager shell/sidebar, Overview, and operational Calendar.
+- Court owner venue setup, photo gallery, verification document upload, admin review, court setup, slot generation, slot blocking, Venue Manager shell/sidebar, Overview, and operational Calendar with compact booking blocks.
 - Venue-first public discovery with stable backend filter reference data.
 - Consecutive multi-slot booking, 10-minute holds, Khalti payment verification, booking pass/history, cancellation, and owner-managed refund records.
 - Central Notification Centre and global toast feedback.
@@ -409,7 +409,7 @@ Status: Planned. Current pages are placeholders.
 1. Owner opens `/dashboard/owner/calendar`.
 2. Frontend requests `/api/venues/owner/calendar/?date=YYYY-MM-DD&view=day|week`.
 3. Backend returns the owner venue, courts, generated slots, operational bookings, blocked periods, calendar stats, and server time.
-4. Day view displays time vertically and courts as columns; week view groups real bookings and blocked periods by day.
+4. Day view displays time vertically and courts as columns; week view groups real bookings and blocked periods by day. Compact booking blocks truncate safely so status, player, time, and code do not overlap.
 5. Clicking a booking opens an owner-safe booking details drawer.
 6. `Block Court Time` posts to `/api/venues/owner/calendar/block/` and blocks overlapping generated available slots.
 7. If selected time overlaps reserved or booked slots, the API returns a conflict warning and does not hide customer bookings.
@@ -883,7 +883,7 @@ Most recently developed areas:
 - Player Dashboard UI pages and shared shell refinement.
 - Player Settings edit/cancel behavior and safe email-change flow.
 - Redesigned Player Create Team page.
-- Dedicated Venue Manager top bar, sidebar, mobile drawer, Overview, and Calendar for owner workspace routes.
+- Dedicated Venue Manager top bar, sidebar, mobile drawer, Overview, Calendar, and calendar booking-block UI polish for owner workspace routes.
 - Court discovery filters and venue card UX.
 - Wishlist integration in Player top navigation.
 - Booking lifecycle, cancellation, refunds, Khalti flow.
