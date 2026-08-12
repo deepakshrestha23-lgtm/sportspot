@@ -345,6 +345,7 @@ class Booking(models.Model):
     cancellation_reason = models.TextField(blank=True)
     cancellation_slot_action = models.CharField(max_length=20, blank=True)
     cancellation_policy_snapshot = models.JSONField(default=dict, blank=True)
+    matchmaking_game = models.ForeignKey("matchmaking.Game", on_delete=models.SET_NULL, related_name="booking_handoffs", blank=True, null=True)
     cancellation_tier = models.CharField(
         max_length=30,
         choices=CancellationTier.choices,

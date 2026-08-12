@@ -4,6 +4,13 @@
 
 :root {
   color-scheme: light;
+  --sport-ink: #102016;
+  --sport-muted: #66736b;
+  --sport-line: #dfe7e1;
+  --sport-surface: #ffffff;
+  --sport-canvas: #f5f8f6;
+  --sport-green: #087a3e;
+  --sport-green-soft: #eaf6ef;
 }
 
 * {
@@ -12,8 +19,29 @@
 
 body {
   margin: 0;
-  background: #f8fafc;
-  color: #0b1220;
+  background: var(--sport-canvas);
+  color: var(--sport-ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: #c9efd8;
+  color: var(--sport-ink);
 }
 
 a {
@@ -51,12 +79,79 @@ a {
 }
 
 @layer components {
+  .sport-page-content {
+    @apply mx-auto w-full space-y-5;
+  }
+
+  .sport-surface {
+    @apply rounded-xl border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(16,32,22,0.03)];
+  }
+
+  .sport-page-header {
+    @apply flex flex-col gap-4 border-b border-slate-200/80 pb-5 sm:flex-row sm:items-end sm:justify-between;
+  }
+
+  .sport-eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.16em] text-sportGreen;
+  }
+
+  .sport-page-title {
+    @apply mt-1 text-[clamp(1.75rem,3vw,2.35rem)] font-bold tracking-[-0.025em] text-sportNavy;
+  }
+
+  .sport-page-description {
+    @apply mt-1.5 max-w-2xl text-sm leading-6 text-slate-600;
+  }
+
+  .sport-primary-button {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-sportGreen px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55;
+  }
+
+  .sport-secondary-button {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-sportNavy transition-colors hover:border-green-300 hover:bg-green-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55;
+  }
+
+  .sport-icon-button {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:border-green-300 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2;
+  }
+
+  .sport-field {
+    @apply flex flex-col gap-1.5 text-sm font-semibold text-sportNavy;
+  }
+
+  .sport-field input,
+  .sport-field select,
+  .sport-field textarea {
+    @apply min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
+  }
+
+  .sport-tab-list {
+    @apply flex min-w-max items-center gap-1 border-b border-slate-200;
+  }
+
+  .sport-tab {
+    @apply relative min-h-10 px-3 py-2 text-sm font-semibold text-slate-500 transition-colors hover:text-sportNavy focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300;
+  }
+
+  .sport-tab[aria-selected="true"] {
+    @apply text-sportGreen;
+  }
+
+  .sport-tab[aria-selected="true"]::after {
+    content: "";
+    @apply absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-sportGreen;
+  }
+
+  .sport-status {
+    @apply inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide;
+  }
+
   .owner-primary-button {
-    @apply inline-flex min-h-11 items-center justify-center rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply sport-primary-button;
   }
 
   .owner-secondary-button {
-    @apply inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-black text-sportNavy transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-100 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply sport-secondary-button;
   }
 
   .calendar-nav-button {

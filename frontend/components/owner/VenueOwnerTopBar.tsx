@@ -89,18 +89,18 @@ export default function VenueOwnerTopBar() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <nav className="mx-auto flex min-h-[72px] max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur">
+        <nav className="mx-auto flex min-h-[68px] max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <button
               aria-label="Open venue menu"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-sportNavy transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 lg:hidden"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-sportNavy transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 lg:hidden"
               onClick={() => window.dispatchEvent(new CustomEvent("sportspot-owner-menu-toggle"))}
               type="button"
             >
               <MenuIcon />
             </button>
-            <Logo href="/dashboard/owner" markClassName="h-9 max-w-[150px]" textClassName="text-xl" />
+            <Logo href="/dashboard/owner" markClassName="h-8 max-w-[140px]" textClassName="text-[1.15rem]" />
             <span className="hidden rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-sportGreen sm:inline-flex">
               Venue Manager
             </span>
@@ -130,7 +130,7 @@ export default function VenueOwnerTopBar() {
               aria-controls="sportspot-notification-centre"
               aria-expanded={isNotificationsOpen}
               aria-label={`Open Notification Centre${unseenNotificationsCount ? `, ${unseenNotificationsCount} unseen` : ""}`}
-              className={`relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 ${hasNewNotification ? "scale-110 border-green-300 text-sportGreen" : ""}`}
+              className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 ${hasNewNotification ? "scale-110 border-green-300 text-sportGreen" : ""}`}
               onClick={() => {
                 setIsNotificationsOpen(true);
                 setHasNewNotification(false);
@@ -150,7 +150,7 @@ export default function VenueOwnerTopBar() {
             <div className="relative">
               <button
                 aria-expanded={isProfileOpen}
-                className="flex max-w-[140px] items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-200 sm:max-w-none sm:px-3"
+                className="flex max-w-[140px] items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-200 sm:max-w-none sm:px-3"
                 onClick={() => setIsProfileOpen((value) => !value)}
                 type="button"
               >
@@ -241,7 +241,7 @@ function VenueContextAction({ action }: { action: NonNullable<ContextAction> }) 
 
 function OwnerProfileMenu({ onLogout }: { onLogout: () => void }) {
   return (
-    <div className="absolute right-0 mt-3 w-60 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+    <div className="absolute right-0 mt-3 w-60 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
       <MenuLink href="/dashboard/owner" label="Owner Profile" />
       <MenuLink href="/dashboard/owner" label="Account Settings" />
       <MenuLink href="/support" label="Help & Support" />

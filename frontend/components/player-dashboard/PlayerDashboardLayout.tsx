@@ -16,7 +16,7 @@ export default function PlayerDashboardLayout({ children }: { children: ReactNod
 
   return (
     <RoleGate allowedRoles={["PLAYER"]}>
-      <div className="min-h-[calc(100vh-73px)] bg-slate-50">
+      <div className="min-h-[calc(100vh-68px)] bg-slate-50">
         <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
             <div className="min-w-0">

@@ -2,7 +2,7 @@
 
 SportSpot is a Nepal-focused sports web application for Cricksal players, teams, court owners, and administrators.
 
-Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, and a dedicated Venue Manager workspace shell with top bar, sidebar, Overview, and Calendar exist in the repository. Open games, team challenges, Game Room, rating submission, disputes, production deployment, owner offline booking, and several admin operations are not complete.
+Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, Pickup Game matchmaking, Fill My Squad temporary-player recruitment, a structured Game Room/Planning Room/Squad Room, and a dedicated Venue Manager workspace shell with top bar, sidebar, Overview, and Calendar exist in the repository. Team challenges, full rating submission, disputes, production deployment, owner offline booking, and several admin operations are not complete.
 
 Current sport scope: Cricksal only.
 
@@ -29,9 +29,9 @@ Outside current scope:
 - Multi-sport UI.
 - Real automatic refund transfer.
 - Split payment.
-- Full open-game flow.
+- Team-based open games beyond Pickup Game.
 - Full team challenge flow.
-- Game Room.
+- Full chat-based Game Room.
 - Rating submission and recommendation engine.
 - Production deployment and monitoring.
 
@@ -76,7 +76,7 @@ User
 Logical layers:
 
 - Presentation: `frontend/app`, `frontend/components`, `frontend/lib`, `frontend/types`.
-- Application/API: Django apps in `backend/accounts`, `players`, `teams`, `venues`, `notifications`, `wishlists`.
+- Application/API: Django apps in `backend/accounts`, `players`, `teams`, `venues`, `matchmaking`, `notifications`, `wishlists`.
 - Data/services: PostgreSQL, local media files, SMTP provider, Khalti.
 
 No architecture diagram is currently present.
@@ -219,7 +219,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | --- | --- | --- | --- |
 | Select court/date/slots | Completed | `/courts/[id]` | UX polish |
 | Multi-slot reservation | Completed | `BookingSlot`, `slot_ids` | More edge-case tests |
-| 10-minute hold | Completed | `reserved_until` | Scheduler needed in deployment |
+| 10-minute hold | Completed | `reserved_until` | Unified maintenance command is available; schedule it in deployment |
 | Double-booking prevention | Completed | transactions and `select_for_update` | Load testing later |
 | Past-time blocking | Completed | `is_past`, backend validation | Timezone verification in deployment |
 | Khalti initiation | Completed | `KhaltiPaymentInitiateView` | Requires valid env key |
@@ -227,7 +227,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Booking pass/history | Completed | player booking pages | Print/download later |
 | Cancellation | Completed | `BookingCancelView`, `policies.py` | More tests for all tiers |
 | Owner refund actions | Completed | owner refund APIs/page | Real money transfer not implemented |
-| Expiry/completion commands | Completed | `expire_reservations`, `complete_bookings`, `run_booking_maintenance` | Schedule in deployment |
+| Expiry/completion commands | Completed | `expire_reservations`, `complete_bookings`, `run_booking_maintenance`, `run_sportspot_maintenance` | Configure the unified one-shot scheduler/worker in deployment |
 
 ### Notifications and Feedback
 
@@ -285,8 +285,8 @@ Verified completed work includes:
 ## 9. Partially Completed and In-Progress Work
 
 - Ratings/reliability are displayed but not calculated from real post-match ratings.
-- Challenge and open-game screens exist only as placeholders.
-- Game Room is not implemented.
+- Team Challenge screens still require a complete lifecycle. Team-based open games beyond Pickup Game remain planned.
+- Pickup Game has a structured Planning Room/Game Room; live chat and reusable rooms for future challenge flows are not implemented.
 - Admin venue review works, but broader admin operations are incomplete.
 - Owner offline booking is not implemented as a full feature.
 - Venue Manager top bar, sidebar, mobile drawer, Overview, and Calendar are implemented; the remaining owner destination pages still need full workflow refinement.
@@ -314,15 +314,15 @@ Verified completed work includes:
 | Finish booking UX QA | In progress | Test reservation, payment, cancellation, refund, notifications | Existing booking flow | Smooth player/owner booking lifecycle |
 | Complete owner operations | Partially completed | Build offline booking, refine owner destination pages, add deeper tests for calendar blocking/conflicts | Venue/court slots | Owner can protect offline bookings and use a polished management workspace |
 | Admin operations | Partially completed | Users/bookings/refund overview | Permissions | Admin can review operational risks |
-| Open games | Planned | Models, APIs, UI, join requests | Player/team modules | Players can find/request games |
-| Team challenges | Planned | Challenge lifecycle and notifications | Team module | Captains can accept/counter/decline |
+| Pickup Game and Fill My Squad matchmaking | Partially completed | Add pagination, deeper high-concurrency tests, richer room activity, post-game permanent-team invitation prompts, and broader end-to-end coverage | Booking, player profile, teams, notifications | Booking-first and plan-first flows work with backend deadline validation, controlled area options, role-based recruitment, skill/time/open-spot/waitlist discovery filters, transactional join-request creation, duplicate-invitation protection, invitation expiry, contiguous waitlist positions, guest participants, SportSpot ID invitations, reconfirmation, quiet detail-page refreshes, and structured room access. Public game payloads omit registered-player account and trust details. |
+| Team challenges | Planned | Challenge lifecycle and notifications | Team module plus stable matchmaking | Captains can accept/counter/decline after Pickup Game flows are stable |
 
 ### Priority 2 - Operational completeness
 
 | Objective | Current status | Main tasks | Dependencies | Completion criteria |
 | --- | --- | --- | --- | --- |
 | Ratings/reliability | Planned | Rating model, eligibility, reliability updates | Completed games | Ratings affect trust displays |
-| Game Room | Planned | Match room model and UI | Challenge/open-game flow | Confirmed games have coordination page |
+| Game Room expansion | Partially completed | Add richer announcement/history features and future live chat if needed | Pickup Game plus future challenge/open-game flows | Pickup participants have structured room access; future match types can reuse the pattern |
 | Disputes/reports | Planned | Models, admin review, notifications | Booking/match flows | Users can report serious issues |
 | Notification expansion | Partially completed | Connect only real future module events | New modules | No fake or broken notifications |
 
@@ -415,6 +415,24 @@ Status: Planned. Current pages are placeholders.
 7. If selected time overlaps reserved or booked slots, the API returns a conflict warning and does not hide customer bookings.
 8. Block metadata is stored on `CourtSlot`; public venue discovery serializers must not expose slot-only block fields on venue records.
 
+### Pickup Game and Fill My Squad matchmaking
+
+1. Player opens `/dashboard/player/games/create` and chooses either Pickup Game or Fill My Squad.
+2. Pickup Game hosts continue as individual organisers; Fill My Squad requires a permanent team captained by the current player.
+3. For Fill My Squad, the captain selects participating permanent team members; temporary applicants are never added as permanent members automatically.
+4. Booking-first creation uses only the host's future `CONFIRMED` + `PAID` bookings that are not already linked to an active game.
+5. Plan-first creation stores proposed date, time, preferred area, optional venue, minimum players, booking deadline, recruitment deadline, role requirements, and waitlist preference without pretending a court is booked.
+6. The host occupies one roster spot automatically: confirmed for booking-first games and provisional for plan-first games.
+7. Public players browse real Pickup Game and Fill My Squad listings at `/find-game` and open `/find-game/{gameId}`.
+8. Players request an available Cricksal role with an optional message and availability confirmation. Active members of the selected Fill My Squad team cannot apply as temporary outside players.
+9. Host reviews applicant cards from `/dashboard/player/games` or `/dashboard/player/games/{gameId}` and accepts, rejects, or waitlists requests.
+10. Accepted booking-first players become confirmed participants; accepted plan-first players remain provisional until a booking is attached.
+11. Guests can be added by name and optional role; each guest occupies a real roster spot but has no account access.
+12. Waitlisted players do not count as confirmed and can be promoted manually after capacity, role, skill, and conflict checks.
+13. When a plan-first game reaches the minimum threshold, the host uses the guided `Book Court for Game` action. Court discovery receives the game context, the booking reservation stores that context, Khalti payment is verified by the backend, and the confirmed booking is attached to the game automatically.
+14. If the verified booking differs materially from the original proposal, non-host provisional participants must reconfirm or decline without penalty.
+15. Host and active participants can access the structured Planning Room/Game Room/Squad Room; pending, rejected, and waitlisted users cannot access private room details.
+16. Cancelling the public game listing does not automatically cancel the court booking; booking cancellation and refunds stay in the existing My Bookings flow.
 ### Venue onboarding and verification
 
 1. Court Owner completes venue setup.
@@ -527,8 +545,10 @@ Implemented rules:
 - Reservation uses transaction locks.
 - Slots are held for about 10 minutes.
 - Khalti confirmation happens only after backend verification.
+- Khalti initiation is idempotent for an existing booking payment reference.
 - Failed payment does not confirm booking.
 - Expiry releases unpaid holds.
+- A completed Khalti payment is never treated as refund-not-required. If the original slots are still safely held, the booking is confirmed; otherwise the booking enters refund review with payment_status=REFUND_PENDING.
 - Cancellation updates all slots atomically.
 - Confirmed bookings can become completed after the final slot end time.
 
@@ -692,10 +712,9 @@ python manage.py migrate
 Lifecycle commands:
 
 ```powershell
-python manage.py expire_reservations
-python manage.py complete_bookings
-python manage.py send_booking_reminders
-python manage.py run_booking_maintenance
+python manage.py run_sportspot_maintenance
+python manage.py run_sportspot_maintenance --no-notify --no-reminders
+python manage.py expire_matchmaking --dry-run
 ```
 
 For near real-time reservation expiry, booking completion, booking-completed notifications, and reminders during local development, keep a separate terminal running:
@@ -708,12 +727,26 @@ Equivalent backend command:
 
 ```powershell
 cd backend
-python manage.py run_booking_maintenance --watch --interval 10 --reminder-every 300
+python manage.py run_sportspot_maintenance --watch --interval 10 --reminder-every 300
 ```
 
-In production, run the same maintenance command through a process manager, scheduler, or background worker so lifecycle events are not delayed until another page request happens.
+The existing `scripts/run_booking_worker.ps1` now starts this unified worker for compatibility with the previous command name.
+
+In production, schedule the one-shot command every minute through cron, Windows Task Scheduler, or a managed worker:
+
+```text
+python manage.py run_sportspot_maintenance --limit 100
+```
+
+Each lifecycle transition is state-guarded and performed under record locks, so retries and overlapping one-shot runs are safe. Prefer one managed scheduler/worker rather than multiple permanent watch processes.
 
 No verified seed-data command or ER diagram is present.
+
+Lifecycle scheduling limitation: the repository provides the idempotent
+`run_sportspot_maintenance` command and a local worker script, but it does not
+install or configure a production scheduler. Deployment must run the one-shot
+command at a regular interval.
+
 
 ## 18. API Overview
 
@@ -746,6 +779,26 @@ Teams: `/api/teams/`
 - `POST invitations/{member_id}/accept/`
 - `POST invitations/{member_id}/reject/`
 
+Matchmaking: `/api/matchmaking/`
+
+- `GET/POST games/`
+- `GET games/eligible-bookings/`
+- `GET games/my/`
+- `GET games/{game_id}/`
+- `GET games/{game_id}/manage/`
+- `POST games/{game_id}/request/`
+- `POST games/{game_id}/guests/`
+- `GET games/{game_id}/players/lookup/`
+- `POST games/{game_id}/invite/`
+- `POST games/{game_id}/attach-booking/`
+- `POST games/{game_id}/reconfirm/`
+- `POST games/{game_id}/leave/`
+- `POST games/{game_id}/cancel/`
+- `GET/PATCH games/{game_id}/room/`
+- `POST requests/{request_id}/decide/`
+- `POST requests/{request_id}/withdraw/`
+- `POST requests/{request_id}/respond-invitation/`
+
 Venues/bookings: `/api/venues/`
 
 - Owner venue/courts/slots/bookings/refunds/message endpoints under `owner/`.
@@ -773,12 +826,20 @@ Existing backend tests:
 - `backend/venues/tests.py`
 - `backend/notifications/tests.py`
 - `backend/wishlists/tests.py`
+- `backend/matchmaking/tests.py`
 
 Run tests:
 
 ```powershell
 cd backend
-python manage.py test accounts teams venues notifications wishlists --keepdb
+python manage.py test accounts teams venues notifications wishlists matchmaking --keepdb
+```
+
+Run matchmaking lifecycle cleanup manually during local development or from a scheduler in staging/production:
+
+```bash
+python manage.py expire_matchmaking
+python manage.py expire_matchmaking --dry-run
 ```
 
 Run checks/build:
@@ -799,7 +860,7 @@ Recommended next tests: permissions, email reset edge cases, concurrent reservat
 
 ## 20. Known Issues and Limitations
 
-- Open games, challenge teams, Game Room, ratings, disputes, and recommendations are not implemented.
+- Pickup Game and Fill My Squad matchmaking are implemented for booking-first and plan-first journeys, including controlled area data, role-based requests, backend-validated discovery filters, host decisions, waitlist recovery, guest participants, registered-player invitations by SportSpot ID, invitation expiry, duplicate-request protection, guided court-booking handoff after a plan reaches its threshold, automatic booking attachment after verified Khalti payment, reconfirmation, safe public roster payloads, quiet detail-page refreshes, and structured room access. Remaining gaps include pagination, deeper high-concurrency/end-to-end coverage, richer room activity, and post-game permanent-team invitation prompts. Team Challenges, disputes, recommendations, and full rating submission are not active MVP features.
 - Several placeholder pages still exist for future modules.
 - Future-compatible Futsal fields remain in `PlayerProfile`, but current UI must stay Cricksal-only.
 - No production deployment files, Docker config, CI/CD, or monitoring.
@@ -886,7 +947,7 @@ Most recently developed areas:
 - Dedicated Venue Manager top bar, sidebar, mobile drawer, Overview, Calendar, and calendar booking-block UI polish for owner workspace routes.
 - Court discovery filters and venue card UX.
 - Wishlist integration in Player top navigation.
-- Booking lifecycle, cancellation, refunds, Khalti flow.
+- Booking lifecycle, cancellation, refunds, Khalti idempotency, and paid-after-expiry safety.
 - Notifications and toast feedback.
 - Email verification and password recovery.
 
@@ -937,7 +998,7 @@ Commands before new work:
 git status --short
 cd backend
 python manage.py check
-python manage.py test accounts teams venues notifications wishlists --keepdb
+python manage.py test accounts teams venues notifications wishlists matchmaking --keepdb
 cd ..\frontend
 npm run build
 ```

@@ -7,12 +7,25 @@ function unwrapApiValue(value: unknown): unknown {
   return value;
 }
 
+function isTechnicalHtml(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized.startsWith("<!doctype html") || normalized.startsWith("<html") || normalized.includes("traceback") || normalized.includes("improperlyconfigured");
+}
+
+function userMessage(value: unknown): string | null {
+  const unwrapped = unwrapApiValue(value);
+  if (typeof unwrapped !== "string" || isTechnicalHtml(unwrapped)) return null;
+  const message = unwrapped.trim();
+  return message || null;
+}
+
 export function getApiErrorField(requestError: unknown, field: string) {
   if (!axios.isAxiosError(requestError)) return null;
   const data = requestError.response?.data;
   if (!data || typeof data !== "object") return null;
   const value = unwrapApiValue((data as Record<string, unknown>)[field]);
-  return typeof value === "string" ? value : null;
+  return userMessage(value);
 }
 
 export function getApiErrorMessage(requestError: unknown, fallbackMessage: string) {
@@ -29,23 +42,24 @@ export function getApiErrorMessage(requestError: unknown, fallbackMessage: strin
 
     if (data && typeof data === "object") {
       const errors = data as Record<string, unknown>;
-      const detail = unwrapApiValue(errors.detail);
-      if (typeof detail === "string") {
+      const detail = userMessage(errors.detail);
+      if (detail) {
         emitToast({ message: detail, type: "error" });
         return detail;
       }
 
-      const firstError = unwrapApiValue(Object.values(errors).find(Boolean));
+      const firstError = userMessage(Object.values(errors).find(Boolean));
 
-      if (typeof firstError === "string") {
+      if (firstError) {
         emitToast({ message: firstError, type: "error" });
         return firstError;
       }
     }
 
-    if (typeof data === "string") {
-      emitToast({ message: data, type: "error" });
-      return data;
+    const responseMessage = userMessage(data);
+    if (responseMessage) {
+      emitToast({ message: responseMessage, type: "error" });
+      return responseMessage;
     }
   }
 

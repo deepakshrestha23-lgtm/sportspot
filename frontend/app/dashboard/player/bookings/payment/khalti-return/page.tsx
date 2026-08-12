@@ -15,8 +15,10 @@ function KhaltiReturnContent() {
   const bookingId = searchParams.get("booking_id");
   const pidx = searchParams.get("pidx");
   const khaltiStatus = searchParams.get("status");
+  const matchmakingGameId = searchParams.get("matchmaking_game");
   const [booking, setBooking] = useState<Booking | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
@@ -29,15 +31,25 @@ function KhaltiReturnContent() {
       }
 
       try {
-        const response = await api.post<{ booking: Booking; detail?: string }>(
+        const response = await api.post<{ booking: Booking; detail?: string; matchmaking_game?: { id: number; title: string; room_url: string; manage_url: string; requires_reconfirmation: boolean } }>(
           `/api/venues/bookings/${bookingId}/khalti/verify/`,
           { pidx },
         );
         setBooking(response.data.booking);
+        setNotice(response.data.detail || "");
         if (response.data.booking.status === "CONFIRMED") {
+          if (response.data.matchmaking_game || response.data.booking.matchmaking_game || matchmakingGameId) {
+            const gameId = response.data.matchmaking_game?.id || response.data.booking.matchmaking_game || matchmakingGameId;
+            emitToast({ message: response.data.matchmaking_game?.requires_reconfirmation ? "Your booking is confirmed. Players may need to reconfirm the updated game plan." : "Your booking is confirmed and the game has been updated.", type: "success", dedupeKey: `game-booking-confirmed-${response.data.booking.id}` });
+            router.replace(response.data.matchmaking_game?.room_url || `/dashboard/player/games/${gameId}/room`);
+            return;
+          }
           emitToast({ message: "Your booking has been confirmed.", type: "success", dedupeKey: `booking-confirmed-${response.data.booking.id}` });
           router.replace(`/dashboard/player/bookings/${response.data.booking.id}`);
           return;
+        }
+        if (response.data.detail) {
+          emitToast({ message: response.data.detail, type: "warning", dedupeKey: `khalti-payment-notice-${response.data.booking.id}` });
         }
       } catch (requestError) {
         setError(getApiErrorMessage(requestError, "We could not verify your payment. Please try again."));
@@ -82,6 +94,7 @@ function KhaltiReturnContent() {
         </div>
       ) : null}
 
+      {notice && !error ? <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">{notice}</div> : null}
       {error ? <div className="mt-6 rounded-lg bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
 
       {!isVerifying ? (

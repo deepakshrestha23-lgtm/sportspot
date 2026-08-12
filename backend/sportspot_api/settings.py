@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     "accounts",
     "players",
     "teams",
+    "matchmaking",
     "notifications",
     "venues",
     "wishlists",

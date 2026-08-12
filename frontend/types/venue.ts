@@ -270,6 +270,8 @@ export type Booking = {
   cancellation_reason: string;
   cancellation_slot_action: string;
   cancellation_policy_snapshot: Omit<CancellationPolicyDetails, "summary">;
+  matchmaking_game: number | null;
+  matchmaking_game_title: string;
   cancellation_tier: CancellationTier;
   refund_percentage: number;
   refund_amount: string;

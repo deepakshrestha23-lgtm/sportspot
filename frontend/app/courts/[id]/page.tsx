@@ -16,13 +16,18 @@ export default function VenueDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const venueId = params.id;
+  const matchmakingGameId = searchParams.get("matchmaking_game");
+  const handoffGameTitle = searchParams.get("game_title") || "your game plan";
+  const requestedStartTime = searchParams.get("start_time") || "";
+  const requestedDurationMinutes = Number(searchParams.get("duration") || 60);
+  const initialDurationHours = [1, 2, 3].includes(requestedDurationMinutes / 60) ? requestedDurationMinutes / 60 : 1;
   const backToCourtsHref = searchParams.toString() ? `/courts?${searchParams.toString()}` : "/courts";
   const [venue, setVenue] = useState<PublicVenue | null>(null);
   const [selectedCourtId, setSelectedCourtId] = useState<number | null>(null);
   const [slots, setSlots] = useState<CourtSlot[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
-  const [durationHours, setDurationHours] = useState(1);
-  const [date, setDate] = useState(getLocalDateString());
+  const [durationHours, setDurationHours] = useState(initialDurationHours);
+  const [date, setDate] = useState(searchParams.get("date") || getLocalDateString());
   const [isLoading, setIsLoading] = useState(true);
   const [isSlotLoading, setIsSlotLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
@@ -42,6 +47,12 @@ export default function VenueDetailPage() {
     loadSlots(selectedCourtId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCourtId, date]);
+
+  useEffect(() => {
+    if (!requestedStartTime || selectedSlotId || !slots.length) return;
+    const matchingSlot = slots.find((slot) => slot.start_time.slice(0, 5) === requestedStartTime.slice(0, 5) && slot.status === "AVAILABLE" && !slot.is_past);
+    if (matchingSlot) setSelectedSlotId(matchingSlot.id);
+  }, [requestedStartTime, selectedSlotId, slots]);
 
   async function loadVenue() {
     setIsLoading(true);
@@ -102,8 +113,12 @@ export default function VenueDetailPage() {
     setIsBooking(true);
     setError("");
     try {
-      const response = await api.post<{ booking: Booking }>("/api/venues/bookings/reserve/", { slot_ids: selectedSlotRange.slots.map((slot) => slot.id) });
-      router.push(`/dashboard/player/bookings/payment/${response.data.booking.id}`);
+      const response = await api.post<{ booking: Booking }>("/api/venues/bookings/reserve/", {
+        slot_ids: selectedSlotRange.slots.map((slot) => slot.id),
+        matchmaking_game_id: matchmakingGameId ? Number(matchmakingGameId) : undefined,
+      });
+      const paymentQuery = matchmakingGameId ? `?matchmaking_game=${matchmakingGameId}` : "";
+      router.push(`/dashboard/player/bookings/payment/${response.data.booking.id}${paymentQuery}`);
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, "Could not reserve this slot."));
       if (selectedCourtId) loadSlots(selectedCourtId);
@@ -136,6 +151,15 @@ export default function VenueDetailPage() {
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <PhotoGallery venue={venue} />
 
+      {matchmakingGameId ? (
+        <section className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4 shadow-sm">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-sportGreen">Booking for Game Plan</p>
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-semibold text-green-900">Choose a court for {handoffGameTitle}. After Khalti confirms payment, SportSpot will update the game automatically.</p>
+            <Link className="text-sm font-black text-sportGreen hover:text-green-700" href={`/dashboard/player/games/${matchmakingGameId}`}>Back to game</Link>
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="space-y-6">
@@ -359,9 +383,9 @@ export default function VenueDetailPage() {
             onClick={reserveSlot}
             type="button"
           >
-            {isBooking ? "Reserving..." : "Confirm & Book"}
+            {isBooking ? "Reserving..." : matchmakingGameId ? "Reserve for Game" : "Confirm & Book"}
           </button>
-          <p className="mt-3 text-center text-xs font-semibold text-slate-500">You will continue to secure payment after reservation.</p>
+          <p className="mt-3 text-center text-xs font-semibold text-slate-500">{matchmakingGameId ? "Payment confirmation will connect this booking to your game." : "You will continue to secure payment after reservation."}</p>
           <Link className="mt-5 block text-center text-sm font-black text-sportGreen hover:text-green-700" href={backToCourtsHref}>
             Back to Courts
           </Link>

@@ -7,539 +7,127 @@ import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPage
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { emitToast } from "@/lib/toast";
-import type { MyTeamsResponse, Team } from "@/types/team";
+import type { JoinRequest, MatchmakingGame, MyGamesResponse } from "@/types/matchmaking";
 
-type GameTab = "upcoming" | "open" | "requests" | "challenges" | "completed";
-type RequestView = "mine" | "captain";
-type ChallengeView = "received" | "sent" | "countered" | "accepted" | "closed";
+type Tab = "upcoming" | "hosted" | "requests" | "completed" | "cancelled";
 
-const tabs: { key: GameTab; label: string }[] = [
+const tabs: Array<{ key: Tab; label: string }> = [
   { key: "upcoming", label: "Upcoming" },
-  { key: "open", label: "Open Games" },
+  { key: "hosted", label: "Hosting" },
   { key: "requests", label: "Join Requests" },
-  { key: "challenges", label: "Challenges" },
   { key: "completed", label: "Completed" },
-];
-
-const challengeViews: { key: ChallengeView; label: string }[] = [
-  { key: "received", label: "Received" },
-  { key: "sent", label: "Sent" },
-  { key: "countered", label: "Countered" },
-  { key: "accepted", label: "Accepted" },
-  { key: "closed", label: "Closed" },
+  { key: "cancelled", label: "Cancelled" },
 ];
 
 export default function PlayerGamesPage() {
-  const [activeTab, setActiveTab] = useState<GameTab>("upcoming");
-  const [requestView, setRequestView] = useState<RequestView>("mine");
-  const [challengeView, setChallengeView] = useState<ChallengeView>("received");
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [activeTab, setActiveTab] = useState<Tab>("upcoming");
+  const [data, setData] = useState<MyGamesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    loadGameContext();
-  }, []);
+  useEffect(() => { loadGames(); }, []);
 
-  async function loadGameContext() {
+  async function loadGames() {
     setIsLoading(true);
     setError("");
     try {
-      const response = await api.get<MyTeamsResponse>("/api/teams/my-teams/");
-      setTeams(response.data.teams);
+      const response = await api.get<MyGamesResponse>("/api/matchmaking/games/my/");
+      setData(response.data);
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "We could not load your game activity right now. Please try again."));
+      setError(getApiErrorMessage(requestError, "We could not load your game activity right now."));
     } finally {
       setIsLoading(false);
     }
   }
 
-  const captainTeams = useMemo(() => teams.filter((team) => team.is_captain), [teams]);
-  const memberTeams = teams.length - captainTeams.length;
-  const canManageGames = captainTeams.length > 0;
-
-  function handleUnavailableAction(action: string) {
-    emitToast({
-      message: `${action} will be available when games are opened for players.`,
-      type: "info",
-      dedupeKey: `games-action-${action}`,
-    });
-  }
+  const tabCounts = useMemo(() => {
+    if (!data) return {} as Record<Tab, number>;
+    return {
+      upcoming: data.upcoming.length,
+      hosted: data.hosted.length,
+      requests: data.requests.filter((item) => ["PENDING", "WAITLISTED", "INVITED"].includes(item.status)).length + data.incoming_requests.filter((item) => ["PENDING", "WAITLISTED", "INVITED"].includes(item.status)).length,
+      completed: data.completed.length,
+      cancelled: data.cancelled.length,
+    };
+  }, [data]);
 
   return (
     <div className="space-y-5">
-      <DashboardPageHeader
-        actions={
-          canManageGames ? (
-            <button
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sportGreen px-5 text-sm font-black text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200"
-              onClick={() => handleUnavailableAction("Open game creation")}
-              type="button"
-            >
-              <PlusIcon /> Create Open Game
-            </button>
-          ) : null
-        }
-        eyebrow="Match activity"
-        title="My Games"
-        description="Track upcoming Cricksal games, open-game requests, team challenges, and completed match activity from one place."
-      />
-
-      {isLoading ? (
-        <GamesSkeleton />
-      ) : error ? (
-        <ErrorState message={error} onRetry={loadGameContext} />
-      ) : (
-        <>
-          <section className="grid gap-3.5 md:grid-cols-3">
-            <ContextCard
-              icon={<ShieldIcon />}
-              label="Captain Teams"
-              value={captainTeams.length}
-              helper={captainTeams.length > 0 ? "Can manage team games" : "Create or captain a team to manage games"}
-              href="/dashboard/player/teams"
-            />
-            <ContextCard
-              icon={<UsersIcon />}
-              label="Member Teams"
-              value={memberTeams}
-              helper="Teams where you play as a member"
-              href="/dashboard/player/teams"
-            />
-            <ContextCard
-              icon={<CalendarIcon />}
-              label="Active Teams"
-              value={teams.length}
-              helper="Teams connected to your game activity"
-              href="/dashboard/player/teams"
-            />
-          </section>
-
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 px-4 pt-4 sm:px-5 sm:pt-5">
-              <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Game activity sections">
-                {tabs.map((tab) => (
-                  <TabButton
-                    active={activeTab === tab.key}
-                    key={tab.key}
-                    label={tab.label}
-                    onClick={() => setActiveTab(tab.key)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="p-4 sm:p-5">
-              {activeTab === "upcoming" ? <UpcomingTab /> : null}
-              {activeTab === "open" ? (
-                <OpenGamesTab
-                  captainTeams={captainTeams}
-                  canManageGames={canManageGames}
-                  onCreate={() => handleUnavailableAction("Open game creation")}
-                />
-              ) : null}
-              {activeTab === "requests" ? (
-                <JoinRequestsTab
-                  canManageGames={canManageGames}
-                  requestView={requestView}
-                  setRequestView={setRequestView}
-                />
-              ) : null}
-              {activeTab === "challenges" ? (
-                <ChallengesTab
-                  canManageGames={canManageGames}
-                  challengeView={challengeView}
-                  setChallengeView={setChallengeView}
-                />
-              ) : null}
-              {activeTab === "completed" ? <CompletedTab /> : null}
-            </div>
-          </section>
-        </>
-      )}
-    </div>
-  );
-}
-
-function UpcomingTab() {
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <EmptyPanel
-        actionHref="/find-game"
-        actionLabel="Find a Game"
-        description="Confirmed games involving you or your teams will appear here with venue, court, time, status, and Game Room access when available."
-        icon={<TrophyIcon />}
-        title="You have no upcoming games."
-      />
-      <GuidanceCard
-        title="How upcoming games appear"
-        points={[
-          "A game appears here only after it is confirmed.",
-          "Game Room access is shown only for confirmed participants.",
-          "Court bookings remain in My Bookings unless they are attached to a game.",
-        ]}
-      />
-    </div>
-  );
-}
-
-function OpenGamesTab({
-  captainTeams,
-  canManageGames,
-  onCreate,
-}: {
-  captainTeams: Team[];
-  canManageGames: boolean;
-  onCreate: () => void;
-}) {
-  return (
-    <div className="space-y-4">
-      {canManageGames ? (
-        <div className="flex flex-col gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-base font-black text-green-950">Create games for teams you captain</h2>
-            <p className="mt-1 text-sm leading-6 text-green-800">
-              {captainTeams.length === 1
-                ? `${captainTeams[0].name} can host open games when the game workflow is available.`
-                : `You captain ${captainTeams.length} teams that can host open games.`}
-            </p>
+      <DashboardPageHeader actions={<Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-5 text-sm font-black text-white shadow-sm hover:bg-green-700" href="/dashboard/player/games/create">Create Game</Link>} eyebrow="Find Games" title="My Games" description="Manage Pickup Games, Fill My Squad listings, requests and game rooms." />
+      {isLoading ? <GamesSkeleton /> : error ? <ErrorState message={error} onRetry={loadGames} /> : data ? (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-4 pt-4 sm:px-5"><div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Game sections">{tabs.map((tab) => <button aria-selected={activeTab === tab.key} className={`relative min-h-12 shrink-0 px-3 text-sm font-black transition ${activeTab === tab.key ? "text-sportGreen" : "text-slate-600 hover:text-sportNavy"}`} key={tab.key} onClick={() => setActiveTab(tab.key)} role="tab" type="button">{tab.label}{tabCounts[tab.key] ? <span className="ml-2 rounded-full bg-green-50 px-2 py-0.5 text-xs text-sportGreen">{tabCounts[tab.key]}</span> : null}{activeTab === tab.key ? <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-sportGreen" /> : null}</button>)}</div></div>
+          <div className="p-4 sm:p-5">
+            {activeTab === "upcoming" ? <GameGrid games={data.upcoming} emptyTitle="You have no upcoming games." emptyAction="Find a Game" emptyHref="/find-game" /> : null}
+            {activeTab === "hosted" ? <GameGrid games={data.hosted} emptyTitle="You have not created a game yet." emptyAction="Create Game" emptyHref="/dashboard/player/games/create" hostMode /> : null}
+            {activeTab === "requests" ? <RequestsSection data={data} onRefresh={loadGames} /> : null}
+            {activeTab === "completed" ? <GameGrid games={data.completed} emptyTitle="You have no completed games yet." /> : null}
+            {activeTab === "cancelled" ? <GameGrid games={data.cancelled} emptyTitle="You have no cancelled games." /> : null}
           </div>
-          <button
-            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200"
-            onClick={onCreate}
-            type="button"
-          >
-            Create Open Game
-          </button>
-        </div>
+        </section>
       ) : null}
-
-      <EmptyPanel
-        actionHref={canManageGames ? "/dashboard/player/teams" : "/dashboard/player/teams/create"}
-        actionLabel={canManageGames ? "View Captain Teams" : "Create a Team"}
-        description={
-          canManageGames
-            ? "Open games created by your captain teams will be listed here with requests, player needs, and management actions."
-            : "You need to captain a team before creating open games for other players to join."
-        }
-        icon={<WhistleIcon />}
-        title="You have not created any open games."
-      />
     </div>
   );
 }
 
-function JoinRequestsTab({
-  canManageGames,
-  requestView,
-  setRequestView,
-}: {
-  canManageGames: boolean;
-  requestView: RequestView;
-  setRequestView: (view: RequestView) => void;
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Join request views">
-        <PillButton active={requestView === "mine"} label="My Requests" onClick={() => setRequestView("mine")} />
-        {canManageGames ? (
-          <PillButton active={requestView === "captain"} label="Requests to My Games" onClick={() => setRequestView("captain")} />
-        ) : null}
-      </div>
-
-      {requestView === "captain" && canManageGames ? (
-        <EmptyPanel
-          description="Requests from players who want to join your open games will appear here with their SportSpot profile and reliability details."
-          icon={<UsersIcon />}
-          title="No players have requested to join your games."
-        />
-      ) : (
-        <EmptyPanel
-          actionHref="/find-game"
-          actionLabel="Find a Game"
-          description="Your requests to join open Cricksal games will appear here with pending, accepted, or declined status."
-          icon={<SearchIcon />}
-          title="You have no pending join requests."
-        />
-      )}
-    </div>
-  );
+function GameGrid({ emptyAction, emptyHref, emptyTitle, games, hostMode = false }: { games: MatchmakingGame[]; emptyTitle: string; emptyAction?: string; emptyHref?: string; hostMode?: boolean }) {
+  if (games.length === 0) return <EmptyState title={emptyTitle} action={emptyAction} href={emptyHref} />;
+  return <div className="grid gap-4 lg:grid-cols-2">{games.map((game) => <GameActivityCard game={game} hostMode={hostMode} key={game.id} />)}</div>;
 }
 
-function ChallengesTab({
-  canManageGames,
-  challengeView,
-  setChallengeView,
-}: {
-  canManageGames: boolean;
-  challengeView: ChallengeView;
-  setChallengeView: (view: ChallengeView) => void;
-}) {
-  const emptyCopy: Record<ChallengeView, { title: string; description: string }> = {
-    received: {
-      title: "You have no received challenges.",
-      description: canManageGames
-        ? "Challenges sent to teams you captain will appear here with accept, counter, or decline actions."
-        : "Received team challenges are managed by captains of your teams.",
-    },
-    sent: {
-      title: "You have no sent challenges.",
-      description: "Challenges sent by your captain teams will appear here with their latest response status.",
-    },
-    countered: {
-      title: "You have no counter-proposals.",
-      description: "Countered challenges will appear here when a captain proposes a different time, venue, or court.",
-    },
-    accepted: {
-      title: "You have no accepted challenges.",
-      description: "Accepted challenges will appear here before they become confirmed games.",
-    },
-    closed: {
-      title: "You have no closed challenges.",
-      description: "Declined, cancelled, and expired challenges will appear here for reference.",
-    },
-  };
-
-  const current = emptyCopy[challengeView];
-
+function GameActivityCard({ game, hostMode }: { game: MatchmakingGame; hostMode: boolean }) {
+  const isHost = hostMode || game.user_state.is_host;
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Challenge views">
-        {challengeViews.map((view) => (
-          <PillButton
-            active={challengeView === view.key}
-            key={view.key}
-            label={view.label}
-            onClick={() => setChallengeView(view.key)}
-          />
-        ))}
-      </div>
-      <EmptyPanel
-        actionHref="/challenge-teams"
-        actionLabel="Explore Teams"
-        description={current.description}
-        icon={<SwordsIcon />}
-        title={current.title}
-      />
-    </div>
-  );
-}
-
-function CompletedTab() {
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <EmptyPanel
-        actionHref="/dashboard/player/ratings"
-        actionLabel="View Ratings"
-        description="Completed games will appear here with result, attendance, and rating eligibility when match records are available."
-        icon={<StarIcon />}
-        title="You have no completed games yet."
-      />
-      <GuidanceCard
-        title="Rating eligibility"
-        points={[
-          "Ratings are available only after a match is completed.",
-          "Only participating players can rate.",
-          "Already-rated or expired rating windows will not show a rating action.",
-        ]}
-      />
-    </div>
-  );
-}
-
-function ContextCard({
-  helper,
-  href,
-  icon,
-  label,
-  value,
-}: {
-  helper: string;
-  href: string;
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <Link
-      className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-green-200"
-      href={href}
-    >
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-black text-slate-600">{label}</p>
-          <p className="mt-2 text-3xl font-black tracking-tight text-sportNavy">{value}</p>
-        </div>
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-50 text-sportGreen transition group-hover:bg-sportGreen group-hover:text-white">
-          {icon}
-        </span>
+        <div><div className="flex flex-wrap gap-2"><Badge tone="green">{game.game_type === "FILL_SQUAD" ? "Fill My Squad" : "Pickup"}</Badge><Badge tone={game.is_booking_verified ? "green" : "blue"}>{game.is_booking_verified ? "Verified Booking" : "Planning"}</Badge></div><h2 className="mt-3 text-xl font-black text-sportNavy">{game.title}</h2></div>
+        <StatusBadge status={game.status_label || game.status} />
       </div>
-      <p className="mt-3 text-sm leading-5 text-slate-500">{helper}</p>
-    </Link>
+      <div className="mt-4 grid gap-2 text-sm font-semibold text-slate-600 sm:grid-cols-2"><p>{game.venue_name}</p><p>{game.is_booking_verified ? game.court_name : game.preferred_area}</p><p>{formatDate(game.start_at)}</p><p>{game.booking_display_time}</p></div>
+      <div className="mt-4 flex flex-wrap gap-2"><span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">{game.occupied_spots_count}/{game.total_capacity} occupied</span><span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">{game.available_spots} spots left</span>{game.waitlist_count ? <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{game.waitlist_count} waitlisted</span> : null}</div>
+      {game.user_state.requires_reconfirmation ? <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">Your spot needs reconfirmation.</p> : null}
+      <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4"><Link className="rounded-xl bg-sportGreen px-4 py-2.5 text-sm font-black text-white" href={isHost ? `/dashboard/player/games/${game.id}` : `/find-game/${game.id}`}>{isHost ? "Manage Game" : "View Game"}</Link>{game.user_state.is_participant || game.user_state.is_host ? <Link className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-black text-slate-700" href={`/dashboard/player/games/${game.id}/room`}>{game.game_type === "FILL_SQUAD" ? (game.is_booking_verified ? "Squad Room" : "Squad Planning") : (game.is_booking_verified ? "Open Game Room" : "Planning Room")}</Link> : null}</div>
+    </article>
   );
 }
 
-function EmptyPanel({
-  actionHref,
-  actionLabel,
-  description,
-  icon,
-  title,
-}: {
-  actionHref?: string;
-  actionLabel?: string;
-  description: string;
-  icon: React.ReactNode;
-  title: string;
-}) {
-  return (
-    <section className="rounded-2xl border border-dashed border-green-300 bg-gradient-to-br from-green-50 to-white p-6 sm:p-8">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-sportGreen shadow-sm">
-          {icon}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-xl font-black text-sportNavy">{title}</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
-        </div>
-        {actionHref && actionLabel ? (
-          <Link
-            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200"
-            href={actionHref}
-          >
-            {actionLabel}
-          </Link>
-        ) : null}
-      </div>
-    </section>
-  );
+function RequestsSection({ data, onRefresh }: { data: MyGamesResponse; onRefresh: () => void }) { return <div className="grid gap-5 xl:grid-cols-2"><RequestList title="My Requests" requests={data.requests} onRefresh={onRefresh} /><RequestList title="Requests to My Games" requests={data.incoming_requests} hostMode onRefresh={onRefresh} /></div>; }
+
+function RequestList({ hostMode = false, onRefresh, requests, title }: { title: string; requests: JoinRequest[]; hostMode?: boolean; onRefresh: () => void }) {
+  if (requests.length === 0) return <EmptyState title={hostMode ? "No players have requested to join your games." : "You have no join requests."} />;
+  return <section className="rounded-2xl border border-slate-200 p-4"><h2 className="text-lg font-black text-sportNavy">{title}</h2><div className="mt-3 space-y-3">{requests.map((request) => <RequestCard hostMode={hostMode} key={request.id} onRefresh={onRefresh} request={request} />)}</div></section>;
 }
 
-function GuidanceCard({ points, title }: { points: string[]; title: string }) {
-  return (
-    <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-black uppercase tracking-[0.18em] text-sportGreen">Good to know</p>
-      <h2 className="mt-2 text-lg font-black text-sportNavy">{title}</h2>
-      <ul className="mt-4 space-y-3">
-        {points.map((point) => (
-          <li className="flex gap-3 text-sm leading-6 text-slate-600" key={point}>
-            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-sportGreen" />
-            <span>{point}</span>
-          </li>
-        ))}
-      </ul>
-    </aside>
-  );
+function RequestCard({ hostMode, onRefresh, request }: { request: JoinRequest; hostMode: boolean; onRefresh: () => void }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  async function act(decision: string) {
+    setIsSubmitting(true);
+    try {
+      if (hostMode) {
+        await api.post(`/api/matchmaking/requests/${request.id}/decide/`, { decision });
+        emitToast({ message: decision === "ACCEPT" ? "The player has been accepted." : decision === "WAITLIST" ? "The player has been waitlisted." : "The request has been declined.", type: "success", dedupeKey: `request-${request.id}-${decision}` });
+      } else if (request.status === "INVITED") {
+        await api.post(`/api/matchmaking/requests/${request.id}/respond-invitation/`, { response: decision });
+        emitToast({ message: decision === "ACCEPT" ? "You have joined the game." : "The game invitation has been declined.", type: "success", dedupeKey: `request-${request.id}-invite-${decision}` });
+      } else {
+        await api.post(`/api/matchmaking/requests/${request.id}/withdraw/`);
+        emitToast({ message: "Your request has been withdrawn.", type: "success", dedupeKey: `request-${request.id}-withdraw` });
+      }
+      onRefresh();
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not update this request."), type: "error", dedupeKey: `request-${request.id}-error` });
+    } finally { setIsSubmitting(false); }
+  }
+  const isInvitation = request.status === "INVITED" && !hostMode;
+  const canHostAct = hostMode && (request.status === "PENDING" || request.status === "WAITLISTED");
+  const canWithdraw = !hostMode && (request.status === "PENDING" || request.status === "WAITLISTED");
+  return <div className="rounded-xl bg-slate-50 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-black text-sportNavy">{hostMode ? request.player_name : request.game_title || `Game #${request.game}`}</p><p className="mt-1 text-sm font-semibold text-slate-600">{request.requested_role_label} - {isInvitation ? "invited" : formatStatus(request.status)}</p>{request.message ? <p className="mt-2 text-sm text-slate-600">{request.message}</p> : null}{hostMode ? <p className="mt-2 text-xs font-black text-sportGreen">{request.reliability_label || "New Player"}{request.average_rating ? ` - ${Number(request.average_rating).toFixed(1)}/5` : ""}</p> : null}</div><Badge>{isInvitation ? "invited" : formatStatus(request.status)}</Badge></div>{canHostAct || canWithdraw || isInvitation ? <div className="mt-3 flex flex-wrap gap-2">{canHostAct ? <><button className="rounded-lg bg-sportGreen px-3 py-2 text-xs font-black text-white disabled:opacity-60" disabled={isSubmitting} onClick={() => act("ACCEPT")} type="button">Accept</button><button className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-60" disabled={isSubmitting} onClick={() => act("WAITLIST")} type="button">Waitlist</button><button className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-600 disabled:opacity-60" disabled={isSubmitting} onClick={() => act("REJECT")} type="button">Decline</button></> : null}{canWithdraw ? <button className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-60" disabled={isSubmitting} onClick={() => act("WITHDRAW")} type="button">Withdraw</button> : null}{isInvitation ? <><button className="rounded-lg bg-sportGreen px-3 py-2 text-xs font-black text-white disabled:opacity-60" disabled={isSubmitting} onClick={() => act("ACCEPT")} type="button">Accept Invite</button><button className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-600 disabled:opacity-60" disabled={isSubmitting} onClick={() => act("DECLINE")} type="button">Decline</button></> : null}</div> : null}</div>;
 }
 
-function TabButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      aria-selected={active}
-      className={`relative min-h-12 shrink-0 px-3 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-green-200 ${
-        active ? "text-sportGreen" : "text-slate-600 hover:text-sportNavy"
-      }`}
-      onClick={onClick}
-      role="tab"
-      type="button"
-    >
-      {label}
-      {active ? <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-sportGreen" /> : null}
-    </button>
-  );
-}
-
-function PillButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      aria-pressed={active}
-      className={`min-h-10 shrink-0 rounded-full border px-4 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-green-200 ${
-        active
-          ? "border-sportGreen bg-sportGreen text-white"
-          : "border-slate-200 bg-white text-slate-600 hover:border-green-200 hover:text-sportGreen"
-      }`}
-      onClick={onClick}
-      type="button"
-    >
-      {label}
-    </button>
-  );
-}
-
-function GamesSkeleton() {
-  return (
-    <div className="space-y-5">
-      <section className="grid gap-3.5 md:grid-cols-3">
-        {[0, 1, 2].map((item) => (
-          <div className="h-36 animate-pulse rounded-2xl bg-slate-100" key={item} />
-        ))}
-      </section>
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex gap-3 overflow-hidden">
-          {[0, 1, 2, 3, 4].map((item) => (
-            <div className="h-10 w-24 shrink-0 animate-pulse rounded-full bg-slate-100" key={item} />
-          ))}
-        </div>
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
-          {[0, 1].map((item) => (
-            <div className="h-56 animate-pulse rounded-2xl bg-slate-100" key={item} />
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <section className="rounded-2xl border border-red-100 bg-red-50 p-6 shadow-sm">
-      <p className="text-sm font-black uppercase tracking-wide text-red-600">Games unavailable</p>
-      <h2 className="mt-2 text-2xl font-black text-red-950">We could not load your game activity.</h2>
-      <p className="mt-2 max-w-xl text-sm font-semibold leading-6 text-red-700">{message}</p>
-      <button
-        className="mt-5 min-h-11 rounded-xl bg-red-600 px-5 text-sm font-black text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-200"
-        onClick={onRetry}
-        type="button"
-      >
-        Retry
-      </button>
-    </section>
-  );
-}
-
-function PlusIcon() {
-  return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" /></svg>;
-}
-
-function ShieldIcon() {
-  return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.4 2.9 8.4 7 10 4.1-1.6 7-5.6 7-10V6l-7-3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" /></svg>;
-}
-
-function UsersIcon() {
-  return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M16 11a4 4 0 1 0-8 0M4 20a6 6 0 0 1 12 0M18 8a3 3 0 0 1 0 6M19 20a5 5 0 0 0-3-4.6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
-}
-
-function CalendarIcon() {
-  return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M7 3v4M17 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
-}
-
-function TrophyIcon() {
-  return <svg aria-hidden="true" className="h-6 w-6" fill="none" viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Zm10 2h3a3 3 0 0 1-3 3M7 6H4a3 3 0 0 0 3 3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
-}
-
-function WhistleIcon() {
-  return <svg aria-hidden="true" className="h-6 w-6" fill="none" viewBox="0 0 24 24"><path d="M5 10h8a4 4 0 0 1 0 8H9l-4-4v-4Zm12 1 3-3M18 14h3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
-}
-
-function SearchIcon() {
-  return <svg aria-hidden="true" className="h-6 w-6" fill="none" viewBox="0 0 24 24"><path d="m21 21-4.3-4.3M10.8 18a7.2 7.2 0 1 1 0-14.4 7.2 7.2 0 0 1 0 14.4Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
-}
-
-function SwordsIcon() {
-  return <svg aria-hidden="true" className="h-6 w-6" fill="none" viewBox="0 0 24 24"><path d="m14 7 3-3 3 3-3 3m0-6-5 5M4 20l6-6M4 4l16 16M8 16l-4 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
-}
-
-function StarIcon() {
-  return <svg aria-hidden="true" className="h-6 w-6" fill="none" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
-}
-
+function EmptyState({ action, description, href, title }: { title: string; description?: string; action?: string; href?: string }) { return <section className="rounded-2xl border border-dashed border-green-300 bg-green-50 p-8 text-center"><h2 className="text-xl font-black text-sportNavy">{title}</h2>{description ? <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">{description}</p> : null}{action && href ? <Link className="mt-5 inline-flex rounded-xl bg-sportGreen px-5 py-3 text-sm font-black text-white" href={href}>{action}</Link> : null}</section>; }
+function StatusBadge({ status }: { status: string }) { return <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black capitalize text-slate-600">{status.replace(/_/g, " ").toLowerCase()}</span>; }
+function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: "slate" | "green" | "blue" }) { const classes = tone === "green" ? "border-green-200 bg-green-50 text-sportGreen" : tone === "blue" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600"; return <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${classes}`}>{children}</span>; }
+function GamesSkeleton() { return <div className="space-y-4"><div className="h-14 animate-pulse rounded-2xl bg-white" /><div className="grid gap-4 lg:grid-cols-2">{[0, 1, 2, 3].map((item) => <div className="h-56 animate-pulse rounded-2xl bg-white" key={item} />)}</div></div>; }
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) { return <section className="rounded-2xl border border-red-100 bg-red-50 p-6"><h2 className="text-xl font-black text-red-950">We could not load your games.</h2><p className="mt-2 text-sm font-semibold text-red-700">{message}</p><button className="mt-5 rounded-xl bg-red-600 px-5 py-3 text-sm font-black text-white" onClick={onRetry} type="button">Retry</button></section>; }
+function formatDate(value: string | null) { if (!value) return "Date to be confirmed"; return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
+function formatStatus(value: string) { return value.replace(/_/g, " ").toLowerCase(); }

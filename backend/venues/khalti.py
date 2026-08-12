@@ -61,7 +61,10 @@ def build_return_url(booking):
     if not return_path.startswith("/"):
         return_path = f"/{return_path}"
     separator = "&" if "?" in return_path else "?"
-    return f"{frontend_url}{return_path}{separator}booking_id={booking.id}"
+    url = f"{frontend_url}{return_path}{separator}booking_id={booking.id}"
+    if getattr(booking, "matchmaking_game_id", None):
+        url = f"{url}&matchmaking_game={booking.matchmaking_game_id}"
+    return url
 
 
 def khalti_post(path, payload):

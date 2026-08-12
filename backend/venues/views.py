@@ -7,6 +7,7 @@ from django.db.models import Prefetch, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -41,6 +42,15 @@ from .reference_data import (
 )
 from .permissions import IsAdminRole, IsCourtOwner, IsPlayer
 from .serializers import AdminVenueSerializer, BookingMessageSerializer, BookingSerializer, CourtSerializer, PublicCourtDetailSerializer, PublicVenueSerializer, SlotSerializer, VenuePhotoSerializer, VenueSerializer
+
+
+def readable_error(exc):
+    detail = getattr(exc, "detail", exc)
+    if isinstance(detail, list):
+        return " ".join(str(item) for item in detail)
+    if isinstance(detail, dict):
+        return " ".join(str(item) for values in detail.values() for item in (values if isinstance(values, list) else [values]))
+    return str(detail)
 
 
 class OwnerVenueView(APIView):
@@ -1383,6 +1393,35 @@ class BookingReserveView(APIView):
         if not slot_ids:
             return Response({"detail": "Select at least one slot."}, status=status.HTTP_400_BAD_REQUEST)
 
+        matchmaking_game = None
+        matchmaking_game_id = request.data.get("matchmaking_game_id")
+        if matchmaking_game_id:
+            try:
+                from matchmaking.models import Game
+                from matchmaking.services import validate_game_booking_handoff
+
+                matchmaking_game = Game.objects.select_for_update().get(id=int(matchmaking_game_id))
+                validate_game_booking_handoff(matchmaking_game, request.user)
+            except (TypeError, ValueError):
+                return Response({"detail": "Choose a valid game plan."}, status=status.HTTP_400_BAD_REQUEST)
+            except Game.DoesNotExist:
+                return Response({"detail": "Game plan not found."}, status=status.HTTP_404_NOT_FOUND)
+            except ValidationError as exc:
+                return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            existing_booking = Booking.objects.select_for_update().filter(
+                player=request.user,
+                matchmaking_game=matchmaking_game,
+                status=Booking.BookingStatus.RESERVED,
+                payment_status=Booking.PaymentStatus.PENDING,
+                reserved_until__gt=timezone.now(),
+            ).prefetch_related("slot_items__slot").first()
+            if existing_booking:
+                existing_slot_ids = set(get_booking_slot_ids(existing_booking))
+                if existing_slot_ids == set(slot_ids):
+                    return Response({"booking": BookingSerializer(existing_booking, context={"request": request}).data}, status=status.HTTP_200_OK)
+                return Response({"detail": "This game already has a court reservation waiting for payment. Complete that payment or wait for the hold to expire before choosing another slot."}, status=status.HTTP_400_BAD_REQUEST)
+
         slots = list(
             CourtSlot.objects.select_for_update()
             .select_related("court", "court__venue")
@@ -1425,6 +1464,7 @@ class BookingReserveView(APIView):
             cancellation_policy_snapshot=build_cancellation_policy_snapshot(
                 slots[0].court.venue
             ),
+            matchmaking_game=matchmaking_game,
         )
         BookingSlot.objects.bulk_create([BookingSlot(booking=booking, slot=slot, price=slot.price) for slot in slots])
         notify_owner_booking_reserved(booking, request.user)
@@ -1460,47 +1500,12 @@ class KhaltiPaymentInitiateView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, booking_id):
-        booking = get_object_or_404(
-            Booking.objects.select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot"),
-            pk=booking_id,
-            player=request.user,
-        )
-        refresh_booking_lifecycle(booking)
-
-        if booking.status != Booking.BookingStatus.RESERVED or booking.payment_status != Booking.PaymentStatus.PENDING:
-            return Response({"detail": "This booking is no longer waiting for payment."}, status=status.HTTP_400_BAD_REQUEST)
-
-        if booking.reserved_until <= timezone.now():
-            booking.expire_and_release()
-            return Response({"detail": "This reservation has expired. Please choose another slot."}, status=status.HTTP_400_BAD_REQUEST)
-
-        if booking.payment_provider == Booking.PaymentProvider.KHALTI and booking.khalti_pidx and booking.khalti_payment_url:
-            return Response(
-                {
-                    "pidx": booking.khalti_pidx,
-                    "payment_url": booking.khalti_payment_url,
-                    "booking": BookingSerializer(booking, context={"request": request}).data,
-                }
-            )
-
-        try:
-            khalti_response = initiate_khalti_payment(booking)
-        except KhaltiConfigurationError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        except KhaltiAPIError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
-
-        pidx = khalti_response.get("pidx")
-        payment_url = khalti_response.get("payment_url")
-        if not pidx or not payment_url:
-            return Response({"detail": "Khalti did not return a valid payment URL."}, status=status.HTTP_502_BAD_GATEWAY)
-
         with transaction.atomic():
             locked_booking = get_object_or_404(
                 Booking.objects.select_for_update()
                 .select_related("player", "venue", "court", "slot")
                 .prefetch_related("slot_items__slot"),
-                pk=booking.id,
+                pk=booking_id,
                 player=request.user,
             )
             refresh_booking_lifecycle(locked_booking)
@@ -1509,6 +1514,27 @@ class KhaltiPaymentInitiateView(APIView):
             if locked_booking.reserved_until <= timezone.now():
                 locked_booking.expire_and_release()
                 return Response({"detail": "This reservation has expired. Please choose another slot."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if locked_booking.payment_provider == Booking.PaymentProvider.KHALTI and locked_booking.khalti_pidx and locked_booking.khalti_payment_url:
+                return Response(
+                    {
+                        "pidx": locked_booking.khalti_pidx,
+                        "payment_url": locked_booking.khalti_payment_url,
+                        "booking": BookingSerializer(locked_booking, context={"request": request}).data,
+                    }
+                )
+
+            try:
+                khalti_response = initiate_khalti_payment(locked_booking)
+            except KhaltiConfigurationError as error:
+                return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            except KhaltiAPIError as error:
+                return Response({"detail": str(error)}, status=status.HTTP_502_BAD_GATEWAY)
+
+            pidx = khalti_response.get("pidx")
+            payment_url = khalti_response.get("payment_url")
+            if not pidx or not payment_url:
+                return Response({"detail": "Khalti did not return a valid payment URL."}, status=status.HTTP_502_BAD_GATEWAY)
 
             locked_booking.payment_provider = Booking.PaymentProvider.KHALTI
             locked_booking.khalti_pidx = pidx
@@ -1528,11 +1554,101 @@ class KhaltiPaymentInitiateView(APIView):
 
         return Response(
             {
-                "pidx": pidx,
-                "payment_url": payment_url,
+                "pidx": locked_booking.khalti_pidx,
+                "payment_url": locked_booking.khalti_payment_url,
                 "booking": BookingSerializer(locked_booking, context={"request": request}).data,
             }
         )
+
+
+KHALTI_COMPLETED_STATUSES = {"Completed"}
+KHALTI_PENDING_STATUSES = {"Pending", "Initiated"}
+
+
+def can_confirm_khalti_booking(booking, slots):
+    slot_ids = set(get_booking_slot_ids(booking))
+    if len(slots) != len(slot_ids):
+        return False
+    return all(slot_is_still_held_for_booking(slot, booking) for slot in slots)
+
+
+def slot_is_still_held_for_booking(slot, booking):
+    if slot.status != CourtSlot.Status.RESERVED or not slot.reserved_until:
+        return False
+    return abs((slot.reserved_until - booking.reserved_until).total_seconds()) <= 2
+
+
+def mark_khalti_payment_for_refund(booking, slots, pidx, khalti_status, khalti_response, reason):
+    now = timezone.now()
+    booking.status = Booking.BookingStatus.EXPIRED
+    booking.payment_status = Booking.PaymentStatus.REFUND_PENDING
+    booking.payment_provider = Booking.PaymentProvider.KHALTI
+    booking.khalti_pidx = pidx
+    booking.khalti_status = khalti_status or "Completed"
+    booking.khalti_transaction_id = str(khalti_response.get("transaction_id") or "")
+    booking.khalti_response = khalti_response
+    booking.refund_status = Booking.RefundStatus.PENDING_OWNER_ACTION
+    booking.refund_reason = reason
+    booking.refund_requested_at = now
+    booking.cancellation_tier = Booking.CancellationTier.OWNER_FULL_REFUND
+    booking.refund_percentage = 100
+    booking.refund_amount = booking.amount
+    booking.save(
+        update_fields=[
+            "status",
+            "payment_status",
+            "payment_provider",
+            "khalti_pidx",
+            "khalti_status",
+            "khalti_transaction_id",
+            "khalti_response",
+            "refund_status",
+            "refund_reason",
+            "refund_requested_at",
+            "cancellation_tier",
+            "refund_percentage",
+            "refund_amount",
+            "updated_at",
+        ]
+    )
+    CourtSlot.objects.filter(id__in=[slot.id for slot in slots if slot_is_still_held_for_booking(slot, booking)]).update(
+        status=CourtSlot.Status.AVAILABLE,
+        reserved_until=None,
+        updated_at=now,
+    )
+
+
+def attach_matchmaking_game_after_payment(booking, actor):
+    if not booking.matchmaking_game_id:
+        return None, ""
+    try:
+        from matchmaking.models import Game
+        from matchmaking.services import attach_booking_to_game
+
+        game = Game.objects.select_related("host", "booking").filter(id=booking.matchmaking_game_id).first()
+        if not game:
+            return None, "Your booking was confirmed, but the game plan could not be found. You can still manage the booking from My Bookings."
+        updated_game = attach_booking_to_game(game, booking, actor)
+        return updated_game, ""
+    except Exception as exc:
+        if exc.__class__.__name__ == "ValidationError":
+            return None, f"Your booking was confirmed, but we could not update the game automatically: {readable_error(exc)}"
+        raise
+
+
+def booking_verification_response_payload(booking, request, detail="", game=None):
+    payload = {"booking": BookingSerializer(booking, context={"request": request}).data}
+    if detail:
+        payload["detail"] = detail
+    if game:
+        payload["matchmaking_game"] = {
+            "id": game.id,
+            "title": game.title,
+            "requires_reconfirmation": game.requires_reconfirmation,
+            "room_url": f"/dashboard/player/games/{game.id}/room",
+            "manage_url": f"/dashboard/player/games/{game.id}",
+        }
+    return payload
 
 
 class KhaltiPaymentVerifyView(APIView):
@@ -1568,8 +1684,83 @@ class KhaltiPaymentVerifyView(APIView):
                 pk=booking.id,
                 player=request.user,
             )
+            if locked_booking.khalti_pidx and pidx != locked_booking.khalti_pidx:
+                return Response({"detail": "Khalti payment reference does not match this booking."}, status=status.HTTP_400_BAD_REQUEST)
+
             slot_ids = get_booking_slot_ids(locked_booking)
             slots = list(CourtSlot.objects.select_for_update().filter(id__in=slot_ids))
+
+            if locked_booking.status == Booking.BookingStatus.CONFIRMED and locked_booking.payment_status == Booking.PaymentStatus.PAID:
+                locked_booking.khalti_status = khalti_status or locked_booking.khalti_status
+                locked_booking.khalti_response = khalti_response
+                locked_booking.save(update_fields=["khalti_status", "khalti_response", "updated_at"])
+                updated_game, attach_detail = attach_matchmaking_game_after_payment(locked_booking, request.user)
+                return Response(booking_verification_response_payload(locked_booking, request, attach_detail, updated_game))
+
+            if khalti_status in KHALTI_COMPLETED_STATUSES:
+                paid_amount = khalti_response.get("total_amount") or khalti_response.get("amount")
+                if paid_amount is not None and int(paid_amount) != npr_to_paisa(locked_booking.amount):
+                    mark_khalti_payment_for_refund(
+                        locked_booking,
+                        slots,
+                        pidx,
+                        khalti_status,
+                        khalti_response,
+                        "Khalti payment was completed, but the paid amount did not match the booking total. The payment needs refund review.",
+                    )
+                    notify_owner_refund_requested(locked_booking, request.user)
+                    return Response(
+                        {
+                            "detail": "Payment was received, but we could not confirm this booking. A refund review has been started.",
+                            "booking": BookingSerializer(locked_booking, context={"request": request}).data,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+
+                if locked_booking.status == Booking.BookingStatus.RESERVED and can_confirm_khalti_booking(locked_booking, slots):
+                    locked_booking.status = Booking.BookingStatus.CONFIRMED
+                    locked_booking.payment_status = Booking.PaymentStatus.PAID
+                    locked_booking.payment_provider = Booking.PaymentProvider.KHALTI
+                    locked_booking.khalti_pidx = pidx
+                    locked_booking.khalti_status = khalti_status
+                    locked_booking.khalti_transaction_id = str(khalti_response.get("transaction_id") or "")
+                    locked_booking.khalti_response = khalti_response
+                    locked_booking.confirmed_at = timezone.now()
+                    locked_booking.save(
+                        update_fields=[
+                            "status",
+                            "payment_status",
+                            "payment_provider",
+                            "khalti_pidx",
+                            "khalti_status",
+                            "khalti_transaction_id",
+                            "khalti_response",
+                            "confirmed_at",
+                            "updated_at",
+                        ]
+                    )
+                    CourtSlot.objects.filter(id__in=slot_ids).update(status=CourtSlot.Status.BOOKED, reserved_until=None, updated_at=timezone.now())
+                    notify_booking_confirmed(locked_booking, request.user)
+                    updated_game, attach_detail = attach_matchmaking_game_after_payment(locked_booking, request.user)
+                    return Response(booking_verification_response_payload(locked_booking, request, attach_detail, updated_game))
+
+                mark_khalti_payment_for_refund(
+                    locked_booking,
+                    slots,
+                    pidx,
+                    khalti_status,
+                    khalti_response,
+                    "Khalti payment was completed after the reservation was no longer safely available. The payment needs refund review.",
+                )
+                notify_owner_refund_requested(locked_booking, request.user)
+                return Response(
+                    {
+                        "detail": "Payment was received, but the reserved court time was no longer available. A refund review has been started.",
+                        "booking": BookingSerializer(locked_booking, context={"request": request}).data,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
             if locked_booking.status == Booking.BookingStatus.RESERVED and locked_booking.reserved_until <= timezone.now():
                 locked_booking.status = Booking.BookingStatus.EXPIRED
                 locked_booking.payment_status = Booking.PaymentStatus.FAILED
@@ -1592,7 +1783,7 @@ class KhaltiPaymentVerifyView(APIView):
                         "updated_at",
                     ]
                 )
-                CourtSlot.objects.filter(id__in=[slot.id for slot in slots if slot.status == CourtSlot.Status.RESERVED]).update(
+                CourtSlot.objects.filter(id__in=[slot.id for slot in slots if slot_is_still_held_for_booking(slot, locked_booking)]).update(
                     status=CourtSlot.Status.AVAILABLE,
                     reserved_until=None,
                     updated_at=timezone.now(),
@@ -1606,12 +1797,6 @@ class KhaltiPaymentVerifyView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if locked_booking.status == Booking.BookingStatus.CONFIRMED and locked_booking.payment_status == Booking.PaymentStatus.PAID:
-                locked_booking.khalti_status = khalti_status or locked_booking.khalti_status
-                locked_booking.khalti_response = khalti_response
-                locked_booking.save(update_fields=["khalti_status", "khalti_response", "updated_at"])
-                return Response({"booking": BookingSerializer(locked_booking, context={"request": request}).data})
-
             if locked_booking.status != Booking.BookingStatus.RESERVED:
                 locked_booking.khalti_status = khalti_status or locked_booking.khalti_status
                 locked_booking.khalti_response = khalti_response
@@ -1624,37 +1809,7 @@ class KhaltiPaymentVerifyView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if khalti_status == "Completed":
-                paid_amount = khalti_response.get("total_amount") or khalti_response.get("amount")
-                if paid_amount is not None and int(paid_amount) != npr_to_paisa(locked_booking.amount):
-                    return Response({"detail": "Khalti amount does not match this booking."}, status=status.HTTP_400_BAD_REQUEST)
-
-                locked_booking.status = Booking.BookingStatus.CONFIRMED
-                locked_booking.payment_status = Booking.PaymentStatus.PAID
-                locked_booking.payment_provider = Booking.PaymentProvider.KHALTI
-                locked_booking.khalti_pidx = pidx
-                locked_booking.khalti_status = khalti_status
-                locked_booking.khalti_transaction_id = str(khalti_response.get("transaction_id") or "")
-                locked_booking.khalti_response = khalti_response
-                locked_booking.confirmed_at = timezone.now()
-                locked_booking.save(
-                    update_fields=[
-                        "status",
-                        "payment_status",
-                        "payment_provider",
-                        "khalti_pidx",
-                        "khalti_status",
-                        "khalti_transaction_id",
-                        "khalti_response",
-                        "confirmed_at",
-                        "updated_at",
-                    ]
-                )
-                CourtSlot.objects.filter(id__in=slot_ids).update(status=CourtSlot.Status.BOOKED, reserved_until=None, updated_at=timezone.now())
-                notify_booking_confirmed(locked_booking, request.user)
-                return Response({"booking": BookingSerializer(locked_booking, context={"request": request}).data})
-
-            if khalti_status in ["Pending", "Initiated"]:
+            if khalti_status in KHALTI_PENDING_STATUSES:
                 locked_booking.payment_provider = Booking.PaymentProvider.KHALTI
                 locked_booking.khalti_pidx = pidx
                 locked_booking.khalti_status = khalti_status
@@ -1691,14 +1846,13 @@ class KhaltiPaymentVerifyView(APIView):
                     "updated_at",
                 ]
             )
-            CourtSlot.objects.filter(id__in=[slot.id for slot in slots if slot.status == CourtSlot.Status.RESERVED]).update(
+            CourtSlot.objects.filter(id__in=[slot.id for slot in slots if slot_is_still_held_for_booking(slot, locked_booking)]).update(
                 status=CourtSlot.Status.AVAILABLE,
                 reserved_until=None,
                 updated_at=timezone.now(),
             )
             notify_booking_payment_failed(locked_booking, request.user)
             return Response({"booking": BookingSerializer(locked_booking, context={"request": request}).data})
-
 
 class BookingCancelView(APIView):
     permission_classes = [permissions.IsAuthenticated]

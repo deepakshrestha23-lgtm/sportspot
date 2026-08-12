@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
@@ -13,6 +13,8 @@ import type { Booking } from "@/types/venue";
 export default function PaymentPage() {
   const params = useParams<{ bookingId: string }>();
   const bookingId = params.bookingId;
+  const searchParams = useSearchParams();
+  const matchmakingGameId = searchParams.get("matchmaking_game");
   const [booking, setBooking] = useState<Booking | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingKhalti, setIsStartingKhalti] = useState(false);
@@ -124,6 +126,13 @@ export default function PaymentPage() {
 
   return (
     <div className="space-y-6">
+      {matchmakingGameId || booking.matchmaking_game ? (
+        <section className="rounded-xl border border-green-200 bg-green-50 p-4 shadow-sm">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-sportGreen">Game Booking Handoff</p>
+          <p className="mt-1 text-sm font-semibold text-green-900">After Khalti confirms payment, SportSpot will attach this court booking to {booking.matchmaking_game_title || "your game plan"} automatically.</p>
+        </section>
+      ) : null}
+
       <section className="overflow-hidden rounded-xl bg-sportNavy text-white shadow-sm">
         <div className="grid gap-6 p-6 lg:grid-cols-[1fr_340px]">
           <div>

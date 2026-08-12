@@ -506,7 +506,7 @@ class ReservationExpiryLifecycleTests(APITestCase):
             1,
         )
 
-    def test_khalti_success_after_expiry_is_blocked_and_slots_are_released(self):
+    def test_khalti_success_after_expiry_confirms_when_original_slots_are_still_held(self):
         booking, slots = self.create_reserved_booking(expired=True)
         booking.payment_provider = Booking.PaymentProvider.KHALTI
         booking.khalti_pidx = "expired-pidx"
@@ -524,13 +524,15 @@ class ReservationExpiryLifecycleTests(APITestCase):
                     format="json",
                 )
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
         booking.refresh_from_db()
-        self.assertEqual(booking.status, Booking.BookingStatus.EXPIRED)
-        self.assertEqual(booking.payment_status, Booking.PaymentStatus.FAILED)
+        self.assertEqual(booking.status, Booking.BookingStatus.CONFIRMED)
+        self.assertEqual(booking.payment_status, Booking.PaymentStatus.PAID)
+        self.assertEqual(booking.khalti_transaction_id, "late-txn")
         for slot in slots:
             slot.refresh_from_db()
-            self.assertEqual(slot.status, CourtSlot.Status.AVAILABLE)
+            self.assertEqual(slot.status, CourtSlot.Status.BOOKED)
+            self.assertIsNone(slot.reserved_until)
 
     def test_future_reservation_is_not_expired_by_command(self):
         booking, slots = self.create_reserved_booking(expired=False)
@@ -615,6 +617,85 @@ class KhaltiPaymentApiTests(APITestCase):
         self.assertEqual(self.booking.payment_provider, Booking.PaymentProvider.KHALTI)
         self.assertEqual(self.booking.khalti_pidx, "test-pidx-1")
         self.assertEqual(response.data["payment_url"], "https://pay.khalti.com/test")
+
+    def test_khalti_initiate_is_idempotent_for_existing_payment_reference(self):
+        self.client.force_authenticate(self.player)
+
+        with patch(
+            "venues.views.initiate_khalti_payment",
+            return_value={"pidx": "same-pidx", "payment_url": "https://pay.khalti.com/same"},
+        ) as mocked_initiate:
+            first_response = self.client.post(reverse("khalti-payment-initiate", args=[self.booking.id]), {}, format="json")
+            second_response = self.client.post(reverse("khalti-payment-initiate", args=[self.booking.id]), {}, format="json")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(first_response.data["pidx"], "same-pidx")
+        self.assertEqual(second_response.data["pidx"], "same-pidx")
+        mocked_initiate.assert_called_once()
+
+    def test_khalti_completed_after_slots_released_starts_refund_review(self):
+        self.booking.reserved_until = timezone.now() - timedelta(minutes=5)
+        self.booking.payment_provider = Booking.PaymentProvider.KHALTI
+        self.booking.khalti_pidx = "released-pidx"
+        self.booking.save()
+        self.slot.status = CourtSlot.Status.AVAILABLE
+        self.slot.reserved_until = None
+        self.slot.save()
+        self.client.force_authenticate(self.player)
+
+        with patch(
+            "venues.views.lookup_khalti_payment",
+            return_value={"status": "Completed", "total_amount": 150000, "transaction_id": "late-paid-txn"},
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(
+                    reverse("khalti-payment-verify", args=[self.booking.id]),
+                    {"pidx": "released-pidx"},
+                    format="json",
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.booking.refresh_from_db()
+        self.slot.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.BookingStatus.EXPIRED)
+        self.assertEqual(self.booking.payment_status, Booking.PaymentStatus.REFUND_PENDING)
+        self.assertEqual(self.booking.refund_status, Booking.RefundStatus.PENDING_OWNER_ACTION)
+        self.assertEqual(self.booking.refund_percentage, 100)
+        self.assertEqual(self.booking.refund_amount, Decimal("1500.00"))
+        self.assertEqual(self.booking.khalti_transaction_id, "late-paid-txn")
+        self.assertEqual(self.slot.status, CourtSlot.Status.AVAILABLE)
+
+    def test_khalti_completed_after_slot_re_reserved_starts_refund_review_without_releasing_new_hold(self):
+        self.booking.reserved_until = timezone.now() - timedelta(minutes=5)
+        self.booking.payment_provider = Booking.PaymentProvider.KHALTI
+        self.booking.khalti_pidx = "reused-pidx"
+        self.booking.save()
+        new_hold_until = timezone.now() + timedelta(minutes=10)
+        self.slot.status = CourtSlot.Status.RESERVED
+        self.slot.reserved_until = new_hold_until
+        self.slot.save()
+        self.client.force_authenticate(self.player)
+
+        with patch(
+            "venues.views.lookup_khalti_payment",
+            return_value={"status": "Completed", "total_amount": 150000, "transaction_id": "reused-paid-txn"},
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(
+                    reverse("khalti-payment-verify", args=[self.booking.id]),
+                    {"pidx": "reused-pidx"},
+                    format="json",
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.booking.refresh_from_db()
+        self.slot.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.BookingStatus.EXPIRED)
+        self.assertEqual(self.booking.payment_status, Booking.PaymentStatus.REFUND_PENDING)
+        self.assertEqual(self.booking.refund_status, Booking.RefundStatus.PENDING_OWNER_ACTION)
+        self.assertEqual(self.slot.status, CourtSlot.Status.RESERVED)
+        self.assertEqual(self.slot.reserved_until, new_hold_until)
 
     def test_khalti_completed_lookup_confirms_booking_and_books_slot(self):
         self.booking.payment_provider = Booking.PaymentProvider.KHALTI

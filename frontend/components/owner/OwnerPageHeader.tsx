@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export function OwnerDashboardContent({ children }: { children: ReactNode }) {
-  return <div className="mx-auto w-full max-w-7xl space-y-6">{children}</div>;
+  return <div className="sport-page-content">{children}</div>;
 }
 
 export function OwnerPageHeader({
@@ -16,11 +16,11 @@ export function OwnerPageHeader({
   title: string;
 }) {
   return (
-    <header className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:flex-row lg:items-start lg:justify-between">
+    <header className="sport-page-header">
       <div className="min-w-0">
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-sportGreen">{eyebrow}</p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight text-sportNavy sm:text-3xl">{title}</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
+        <p className="sport-eyebrow">{eyebrow}</p>
+        <h1 className="sport-page-title">{title}</h1>
+        <p className="sport-page-description max-w-3xl">{description}</p>
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </header>

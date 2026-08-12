@@ -49,7 +49,7 @@ export default function VenueOwnerDashboardLayout({ children }: { children: Reac
 
   return (
     <RoleGate allowedRoles={["COURT_OWNER"]}>
-      <div className="min-h-[calc(100vh-73px)] bg-slate-50">
+      <div className="min-h-[calc(100vh-68px)] bg-slate-50">
 
         <div className="flex min-w-0">
           <VenueOwnerSidebar isLoading={isVenueLoading} venue={venue} />

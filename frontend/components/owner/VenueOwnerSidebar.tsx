@@ -22,8 +22,8 @@ export function VenueOwnerSidebar({ isLoading, venue }: { isLoading: boolean; ve
   const navItems = getOwnerDashboardNavItems(lifecycleState);
 
   return (
-    <aside className="hidden w-[256px] shrink-0 border-r border-slate-200 bg-white lg:block">
-      <div className="sticky top-[73px] flex h-[calc(100vh-73px)] flex-col px-4 py-5">
+    <aside className="hidden w-[256px] shrink-0 border-r border-slate-200/80 bg-white lg:block">
+      <div className="sticky top-[68px] flex h-[calc(100vh-68px)] flex-col px-4 py-5">
         <VenueOwnerSidebarHeader />
 
         <nav aria-label="Venue Manager" className="mt-5 space-y-1">
@@ -67,9 +67,9 @@ function VenueOwnerSidebarSkeleton() {
 }
 export function VenueOwnerSidebarHeader() {
   return (
-    <div className="rounded-lg border border-green-100 bg-green-50/70 px-4 py-3">
-      <p className="text-sm font-black text-sportNavy">Venue Manager</p>
-      <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">Manage your venue operations</p>
+    <div className="border-b border-slate-100 px-2 pb-4">
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sportGreen">SportSpot</p>
+      <p className="mt-1 text-sm font-semibold text-sportNavy">Venue Manager</p>
     </div>
   );
 }
@@ -86,7 +86,7 @@ export function VenueOwnerSidebarItem({
   return (
     <Link
       aria-current={isActive ? "page" : undefined}
-      className={`group relative flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-black outline-none transition focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${
+      className={`group relative flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${
         isActive ? "bg-green-50 text-green-800" : "text-slate-600 hover:bg-slate-50 hover:text-sportNavy"
       }`}
       href={item.href}

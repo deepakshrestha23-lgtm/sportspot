@@ -479,6 +479,7 @@ class BookingSerializer(serializers.ModelSerializer):
     cancellation_quote = serializers.SerializerMethodField()
     cancellation_policy_details = serializers.SerializerMethodField()
     venue_messages = BookingMessageSerializer(many=True, read_only=True)
+    matchmaking_game_title = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -540,6 +541,8 @@ class BookingSerializer(serializers.ModelSerializer):
             "cancellation_reason",
             "cancellation_slot_action",
             "cancellation_policy_snapshot",
+            "matchmaking_game",
+            "matchmaking_game_title",
             "cancellation_tier",
             "refund_percentage",
             "refund_amount",
@@ -548,6 +551,9 @@ class BookingSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = fields
+
+    def get_matchmaking_game_title(self, booking):
+        return booking.matchmaking_game.title if booking.matchmaking_game_id else ""
 
     def get_venue_primary_image(self, booking):
         photo = booking.venue.photos.order_by("id").first()
