@@ -305,6 +305,87 @@ class PickupGameApiTests(APITestCase):
         self.assertEqual(second.status_code, 400, second.data)
         self.assertEqual(JoinRequest.objects.filter(game=game, player=self.player_one).count(), 1)
 
+    def test_invitations_cannot_be_sent_after_recruitment_deadline(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Closed invitation test",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() - timedelta(minutes=1),
+        )
+        GameRoleRequirement.objects.create(game=game, role="ANY", required_count=3)
+        GameParticipant.objects.create(
+            game=game,
+            user=self.host,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            role="ANY",
+        )
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(
+            reverse("matchmaking-game-invite", args=[game.id]),
+            {"sportspot_id": self.player_one.player_profile.sportspot_id, "requested_role": "ANY"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertFalse(JoinRequest.objects.filter(game=game, player=self.player_one).exists())
+
+    def test_maintenance_recovers_cancelled_game_requests_and_is_idempotent(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Cancelled maintenance test",
+            status=Game.Status.CANCELLED,
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        request = JoinRequest.objects.create(
+            game=game,
+            player=self.player_one,
+            requested_role="ANY",
+            attendance_confirmed=True,
+        )
+
+        first = expire_matchmaking_deadlines()
+        request.refresh_from_db()
+        self.assertEqual(request.status, JoinRequest.Status.EXPIRED)
+        self.assertGreaterEqual(first["requests_expired"], 1)
+
+        second = expire_matchmaking_deadlines()
+        self.assertEqual(second["requests_expired"], 0)
+
+    def test_maintenance_batch_only_processes_due_games(self):
+        future_game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Future game should wait",
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        expired_game = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Expired game should run",
+            proposed_date=timezone.localdate() + timedelta(days=2),
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() - timedelta(minutes=1),
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+
+        stats = expire_matchmaking_deadlines(limit=1)
+
+        future_game.refresh_from_db()
+        expired_game.refresh_from_db()
+        self.assertEqual(future_game.status, Game.Status.RECRUITING)
+        self.assertEqual(expired_game.status, Game.Status.CANCELLED)
+        self.assertGreaterEqual(stats["games_cancelled"], 1)
     def test_invitation_cannot_be_accepted_after_recruitment_deadline(self):
         game = Game.objects.create(
             host=self.host,

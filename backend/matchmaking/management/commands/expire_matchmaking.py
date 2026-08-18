@@ -12,9 +12,24 @@ class Command(BaseCommand):
             action="store_true",
             help="Report the lifecycle changes without writing to the database.",
         )
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=100,
+            help="Maximum due games to process in this pass.",
+        )
+        parser.add_argument(
+            "--no-notify",
+            action="store_true",
+            help="Expire records without creating in-app notifications.",
+        )
 
     def handle(self, *args, **options):
-        stats = expire_matchmaking_deadlines(dry_run=options["dry_run"])
+        stats = expire_matchmaking_deadlines(
+            dry_run=options["dry_run"],
+            notify=not options["no_notify"],
+            limit=max(1, options["limit"]),
+        )
         prefix = "Dry run: " if options["dry_run"] else ""
         self.stdout.write(
             self.style.SUCCESS(

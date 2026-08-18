@@ -747,6 +747,24 @@ Lifecycle scheduling limitation: the repository provides the idempotent
 install or configure a production scheduler. Deployment must run the one-shot
 command at a regular interval.
 
+Matchmaking expiry is part of the same platform maintenance pass. It:
+
+- closes recruitment when the recruitment deadline passes;
+- cancels an unbooked Plan First game when its court-booking deadline passes;
+- moves games to In Progress or Completed from their real start/end timestamps;
+- expires pending, waitlisted and invited requests when recruitment closes, a game is cancelled, or the game starts;
+- processes only due records, so future games cannot starve overdue records behind the batch limit;
+- uses game-first row locking for join, decision, withdrawal and expiry operations;
+- remains idempotent, so repeated worker runs do not repeat expired-request transitions or notifications.
+
+For a safe manual preview without database writes:
+
+```powershell
+python manage.py expire_matchmaking --dry-run --limit 100 --no-notify
+```
+
+The local `scripts/run_booking_worker.ps1` starts the unified maintenance worker with the project virtual environment when it exists. The worker checks every 10 seconds by default. For deployment, use one managed scheduler or worker; do not start multiple independent permanent workers.
+
 
 ## 18. API Overview
 

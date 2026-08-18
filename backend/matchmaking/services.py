@@ -343,6 +343,9 @@ def invite_player_to_game(game_id, actor, sportspot_id, requested_role, message=
     game.refresh_status()
     if game.status not in [Game.Status.RECRUITING, Game.Status.FULL, Game.Status.CLOSED]:
         raise ValidationError("Players cannot be invited to this game right now.")
+    now = timezone.now()
+    if game.recruitment_deadline and game.recruitment_deadline <= now:
+        raise ValidationError("Recruitment for this game has closed.")
     if game.start_at and game.start_at <= timezone.now():
         raise ValidationError("This game has already started.")
     lookup_id = str(sportspot_id or "").strip().upper()
@@ -400,8 +403,10 @@ def invite_player_to_game(game_id, actor, sportspot_id, requested_role, message=
 
 @transaction.atomic
 def respond_game_invitation(join_request, player, response):
+    # Always lock the game before its request. Expiry, withdrawal and host
+    # decisions use the same order, preventing capacity/deadline races.
+    game = Game.objects.select_for_update().order_by().select_related("host").get(id=join_request.game_id)
     locked_request = JoinRequest.objects.select_for_update().select_related("game", "player", "game__host").get(id=join_request.id, player=player)
-    game = Game.objects.select_for_update().order_by().select_related("host").get(id=locked_request.game_id)
     if locked_request.status != JoinRequest.Status.INVITED:
         raise ValidationError("This invitation can no longer be changed.")
 
@@ -465,8 +470,10 @@ def respond_game_invitation(join_request, player, response):
     return locked_request
 @transaction.atomic
 def decide_join_request(join_request, actor, decision):
-    locked_request = JoinRequest.objects.select_for_update().select_related("game", "player").get(id=join_request.id)
-    game = Game.objects.select_for_update().order_by().select_related("host").get(id=locked_request.game_id)
+    # Lock the game first so this decision has the same lock ordering as join,
+    # withdrawal and maintenance expiry.
+    game = Game.objects.select_for_update().order_by().select_related("host").get(id=join_request.game_id)
+    locked_request = JoinRequest.objects.select_for_update().select_related("game", "player").get(id=join_request.id, game_id=game.id)
     if game.host_id != actor.id:
         raise ValidationError("Only the game host can manage requests.")
     if locked_request.status not in [JoinRequest.Status.PENDING, JoinRequest.Status.WAITLISTED]:
@@ -650,8 +657,11 @@ def game_should_expire_open_requests(game, now=None):
 
 def expire_open_join_requests_for_game(game, now=None, dry_run=False, notify=True):
     now = now or timezone.now()
+    request_queryset = JoinRequest.objects
+    if not dry_run:
+        request_queryset = request_queryset.select_for_update()
     requests = list(
-        JoinRequest.objects.select_related("player", "game", "game__host")
+        request_queryset.select_related("player", "game", "game__host")
         .filter(game=game, status__in=EXPIRABLE_JOIN_REQUEST_STATUSES)
         .order_by("id")
     )
@@ -691,10 +701,51 @@ def expire_matchmaking_deadlines(now=None, dry_run=False, notify=True, limit=100
         "games_completed": 0,
         "requests_expired": 0,
     }
+    # Select only records that can actually transition at this instant. The
+    # previous implementation selected every open game, which meant a large
+    # number of future games could permanently starve older expired games when
+    # a scheduler used a bounded batch size.
+    local_now = timezone.localtime(now)
+    today = local_now.date()
+    current_time = local_now.time()
+    booking_start_due = (
+        Q(booking__slot__date__lt=today)
+        | Q(booking__slot__date=today, booking__slot__start_time__lte=current_time)
+    )
+    proposed_start_due = (
+        Q(proposed_date__lt=today)
+        | Q(proposed_date=today, proposed_start_time__lte=current_time)
+    )
+    booking_end_due = (
+        Q(booking__slot_items__slot__date__lt=today)
+        | Q(booking__slot_items__slot__date=today, booking__slot_items__slot__end_time__lte=current_time)
+    )
+    proposed_end_due = (
+        Q(proposed_date__lt=today)
+        | Q(proposed_date=today, proposed_end_time__lte=current_time)
+    )
+    due_lifecycle = (
+        Q(recruitment_deadline__isnull=False, recruitment_deadline__lte=now)
+        | Q(
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            booking__isnull=True,
+            booking_deadline__isnull=False,
+            booking_deadline__lte=now,
+        )
+        | (Q(status__in=[Game.Status.RECRUITING, Game.Status.FULL]) & booking_start_due)
+        | (Q(status=Game.Status.IN_PROGRESS) & booking_end_due)
+        | (Q(status__in=[Game.Status.RECRUITING, Game.Status.FULL]) & proposed_start_due)
+        | (Q(status=Game.Status.IN_PROGRESS) & proposed_end_due)
+    )
+    stale_requests = Q(
+        status__in=[Game.Status.CLOSED, Game.Status.CANCELLED, Game.Status.IN_PROGRESS, Game.Status.COMPLETED],
+        join_requests__status__in=EXPIRABLE_JOIN_REQUEST_STATUSES,
+    )
     game_ids = list(
-        Game.objects.filter(
-            status__in=[Game.Status.RECRUITING, Game.Status.FULL, Game.Status.CLOSED, Game.Status.IN_PROGRESS]
-        ).order_by("id").values_list("id", flat=True)[: max(1, int(limit))]
+        Game.objects.filter(due_lifecycle | stale_requests)
+        .distinct()
+        .order_by("id")
+        .values_list("id", flat=True)[: max(1, int(limit))]
     )
 
     for game_id in game_ids:

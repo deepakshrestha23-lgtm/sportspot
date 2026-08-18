@@ -33,6 +33,7 @@ from .services import (
     add_guest_participant,
     attach_booking_to_game,
     decide_join_request,
+    expire_open_join_requests_for_game,
     eligible_bookings_for_user,
     ensure_role_has_space,
     invite_player_to_game,
@@ -119,6 +120,15 @@ class JoinRequestWithdrawView(APIView):
 
     @transaction.atomic
     def post(self, request, request_id):
+        game_id = (
+            JoinRequest.objects.filter(id=request_id, player=request.user)
+            .values_list("game_id", flat=True)
+            .first()
+        )
+        if not game_id:
+            return Response({"detail": "Request not found."}, status=status.HTTP_404_NOT_FOUND)
+        # Lock the game before the request, matching host decisions and expiry.
+        game = Game.objects.select_for_update().get(pk=game_id)
         join_request = (
             JoinRequest.objects.select_for_update()
             .select_related("game", "player")
@@ -129,7 +139,6 @@ class JoinRequestWithdrawView(APIView):
             return Response({"detail": "Request not found."}, status=status.HTTP_404_NOT_FOUND)
         if join_request.status not in [JoinRequest.Status.PENDING, JoinRequest.Status.WAITLISTED]:
             return Response({"detail": "This request can no longer be withdrawn."}, status=status.HTTP_400_BAD_REQUEST)
-        game = Game.objects.select_for_update().get(pk=join_request.game_id)
         join_request.status = JoinRequest.Status.WITHDRAWN
         join_request.decided_at = timezone.now()
         join_request.save(update_fields=["status", "decided_at", "updated_at"])
@@ -323,9 +332,13 @@ class GameCancelView(APIView):
         if len(reason) < 5:
             return Response({"detail": "Add a short reason for cancelling the game."}, status=status.HTTP_400_BAD_REQUEST)
         game.status = Game.Status.CANCELLED
-        game.cancelled_at = timezone.now()
+        now = timezone.now()
+        game.cancelled_at = now
         game.cancellation_reason = reason
         game.save(update_fields=["status", "cancelled_at", "cancellation_reason", "updated_at"])
+        # Close pending requests immediately; the scheduled worker remains
+        # the recovery path for cancellations made outside this endpoint.
+        expire_open_join_requests_for_game(game, now=now)
         notify_game_cancelled(game, request.user)
         return Response({"game": GameSerializer(game, context={"request": request}).data})
 
