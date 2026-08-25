@@ -14,7 +14,7 @@ from teams.models import Team, TeamMember
 from venues.models import Booking, Court, CourtSlot, Venue
 
 from .models import Game, GameParticipant, GameRoleRequirement, JoinRequest
-from .services import expire_matchmaking_deadlines
+from .services import attach_booking_to_game, cancel_games_for_booking, expire_matchmaking_deadlines
 
 
 class PickupGameApiTests(APITestCase):
@@ -121,8 +121,8 @@ class PickupGameApiTests(APITestCase):
                 "proposed_start_time": "18:00",
                 "proposed_end_time": "20:00",
                 "preferred_area": "Baneshwor",
-                "booking_deadline": (timezone.now() + timedelta(days=2)).isoformat(),
-                "recruitment_deadline": (timezone.now() + timedelta(days=4)).isoformat(),
+                "booking_deadline": (timezone.now() + timedelta(days=3)).isoformat(),
+                "recruitment_deadline": (timezone.now() + timedelta(days=2)).isoformat(),
                 "total_capacity": 6,
                 "minimum_players_to_proceed": 4,
                 "role_requirements": [{"role": "ANY", "required_count": 5}],
@@ -134,7 +134,58 @@ class PickupGameApiTests(APITestCase):
         game = Game.objects.get(id=response.data["game"]["id"])
         self.assertIsNone(game.booking)
         self.assertEqual(game.creation_mode, Game.CreationMode.PLAN_FIRST)
+        self.assertEqual(game.preferred_district, "Kathmandu")
         self.assertEqual(game.participants.get(user=self.host).status, GameParticipant.Status.PROVISIONAL)
+
+    def test_plan_first_rejects_booking_deadline_before_recruitment_deadline(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.post(
+            reverse("matchmaking-games"),
+            {
+                "game_type": "PICKUP",
+                "creation_mode": "PLAN_FIRST",
+                "title": "Impossible deadline order",
+                "proposed_date": (timezone.localdate() + timedelta(days=5)).isoformat(),
+                "proposed_start_time": "18:00",
+                "proposed_end_time": "20:00",
+                "preferred_area": "Baneshwor",
+                "booking_deadline": (timezone.now() + timedelta(days=2)).isoformat(),
+                "recruitment_deadline": (timezone.now() + timedelta(days=2, minutes=15)).isoformat(),
+                "total_capacity": 6,
+                "minimum_players_to_proceed": 4,
+                "role_requirements": [{"role": "ANY", "required_count": 5}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data["recruitment_deadline"][0], "Recruitment must close at least 30 minutes before the court-booking deadline.")
+        self.assertFalse(Game.objects.filter(title="Impossible deadline order").exists())
+
+    def test_plan_first_rejects_unsupported_area(self):
+        self.client.force_authenticate(self.host)
+        response = self.client.post(
+            reverse("matchmaking-games"),
+            {
+                "game_type": "PICKUP",
+                "creation_mode": "PLAN_FIRST",
+                "title": "Unsupported area game",
+                "proposed_date": (timezone.localdate() + timedelta(days=5)).isoformat(),
+                "proposed_start_time": "18:00",
+                "proposed_end_time": "20:00",
+                "preferred_area": "Somewhere else",
+                "booking_deadline": (timezone.now() + timedelta(days=3)).isoformat(),
+                "recruitment_deadline": (timezone.now() + timedelta(days=2)).isoformat(),
+                "total_capacity": 6,
+                "minimum_players_to_proceed": 4,
+                "role_requirements": [{"role": "ANY", "required_count": 5}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data["preferred_area"][0], "Choose an area from the supported SportSpot locations.")
+        self.assertFalse(Game.objects.filter(title="Unsupported area game").exists())
 
     def test_captain_can_publish_fill_my_squad_with_selected_permanent_members(self):
         self.client.force_authenticate(self.host)
@@ -374,7 +425,7 @@ class PickupGameApiTests(APITestCase):
             proposed_end_time=time(20, 0),
             preferred_area="Baneshwor",
             booking_deadline=timezone.now() - timedelta(minutes=1),
-            recruitment_deadline=timezone.now() + timedelta(days=1),
+            recruitment_deadline=timezone.now() - timedelta(minutes=32),
             total_capacity=4,
             minimum_players_to_proceed=2,
         )
@@ -488,6 +539,103 @@ class PickupGameApiTests(APITestCase):
         self.assertNotIn("reliability_label", participant)
         self.assertNotIn("average_rating", participant)
 
+    def test_public_discovery_excludes_games_after_recruitment_deadline(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Closed game must leave discovery",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() - timedelta(minutes=5),
+        )
+
+        response = self.client.get(reverse("matchmaking-games"))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn(game.id, {item["id"] for item in response.data["games"]})
+        game.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.CLOSED)
+
+    def test_my_games_synchronizes_expired_requests_inside_a_transaction(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="My games lifecycle repair",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() - timedelta(minutes=5),
+        )
+        GameParticipant.objects.create(
+            game=game,
+            user=self.host,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            role="ANY",
+        )
+        pending = JoinRequest.objects.create(
+            game=game,
+            player=self.player_one,
+            requested_role="ANY",
+            attendance_confirmed=True,
+        )
+
+        self.client.force_authenticate(self.host)
+        response = self.client.get(reverse("matchmaking-my-games"))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIn("upcoming", response.data)
+        self.assertIn("hosted", response.data)
+        self.assertNotIn("<!doctype html", response.content.decode().lower())
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, JoinRequest.Status.EXPIRED)
+
+    def test_private_game_details_are_hidden_from_unauthorized_users(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Private game access guard",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            is_public=False,
+        )
+
+        anonymous_response = self.client.get(reverse("matchmaking-game-detail", args=[game.id]))
+        self.assertEqual(anonymous_response.status_code, 404)
+
+        self.client.force_authenticate(self.player_one)
+        unauthorized_response = self.client.get(reverse("matchmaking-game-detail", args=[game.id]))
+        self.assertEqual(unauthorized_response.status_code, 404)
+
+        self.client.force_authenticate(self.host)
+        owner_response = self.client.get(reverse("matchmaking-game-detail", args=[game.id]))
+        self.assertEqual(owner_response.status_code, 200, owner_response.data)
+        self.assertEqual(owner_response.data["game"]["id"], game.id)
+
+    def test_cancel_rechecks_actual_game_time_when_stored_status_is_stale(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Stale status cancellation guard",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        CourtSlot.objects.filter(pk=self.slot.pk).update(
+            date=timezone.localdate() - timedelta(days=1),
+            start_time=time(18, 0),
+            end_time=time(19, 0),
+        )
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(
+            reverse("matchmaking-game-cancel", args=[game.id]),
+            {"reason": "No longer needed"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        game.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.COMPLETED)
+        self.assertNotEqual(game.cancellation_reason, "No longer needed")
+
     def test_deadline_job_closes_recruitment_and_expires_open_requests(self):
         game = Game.objects.create(
             host=self.host,
@@ -513,6 +661,366 @@ class PickupGameApiTests(APITestCase):
         self.assertGreaterEqual(stats["games_closed"], 1)
         self.assertGreaterEqual(stats["requests_expired"], 1)
 
+    def test_host_can_update_listing_and_role_plan(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Editable pickup",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+        )
+        GameRoleRequirement.objects.create(game=game, role=GameRoleRequirement.CricksalRole.ANY, required_count=3)
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+
+        self.client.force_authenticate(self.host)
+        response = self.client.patch(
+            reverse("matchmaking-game-manage", args=[game.id]),
+            {
+                "title": "Updated pickup plan",
+                "description": "Bring your own bat.",
+                "total_capacity": 5,
+                "minimum_players_to_proceed": 3,
+                "recruitment_deadline": (timezone.now() + timedelta(days=2)).isoformat(),
+                "role_requirements": [{"role": "BOWLER", "required_count": 2}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        game.refresh_from_db()
+        self.assertEqual(game.title, "Updated pickup plan")
+        self.assertEqual(game.total_capacity, 5)
+        self.assertTrue(game.role_requirements.filter(role="BOWLER", required_count=2).exists())
+
+    def test_host_cannot_reduce_a_role_below_an_accepted_player(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Role capacity guard",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+        )
+        GameRoleRequirement.objects.create(game=game, role=GameRoleRequirement.CricksalRole.BOWLER, required_count=1)
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+        GameParticipant.objects.create(game=game, user=self.player_one, participant_type=GameParticipant.ParticipantType.TEMPORARY, role="BOWLER")
+
+        self.client.force_authenticate(self.host)
+        response = self.client.patch(
+            reverse("matchmaking-game-manage", args=[game.id]),
+            {"role_requirements": [{"role": "BOWLER", "required_count": 0}], "recruitment_deadline": (timezone.now() + timedelta(days=1)).isoformat()},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("role requirement", str(response.data).lower())
+
+    def test_plan_first_schedule_edit_requires_existing_players_to_reconfirm(self):
+        game = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Editable plan first",
+            proposed_date=timezone.localdate() + timedelta(days=5),
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=2),
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        GameRoleRequirement.objects.create(game=game, role=GameRoleRequirement.CricksalRole.ANY, required_count=3)
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY", status=GameParticipant.Status.PROVISIONAL)
+        player_participant = GameParticipant.objects.create(game=game, user=self.player_one, participant_type=GameParticipant.ParticipantType.TEMPORARY, role="ANY", status=GameParticipant.Status.PROVISIONAL)
+
+        self.client.force_authenticate(self.host)
+        response = self.client.patch(
+            reverse("matchmaking-game-manage", args=[game.id]),
+            {"proposed_date": (timezone.localdate() + timedelta(days=6)).isoformat()},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        player_participant.refresh_from_db()
+        game.refresh_from_db()
+        self.assertEqual(player_participant.status, GameParticipant.Status.RECONFIRM_REQUIRED)
+        self.assertTrue(game.requires_reconfirmation)
+
+    def test_booking_change_separates_registered_reconfirmation_from_guest_acknowledgement(self):
+        game = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Guest schedule change",
+            proposed_date=self.slot.date,
+            proposed_start_time=time(16, 0),
+            proposed_end_time=time(17, 0),
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=1),
+            recruitment_deadline=timezone.now() + timedelta(hours=12),
+            total_capacity=5,
+            minimum_players_to_proceed=2,
+        )
+        GameRoleRequirement.objects.create(game=game, role="ANY", required_count=4)
+        GameParticipant.objects.create(
+            game=game,
+            user=self.host,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            role="ANY",
+            status=GameParticipant.Status.PROVISIONAL,
+        )
+        registered = GameParticipant.objects.create(
+            game=game,
+            user=self.player_one,
+            participant_type=GameParticipant.ParticipantType.TEMPORARY,
+            role="ANY",
+            status=GameParticipant.Status.PROVISIONAL,
+        )
+        guest = GameParticipant.objects.create(
+            game=game,
+            guest_name="Offline Guest",
+            participant_type=GameParticipant.ParticipantType.GUEST,
+            role="ANY",
+            status=GameParticipant.Status.PROVISIONAL,
+            added_by=self.host,
+        )
+
+        attach_booking_to_game(game, self.booking, self.host)
+        registered.refresh_from_db()
+        guest.refresh_from_db()
+        game.refresh_from_db()
+        self.assertEqual(registered.status, GameParticipant.Status.RECONFIRM_REQUIRED)
+        self.assertEqual(guest.status, GameParticipant.Status.GUEST_CONFIRMATION_REQUIRED)
+        self.assertEqual(game.guest_confirmation_pending_count, 1)
+        self.assertEqual(game.registered_reconfirmation_pending_count, 1)
+        self.assertTrue(game.requires_reconfirmation)
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(
+            reverse("matchmaking-guest-confirm-schedule", args=[game.id, guest.id]),
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        guest.refresh_from_db()
+        game.refresh_from_db()
+        self.assertEqual(guest.status, GameParticipant.Status.CONFIRMED)
+        self.assertTrue(game.requires_reconfirmation)
+
+        self.client.force_authenticate(self.player_one)
+        response = self.client.post(
+            reverse("matchmaking-game-reconfirm", args=[game.id]),
+            {"response": "RECONFIRM"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        registered.refresh_from_db()
+        game.refresh_from_db()
+        self.assertEqual(registered.status, GameParticipant.Status.CONFIRMED)
+        self.assertFalse(game.requires_reconfirmation)
+
+    def test_guest_added_after_booking_does_not_need_reconfirmation(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Guest added after booking",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+        )
+        GameRoleRequirement.objects.create(game=game, role="ANY", required_count=3)
+        GameParticipant.objects.create(
+            game=game,
+            user=self.host,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            role="ANY",
+        )
+        self.client.force_authenticate(self.host)
+        response = self.client.post(
+            reverse("matchmaking-game-guests", args=[game.id]),
+            {"guest_name": "Late Guest", "role": "ANY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        guest = GameParticipant.objects.get(game=game, guest_name="Late Guest")
+        self.assertEqual(guest.status, GameParticipant.Status.CONFIRMED)
+        game.refresh_from_db()
+        self.assertFalse(game.requires_reconfirmation)
+
+    def test_invalid_host_edit_returns_json_validation_error(self):
+        game = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Validation response game",
+            proposed_date=timezone.localdate() + timedelta(days=5),
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=2),
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        GameRoleRequirement.objects.create(game=game, role=GameRoleRequirement.CricksalRole.ANY, required_count=3)
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY", status=GameParticipant.Status.PROVISIONAL)
+
+        self.client.force_authenticate(self.host)
+        response = self.client.patch(
+            reverse("matchmaking-game-manage", args=[game.id]),
+            {"preferred_area": "Not a SportSpot area"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("area", str(response.data).lower())
+        self.assertNotIn("<html", response.content.decode().lower())
+
+    def test_host_can_remove_participant_and_private_request_is_closed(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Roster removal",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+        )
+        GameRoleRequirement.objects.create(game=game, role=GameRoleRequirement.CricksalRole.ANY, required_count=3)
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+        participant = GameParticipant.objects.create(game=game, user=self.player_one, participant_type=GameParticipant.ParticipantType.TEMPORARY, role="ANY")
+        join_request = JoinRequest.objects.create(game=game, player=self.player_one, requested_role="ANY", status=JoinRequest.Status.ACCEPTED, attendance_confirmed=True)
+
+        self.client.force_authenticate(self.host)
+        response = self.client.delete(reverse("matchmaking-game-participant-manage", args=[game.id, participant.id]))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        participant.refresh_from_db()
+        join_request.refresh_from_db()
+        self.assertEqual(participant.status, GameParticipant.Status.REMOVED)
+        self.assertEqual(join_request.status, JoinRequest.Status.REMOVED)
+
+    def test_host_can_close_and_reopen_recruitment_without_losing_roster_or_booking(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Close and reopen recruitment",
+            total_capacity=2,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+        )
+        GameRoleRequirement.objects.create(game=game, role="ANY", required_count=1)
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+        participant = GameParticipant.objects.create(game=game, user=self.player_one, participant_type=GameParticipant.ParticipantType.TEMPORARY, role="ANY")
+        game.refresh_status()
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(reverse("matchmaking-game-close-recruitment", args=[game.id]))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        game.refresh_from_db()
+        participant.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.CLOSED)
+        self.assertFalse(game.is_public)
+        self.assertEqual(game.booking_id, self.booking.id)
+        self.assertEqual(participant.status, GameParticipant.Status.CONFIRMED)
+
+        response = self.client.post(reverse("matchmaking-game-reopen-recruitment", args=[game.id]))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        game.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.FULL)
+        self.assertTrue(game.is_public)
+
+    def test_leaving_full_game_reopens_spot_when_recruitment_deadline_is_open(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Player leaves full game",
+            total_capacity=2,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+        )
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+        GameParticipant.objects.create(game=game, user=self.player_one, participant_type=GameParticipant.ParticipantType.TEMPORARY, role="ANY")
+        game.refresh_status()
+        self.assertEqual(game.status, Game.Status.FULL)
+
+        self.client.force_authenticate(self.player_one)
+        response = self.client.post(reverse("matchmaking-game-leave", args=[game.id]))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        game.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.RECRUITING)
+        self.assertEqual(game.available_spots, 1)
+
+    def test_cancelled_linked_booking_cancels_game_but_keeps_booking_history(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Booking cancellation sync",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+        )
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+        self.booking.status = Booking.BookingStatus.CANCELLED
+        self.booking.payment_status = Booking.PaymentStatus.REFUNDED
+        self.booking.cancelled_at = timezone.now()
+        self.booking.save(update_fields=["status", "payment_status", "cancelled_at", "updated_at"])
+
+        cancelled_count = cancel_games_for_booking(self.booking, actor=self.host)
+
+        self.assertEqual(cancelled_count, 1)
+        game.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.CANCELLED)
+        self.assertFalse(game.is_public)
+        self.assertEqual(game.booking_id, self.booking.id)
+
+    def test_expired_request_can_be_submitted_again_after_recruitment_reopens(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Retry after recruitment reopens",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+        )
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+        previous_request = JoinRequest.objects.create(
+            game=game,
+            player=self.player_one,
+            requested_role="ANY",
+            attendance_confirmed=True,
+            status=JoinRequest.Status.EXPIRED,
+        )
+
+        self.client.force_authenticate(self.player_one)
+        response = self.client.post(
+            reverse("matchmaking-game-request", args=[game.id]),
+            {"requested_role": "ANY", "attendance_confirmed": True, "message": "I can attend."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        previous_request.refresh_from_db()
+        self.assertEqual(previous_request.status, JoinRequest.Status.PENDING)
+        self.assertEqual(JoinRequest.objects.filter(game=game, player=self.player_one).count(), 1)
+
+    def test_non_host_cannot_edit_or_remove_game_participants(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Host permission guard",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+        )
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+
+        self.client.force_authenticate(self.player_one)
+        response = self.client.patch(reverse("matchmaking-game-manage", args=[game.id]), {"title": "Hijacked"}, format="json")
+
+        self.assertEqual(response.status_code, 400, response.data)
+        game.refresh_from_db()
+        self.assertEqual(game.title, "Host permission guard")
+
     def test_deadline_job_cancels_unbooked_plan_first_after_booking_deadline(self):
         game = Game.objects.create(
             host=self.host,
@@ -523,7 +1031,7 @@ class PickupGameApiTests(APITestCase):
             proposed_end_time=time(20, 0),
             preferred_area="Baneshwor",
             booking_deadline=timezone.now() - timedelta(minutes=10),
-            recruitment_deadline=timezone.now() + timedelta(days=1),
+            recruitment_deadline=timezone.now() - timedelta(minutes=41),
             total_capacity=6,
             minimum_players_to_proceed=4,
         )
@@ -569,7 +1077,7 @@ class PickupGameApiTests(APITestCase):
             proposed_end_time=slots[-1].end_time,
             preferred_area="Baneshwor",
             booking_deadline=timezone.now() + timedelta(days=2),
-            recruitment_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=1),
             total_capacity=4,
             minimum_players_to_proceed=2,
         )
@@ -659,7 +1167,7 @@ class PickupGameApiTests(APITestCase):
             proposed_end_time=slots[0].end_time,
             preferred_area="Baneshwor",
             booking_deadline=timezone.now() + timedelta(days=2),
-            recruitment_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=1),
             total_capacity=4,
             minimum_players_to_proceed=3,
         )

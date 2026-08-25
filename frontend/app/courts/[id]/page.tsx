@@ -383,9 +383,9 @@ export default function VenueDetailPage() {
             onClick={reserveSlot}
             type="button"
           >
-            {isBooking ? "Reserving..." : matchmakingGameId ? "Reserve for Game" : "Confirm & Book"}
+            {isBooking ? "Holding your time..." : "Continue to Payment"}
           </button>
-          <p className="mt-3 text-center text-xs font-semibold text-slate-500">{matchmakingGameId ? "Payment confirmation will connect this booking to your game." : "You will continue to secure payment after reservation."}</p>
+          <p className="mt-3 text-center text-xs font-semibold text-slate-500">Your selected time will be held for 10 minutes. It becomes a confirmed booking only after payment is verified.</p>
           <Link className="mt-5 block text-center text-sm font-black text-sportGreen hover:text-green-700" href={backToCourtsHref}>
             Back to Courts
           </Link>

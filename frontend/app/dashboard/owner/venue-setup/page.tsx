@@ -6,6 +6,8 @@ import { ChangeEvent, FormEvent, type ReactNode, useEffect, useMemo, useState } 
 import FeedbackToast from "@/components/FeedbackToast";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { addCalendarDays, formatDateOnly, getLocalDateString } from "@/lib/dates";
+import { estimateGeneratedSlots } from "@/lib/slotSchedule";
 import type { Court, Venue, VenuePhoto, VenuePhotoCategory } from "@/types/venue";
 
 const facilitiesOptions = [
@@ -28,6 +30,8 @@ const ruleTemplates = [
 ];
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const today = getLocalDateString();
+const maximumGenerationDate = addCalendarDays(today, 89);
 
 const documentTypes = [
   { value: "BUSINESS_REGISTRATION", label: "Business registration document" },
@@ -102,6 +106,8 @@ export default function VenueSetupPage() {
   });
   const [slotForm, setSlotForm] = useState({
     available_days: ["Saturday", "Sunday"],
+    start_date: today,
+    end_date: addCalendarDays(today, 29),
     opening_time: "06:00",
     closing_time: "20:00",
     slot_duration_minutes: "60",
@@ -117,6 +123,7 @@ export default function VenueSetupPage() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [clearConfirmCourtId, setClearConfirmCourtId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -159,6 +166,11 @@ export default function VenueSetupPage() {
           verification_document_type: currentVenue.verification_document_type || "BUSINESS_REGISTRATION",
           declaration_accepted: Boolean(currentVenue.declaration_accepted),
         });
+        setSlotForm((current) => ({
+          ...current,
+          opening_time: toInputTime(currentVenue.opening_time) || current.opening_time,
+          closing_time: toInputTime(currentVenue.closing_time) || current.closing_time,
+        }));
       }
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, "Could not load venue setup."));
@@ -174,6 +186,14 @@ export default function VenueSetupPage() {
   const hasCourtAreaPhoto = Boolean(venue?.court_area_photo || venuePhotos.some((photo) => photo.category === "COURT_AREA"));
   const feedbackMessage = error || message;
   const feedbackType = error ? "error" : message ? "success" : "info";
+  const estimatedSlots = estimateGeneratedSlots({
+    startDate: slotForm.start_date,
+    endDate: slotForm.end_date,
+    availableDays: slotForm.available_days,
+    openingTime: slotForm.opening_time,
+    closingTime: slotForm.closing_time,
+    durationMinutes: slotForm.slot_duration_minutes,
+  });
   const canSubmit = useMemo(() => {
     return Boolean(courts.length > 0 && form.declaration_accepted && form.verification_document_type && hasOutsideVenuePhoto && hasCourtAreaPhoto);
   }, [courts.length, form.declaration_accepted, form.verification_document_type, hasOutsideVenuePhoto, hasCourtAreaPhoto]);
@@ -310,19 +330,74 @@ export default function VenueSetupPage() {
     setMessage("");
     setError("");
     try {
-      const response = await api.post<{ created_count: number; skipped_count: number }>(`/api/venues/owner/courts/${courtId}/slots/generate/`, {
+      const response = await api.post<{
+        created_count: number;
+        skipped_count: number;
+        existing_count: number;
+        overlap_count: number;
+        skipped_past_count: number;
+        trailing_minutes: number;
+        start_date: string;
+        end_date: string;
+      }>(`/api/venues/owner/courts/${courtId}/slots/generate/`, {
         available_days: slotForm.available_days,
+        start_date: slotForm.start_date,
+        end_date: slotForm.end_date,
         opening_time: slotForm.opening_time,
         closing_time: slotForm.closing_time,
         slot_duration_minutes: slotForm.slot_duration_minutes,
         base_price: selectedBasePrice,
       });
-      setMessage(`Generated ${response.data.created_count} slots. ${response.data.skipped_count} existing slots were skipped.`);
+      const notes = [
+        response.data.existing_count ? `${response.data.existing_count} existing slots kept` : "",
+        response.data.overlap_count ? `${response.data.overlap_count} overlapping slots skipped` : "",
+        response.data.skipped_past_count ? `${response.data.skipped_past_count} past slots skipped` : "",
+        response.data.trailing_minutes ? `${response.data.trailing_minutes} minutes left unused at the end of each selected day` : "",
+      ].filter(Boolean);
+      setMessage(
+        `Created ${response.data.created_count} slots from ${formatDateOnly(response.data.start_date)} to ${formatDateOnly(response.data.end_date)}.${notes.length ? ` ${notes.join(". ")}.` : ""}`,
+      );
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, "Could not generate slots."));
     } finally {
       setIsSaving(false);
     }
+  }
+
+  async function clearFutureSlots(courtId: number) {
+    setIsSaving(true);
+    setMessage("");
+    setError("");
+    try {
+      const response = await api.post<{
+        cleared_count: number;
+        protected_count: number;
+        start_date: string;
+        end_date: string;
+      }>(`/api/venues/owner/courts/${courtId}/slots/clear/`, {
+        start_date: slotForm.start_date,
+        end_date: slotForm.end_date,
+      });
+      setMessage(
+        response.data.cleared_count
+          ? `Cleared ${response.data.cleared_count} future unbooked slots from ${formatDateOnly(response.data.start_date)} to ${formatDateOnly(response.data.end_date)}. ${response.data.protected_count} slots were kept protected.`
+          : `No future unbooked slots were cleared. ${response.data.protected_count} slots in this range were kept protected.`,
+      );
+      setClearConfirmCourtId(null);
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, "Could not clear future availability."));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function updateSlotGenerationRange(field: "start_date" | "end_date", value: string) {
+    setSlotForm((current) => {
+      if (field === "start_date") {
+        return { ...current, start_date: value, end_date: current.end_date < value ? value : current.end_date };
+      }
+      return { ...current, end_date: value };
+    });
   }
 
   async function submitForApproval() {
@@ -482,18 +557,34 @@ export default function VenueSetupPage() {
 
         {step === 3 ? (
           <div className="space-y-6">
-            <SectionHeader title="Slots & Pricing" description="Set a real booking template. Pick one slot duration at a time, with clear prices for each duration option." />
+            <SectionHeader title="Slots & Pricing" description="Set the weekly hours and publish concrete bookable slots for a date range you control." />
             <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Input label="Opening Time" type="time" value={slotForm.opening_time} onChange={(value) => setSlotForm({ ...slotForm, opening_time: value })} />
-                  <Input label="Closing Time" type="time" value={slotForm.closing_time} onChange={(value) => setSlotForm({ ...slotForm, closing_time: value })} />
+                <div className="rounded-md border border-slate-200 bg-white p-4">
+                  <h3 className="font-black text-sportNavy">Publishing window</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">The selected weekdays repeat between these dates. You can publish up to 90 days at a time.</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <Input label="Generate from" type="date" min={today} max={maximumGenerationDate} value={slotForm.start_date} onChange={(value) => updateSlotGenerationRange("start_date", value)} />
+                    <Input label="Generate until" type="date" min={slotForm.start_date} max={maximumGenerationDate} value={slotForm.end_date} onChange={(value) => updateSlotGenerationRange("end_date", value)} />
+                  </div>
+                  <p className="mt-3 text-xs font-semibold text-slate-600">Estimated: up to <strong className="text-sportNavy">{estimatedSlots.toLocaleString()}</strong> slots per court.</p>
+                  <span className="mt-3 inline-flex rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-black text-green-800">Nepal time</span>
+                </div>
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <Input label="Opening time" type="time" value={slotForm.opening_time} onChange={(value) => setSlotForm({ ...slotForm, opening_time: value })} />
+                  <Input label="Closing time" type="time" value={slotForm.closing_time} onChange={(value) => setSlotForm({ ...slotForm, closing_time: value })} />
                 </div>
                 <div className="mt-5">
-                  <p className="text-sm font-black text-sportNavy">Available Days</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-black text-sportNavy">Available weekdays</p>
+                    <div className="flex gap-2 text-xs font-black">
+                      <button className="rounded-md border border-slate-300 px-2.5 py-1.5 text-slate-600 hover:border-sportGreen hover:text-sportGreen" onClick={() => setSlotForm({ ...slotForm, available_days: days })} type="button">Every day</button>
+                      <button className="rounded-md border border-slate-300 px-2.5 py-1.5 text-slate-600 hover:border-sportGreen hover:text-sportGreen" onClick={() => setSlotForm({ ...slotForm, available_days: ["Saturday", "Sunday"] })} type="button">Weekends</button>
+                    </div>
+                  </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {days.map((day) => (
-                      <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700" key={day}>
+                      <label className="flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700" key={day}>
                         <input
                           checked={slotForm.available_days.includes(day)}
                           onChange={(event) =>
@@ -510,6 +601,7 @@ export default function VenueSetupPage() {
                       </label>
                     ))}
                   </div>
+                  <p className="mt-2 text-xs text-slate-500">{slotForm.available_days.length} of 7 days selected</p>
                 </div>
               </div>
 
@@ -522,25 +614,53 @@ export default function VenueSetupPage() {
                   <PriceRow duration="90" selected={slotForm.slot_duration_minutes === "90"} price={slotForm.price_90} onSelect={() => setSlotForm({ ...slotForm, slot_duration_minutes: "90" })} onPriceChange={(value) => setSlotForm({ ...slotForm, price_90: onlyNumber(value) })} />
                 </div>
                 <div className="mt-5 rounded-md bg-green-50 p-4 text-sm font-semibold text-green-800">
-                  Generating {slotForm.slot_duration_minutes}-minute slots at Rs {Number(selectedBasePrice || 0).toLocaleString()} per slot.
+                  Generating {slotForm.slot_duration_minutes}-minute slots at NPR {Number(selectedBasePrice || 0).toLocaleString()} per slot. This price applies to new slots only; existing slots and bookings are never changed.
                 </div>
               </div>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               {courts.map((court) => (
-                <button
-                  className="rounded-md border border-slate-200 bg-slate-50 p-4 text-left hover:border-sportGreen"
-                  disabled={isSaving}
-                  key={court.id}
-                  onClick={() => generateSlots(court.id)}
-                  type="button"
-                >
-                  <span className="block font-black text-sportNavy">Generate Slots for {court.name}</span>
-                  <span className="mt-1 block text-sm text-slate-600">Creates next 14 days of matching slots and skips duplicates.</span>
-                </button>
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4" key={court.id}>
+                  <p className="font-black text-sportNavy">{court.name}</p>
+                  <p className="mt-1 text-sm text-slate-600">Creates {slotForm.slot_duration_minutes}-minute slots from {formatDateOnly(slotForm.start_date)} to {formatDateOnly(slotForm.end_date)} and skips duplicates.</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      className="rounded-md bg-sportGreen px-3 py-2 text-sm font-black text-white hover:bg-green-700 disabled:opacity-60"
+                      disabled={isSaving}
+                      onClick={() => generateSlots(court.id)}
+                      type="button"
+                    >
+                      {isSaving ? "Working..." : "Generate Slots"}
+                    </button>
+                    <button
+                      className="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-700 hover:bg-red-50 disabled:opacity-60"
+                      disabled={isSaving}
+                      onClick={() => setClearConfirmCourtId(court.id)}
+                      type="button"
+                    >
+                      Clear Unbooked
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
+            {clearConfirmCourtId !== null ? (
+              <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-950" role="alertdialog" aria-label="Confirm clearing future availability">
+                <p className="font-black">Clear future unbooked slots for {courts.find((court) => court.id === clearConfirmCourtId)?.name || "this court"}?</p>
+                <p className="mt-2 leading-6">
+                  Only future available slots from {formatDateOnly(slotForm.start_date)} to {formatDateOnly(slotForm.end_date)} will be removed. Booked, reserved, blocked, past, and historical slots stay untouched. This cannot be undone.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button className="rounded-md bg-red-700 px-4 py-2.5 text-sm font-black text-white hover:bg-red-800 disabled:opacity-60" disabled={isSaving} onClick={() => clearFutureSlots(clearConfirmCourtId)} type="button">
+                    {isSaving ? "Clearing..." : "Clear Unbooked Slots"}
+                  </button>
+                  <button className="rounded-md border border-red-200 bg-white px-4 py-2.5 text-sm font-black text-red-800 hover:bg-red-100" disabled={isSaving} onClick={() => setClearConfirmCourtId(null)} type="button">
+                    Keep Slots
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -957,11 +1077,11 @@ function ReviewCard({ title, items, onEdit }: { title: string; items: string[][]
   );
 }
 
-function Input({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
+function Input({ label, value, onChange, type = "text", min, max }: { label: string; value: string; onChange: (value: string) => void; type?: string; min?: string; max?: string }) {
   return (
     <label className="block">
       <span className="text-sm font-black text-sportNavy">{label}</span>
-      <input className="mt-2 w-full rounded-md border border-slate-300 px-3 py-3 text-sm outline-none focus:border-sportGreen" onChange={(event) => onChange(event.target.value)} type={type} value={value} />
+      <input className="mt-2 w-full rounded-md border border-slate-300 px-3 py-3 text-sm outline-none focus:border-sportGreen" max={max} min={min} onChange={(event) => onChange(event.target.value)} type={type} value={value} />
     </label>
   );
 }

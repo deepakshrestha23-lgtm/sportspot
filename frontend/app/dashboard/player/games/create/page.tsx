@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { addCalendarDays, APP_TIME_ZONE, formatDateTimeInNepal } from "@/lib/dates";
 import { emitToast } from "@/lib/toast";
 import type { EligibleBookingsResponse, EligibleGameBooking, GameCreatePayload, GameIntensity, GameResponse, GameRole, GameType } from "@/types/matchmaking";
 import type { MyTeamsResponse, Team, TeamResponse } from "@/types/team";
@@ -20,13 +21,35 @@ const roleOptions: Array<{ label: string; value: GameRole; helper: string }> = [
 ];
 
 type CreationMode = "BOOKING_FIRST" | "PLAN_FIRST";
+type ReferenceOption = { value: string; label: string; count?: number };
 type DiscoveryReference = {
-  areas_by_district: Record<string, Array<{ value: string; label: string }>>;
+  districts: ReferenceOption[];
+  areas_by_district: Record<string, ReferenceOption[]>;
+  start_times: string[];
+  matchmaking_deadline_config: DeadlineConfig;
+};
+type DiscoveryReferenceResponse = { filters?: DiscoveryReference } & Partial<DiscoveryReference>;
+type DeadlineConfig = {
+  minimum_booking_lead_minutes: number;
+  minimum_recruitment_to_booking_minutes: number;
+  minimum_plan_lead_minutes: number;
+  recommended_recruitment_lead_minutes: number;
+  recommended_booked_game_recruitment_lead_minutes: number;
+  recommended_booking_lead_minutes: number;
 };
 
 type RoleCounts = Record<GameRole, number>;
 
 const initialRoles: RoleCounts = { BATSMAN: 2, BOWLER: 2, ALL_ROUNDER: 1, WICKETKEEPER: 1, ANY: 3 };
+const DURATION_OPTIONS = [60, 90, 120, 150, 180];
+const FALLBACK_DEADLINE_CONFIG: DeadlineConfig = {
+  minimum_booking_lead_minutes: 60,
+  minimum_recruitment_to_booking_minutes: 30,
+  minimum_plan_lead_minutes: 120,
+  recommended_recruitment_lead_minutes: 24 * 60,
+  recommended_booked_game_recruitment_lead_minutes: 2 * 60,
+  recommended_booking_lead_minutes: 12 * 60,
+};
 
 export default function CreateGamePage() {
   return (
@@ -40,7 +63,10 @@ function CreateGameContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [bookings, setBookings] = useState<EligibleGameBooking[]>([]);
+  const [districts, setDistricts] = useState<ReferenceOption[]>([]);
   const [areasByDistrict, setAreasByDistrict] = useState<DiscoveryReference["areas_by_district"]>({});
+  const [planningStartTimes, setPlanningStartTimes] = useState<string[]>([]);
+  const [deadlineConfig, setDeadlineConfig] = useState<DeadlineConfig>(FALLBACK_DEADLINE_CONFIG);
   const [gameType, setGameType] = useState<GameType>((searchParams.get("type") as GameType) || "PICKUP");
   const [captainTeams, setCaptainTeams] = useState<Team[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(Number(searchParams.get("team")) || null);
@@ -59,14 +85,17 @@ function CreateGameContent() {
   const [skill, setSkill] = useState<GameCreatePayload["min_skill_level"]>("OPEN");
   const [roleCounts, setRoleCounts] = useState<RoleCounts>(initialRoles);
   const [waitlistEnabled, setWaitlistEnabled] = useState(true);
-  const [recruitmentDeadline, setRecruitmentDeadline] = useState("");
   const [proposedDate, setProposedDate] = useState("");
   const [proposedStart, setProposedStart] = useState("");
-  const [proposedEnd, setProposedEnd] = useState("");
+  const [proposedDuration, setProposedDuration] = useState(120);
+  const [preferredDistrict, setPreferredDistrict] = useState(searchParams.get("district") || "");
   const [preferredArea, setPreferredArea] = useState("");
   const [preferredVenue, setPreferredVenue] = useState("");
   const [alternativeDetails, setAlternativeDetails] = useState("");
-  const [bookingDeadline, setBookingDeadline] = useState("");
+  const [recruitmentDeadlineDate, setRecruitmentDeadlineDate] = useState("");
+  const [recruitmentDeadlineTime, setRecruitmentDeadlineTime] = useState("");
+  const [bookingDeadlineDate, setBookingDeadlineDate] = useState("");
+  const [bookingDeadlineTime, setBookingDeadlineTime] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -85,12 +114,67 @@ function CreateGameContent() {
   const selectedTeamMembers = useMemo(() => activeTeamMembers.filter((member) => selectedTeamMemberIds.includes(member.id)), [activeTeamMembers, selectedTeamMemberIds]);
   const baselineSpots = gameType === "FILL_SQUAD" ? 1 + selectedTeamMembers.length : 1;
   const recruitedSpots = Object.values(roleCounts).reduce((sum, count) => sum + Number(count || 0), 0);
+  const proposedEnd = useMemo(() => addMinutesToTime(proposedStart, proposedDuration), [proposedDuration, proposedStart]);
   const startDateTime = useMemo(() => {
     if (mode === "BOOKING_FIRST") return selectedBooking?.start_at || null;
     if (!proposedDate || !proposedStart) return null;
-    return new Date(`${proposedDate}T${proposedStart}`).toISOString();
+    return appDateTimeToIso(proposedDate, proposedStart);
   }, [mode, proposedDate, proposedStart, selectedBooking]);
+  const recruitmentDeadlineAt = useMemo(
+    () => localDateTimeToIso(recruitmentDeadlineDate, recruitmentDeadlineTime),
+    [recruitmentDeadlineDate, recruitmentDeadlineTime],
+  );
+  const bookingDeadlineAt = useMemo(
+    () => (mode === "PLAN_FIRST" ? localDateTimeToIso(bookingDeadlineDate, bookingDeadlineTime) : ""),
+    [bookingDeadlineDate, bookingDeadlineTime, mode],
+  );
+  const areaOptions = preferredDistrict ? areasByDistrict[preferredDistrict] || [] : [];
+  const deadlineBufferInvalid = Boolean(
+    mode === "PLAN_FIRST" &&
+      recruitmentDeadlineAt &&
+      bookingDeadlineAt &&
+      new Date(bookingDeadlineAt).getTime() - new Date(recruitmentDeadlineAt).getTime() < deadlineConfig.minimum_recruitment_to_booking_minutes * 60 * 1000,
+  );
+  const bookingLeadInvalid = Boolean(
+    mode === "PLAN_FIRST" &&
+      startDateTime &&
+      bookingDeadlineAt &&
+      new Date(startDateTime).getTime() - new Date(bookingDeadlineAt).getTime() < deadlineConfig.minimum_booking_lead_minutes * 60 * 1000,
+  );
+  const selectedStartIsTooSoon = [recruitmentDeadlineAt, mode === "PLAN_FIRST" ? bookingDeadlineAt : ""].some(
+    (value) => value && new Date(value).getTime() <= Date.now(),
+  );
+  const planStartIsTooSoon = Boolean(
+    mode === "PLAN_FIRST" &&
+      startDateTime &&
+      new Date(startDateTime).getTime() <= Date.now() + deadlineConfig.minimum_plan_lead_minutes * 60 * 1000,
+  );
+  const recruitmentAfterStartInvalid = Boolean(
+    startDateTime &&
+      recruitmentDeadlineAt &&
+      new Date(recruitmentDeadlineAt).getTime() >= new Date(startDateTime).getTime(),
+  );
   const needsRoleWarning = recruitedSpots > Math.max(capacity - baselineSpots, 0);
+
+  useEffect(() => {
+    if (!startDateTime) {
+      setRecruitmentDeadlineDate("");
+      setRecruitmentDeadlineTime("");
+      setBookingDeadlineDate("");
+      setBookingDeadlineTime("");
+      return;
+    }
+    const { recruitment: recruitmentSuggestion, booking: bookingSuggestion } = recommendedDeadlineParts(startDateTime, mode, deadlineConfig);
+    setRecruitmentDeadlineDate(recruitmentSuggestion.date);
+    setRecruitmentDeadlineTime(recruitmentSuggestion.time);
+    if (mode === "PLAN_FIRST") {
+      setBookingDeadlineDate(bookingSuggestion.date);
+      setBookingDeadlineTime(bookingSuggestion.time);
+    } else {
+      setBookingDeadlineDate("");
+      setBookingDeadlineTime("");
+    }
+  }, [deadlineConfig, mode, startDateTime]);
 
   useEffect(() => {
     if (!title && selectedBooking && mode === "BOOKING_FIRST" && gameType === "PICKUP") {
@@ -108,10 +192,14 @@ function CreateGameContent() {
       const [bookingResponse, teamsResponse, referenceResponse] = await Promise.all([
         api.get<EligibleBookingsResponse>("/api/matchmaking/games/eligible-bookings/"),
         api.get<MyTeamsResponse>("/api/teams/my-teams/"),
-        api.get<DiscoveryReference>("/api/venues/discovery/reference/"),
+        api.get<DiscoveryReferenceResponse>("/api/venues/discovery/reference/"),
       ]);
       setBookings(bookingResponse.data.bookings);
-      setAreasByDistrict(referenceResponse.data.areas_by_district || {});
+      const reference = referenceResponse.data.filters || referenceResponse.data;
+      setDistricts(reference.districts || []);
+      setAreasByDistrict(reference.areas_by_district || {});
+      setPlanningStartTimes(reference.start_times || []);
+      setDeadlineConfig(reference.matchmaking_deadline_config || FALLBACK_DEADLINE_CONFIG);
       if (!bookingId && bookingResponse.data.bookings[0]) setBookingId(bookingResponse.data.bookings[0].id);
       const captainedTeams = teamsResponse.data.teams.filter((team) => team.is_captain);
       setCaptainTeams(captainedTeams);
@@ -150,10 +238,6 @@ function CreateGameContent() {
     return date.toISOString();
   }
 
-  function toApiDateTime(value: string) {
-    return value ? new Date(value).toISOString() : null;
-  }
-
   async function publishGame() {
     if (gameType === "FILL_SQUAD" && !selectedTeamId) {
       emitToast({ message: "Choose the team that needs temporary players.", type: "warning", dedupeKey: "fill-squad-team" });
@@ -163,8 +247,8 @@ function CreateGameContent() {
       emitToast({ message: "Choose a confirmed booking first.", type: "warning", dedupeKey: "create-game-booking" });
       return;
     }
-    if (mode === "PLAN_FIRST" && (!proposedDate || !proposedStart || !proposedEnd || !preferredArea)) {
-      emitToast({ message: "Add the proposed date, time and preferred area.", type: "warning", dedupeKey: "create-game-proposal" });
+    if (mode === "PLAN_FIRST" && (!proposedDate || !proposedStart || !proposedEnd || !preferredDistrict || !preferredArea)) {
+      emitToast({ message: "Choose a district, area, date, start time and duration for the proposed game.", type: "warning", dedupeKey: "create-game-proposal" });
       return;
     }
     if (!title.trim()) {
@@ -180,24 +264,44 @@ function CreateGameContent() {
       return;
     }
     if (mode === "PLAN_FIRST") {
-      const proposalStart = proposedDate && proposedStart ? new Date(proposedDate + "T" + proposedStart) : null;
-      const proposalEnd = proposedDate && proposedEnd ? new Date(proposedDate + "T" + proposedEnd) : null;
+      const proposalStart = startDateTime ? new Date(startDateTime) : null;
+      const proposalEnd = proposedDate && proposedEnd ? new Date(appDateTimeToIso(proposedDate, proposedEnd)) : null;
       if (!proposalStart || !proposalEnd || Number.isNaN(proposalStart.getTime()) || Number.isNaN(proposalEnd.getTime()) || proposalEnd <= proposalStart) {
         emitToast({ message: "Choose an end time after the proposed start time.", type: "warning", dedupeKey: "create-game-time-order" });
+        return;
+      }
+      if (proposalStart.getTime() <= Date.now() + deadlineConfig.minimum_plan_lead_minutes * 60 * 1000) {
+        emitToast({ message: `Choose a game time at least ${formatMinutesAsDuration(deadlineConfig.minimum_plan_lead_minutes)} from now so there is time to recruit players and secure a court.`, type: "warning", dedupeKey: "create-game-start-too-soon" });
+        return;
+      }
+      if (!recruitmentDeadlineAt || (mode === "PLAN_FIRST" && !bookingDeadlineAt)) {
+        emitToast({ message: "Choose when recruitment closes and, for Plan First, when the court must be secured.", type: "warning", dedupeKey: "create-game-deadlines" });
         return;
       }
       if (proposalStart <= new Date()) {
         emitToast({ message: "Choose a future date and time for the game.", type: "warning", dedupeKey: "create-game-start-future" });
         return;
       }
-      const bookingCutoff = bookingDeadline ? new Date(bookingDeadline) : null;
-      if (bookingCutoff && (Number.isNaN(bookingCutoff.getTime()) || bookingCutoff >= proposalStart)) {
-        emitToast({ message: "The court-booking deadline must be before the proposed game starts.", type: "warning", dedupeKey: "create-game-booking-deadline" });
+      const bookingCutoff = bookingDeadlineAt ? new Date(bookingDeadlineAt) : null;
+      if (bookingCutoff && (Number.isNaN(bookingCutoff.getTime()) || proposalStart.getTime() - bookingCutoff.getTime() < deadlineConfig.minimum_booking_lead_minutes * 60 * 1000)) {
+        emitToast({ message: `Choose a court-booking deadline at least ${formatMinutesAsDuration(deadlineConfig.minimum_booking_lead_minutes)} before the game starts.`, type: "warning", dedupeKey: "create-game-booking-deadline" });
         return;
       }
-      const recruitmentCutoff = recruitmentDeadline ? new Date(recruitmentDeadline) : null;
+      const recruitmentCutoff = recruitmentDeadlineAt ? new Date(recruitmentDeadlineAt) : null;
       if (recruitmentCutoff && (Number.isNaN(recruitmentCutoff.getTime()) || recruitmentCutoff >= proposalStart)) {
         emitToast({ message: "The recruitment deadline must be before the proposed game starts.", type: "warning", dedupeKey: "create-game-recruitment-deadline" });
+        return;
+      }
+      if (bookingCutoff && bookingCutoff <= new Date()) {
+        emitToast({ message: "The court-booking deadline has already passed. Choose a later game time or a shorter deadline window.", type: "warning", dedupeKey: "create-game-booking-deadline-past" });
+        return;
+      }
+      if (recruitmentCutoff && recruitmentCutoff <= new Date()) {
+        emitToast({ message: "The recruitment deadline has already passed. Choose a later game time or a shorter deadline window.", type: "warning", dedupeKey: "create-game-recruitment-deadline-past" });
+        return;
+      }
+      if (bookingCutoff && recruitmentCutoff && bookingCutoff.getTime() - recruitmentCutoff.getTime() < deadlineConfig.minimum_recruitment_to_booking_minutes * 60 * 1000) {
+        emitToast({ message: `Leave at least ${formatMinutesAsDuration(deadlineConfig.minimum_recruitment_to_booking_minutes)} between recruitment closing and the court-booking deadline.`, type: "warning", dedupeKey: "create-game-deadline-order" });
         return;
       }
     }
@@ -223,14 +327,15 @@ function CreateGameContent() {
         total_capacity: capacity,
         minimum_players_to_proceed: minimumPlayers,
         waitlist_enabled: waitlistEnabled,
-        recruitment_deadline: toApiDateTime(recruitmentDeadline) || defaultDeadline(2),
+        recruitment_deadline: recruitmentDeadlineAt || defaultDeadline(mode === "PLAN_FIRST" ? deadlineConfig.recommended_recruitment_lead_minutes / 60 : 2),
         proposed_date: mode === "PLAN_FIRST" ? proposedDate : null,
         proposed_start_time: mode === "PLAN_FIRST" ? proposedStart : null,
         proposed_end_time: mode === "PLAN_FIRST" ? proposedEnd : null,
+        preferred_district: mode === "PLAN_FIRST" ? preferredDistrict : "",
         preferred_area: mode === "PLAN_FIRST" ? preferredArea : "",
         preferred_venue_name: mode === "PLAN_FIRST" ? preferredVenue.trim() : "",
         alternative_details: mode === "PLAN_FIRST" ? alternativeDetails.trim() : "",
-        booking_deadline: mode === "PLAN_FIRST" ? toApiDateTime(bookingDeadline) || defaultDeadline(12) : null,
+        booking_deadline: mode === "PLAN_FIRST" ? bookingDeadlineAt || defaultDeadline(deadlineConfig.recommended_booking_lead_minutes / 60) : null,
         role_requirements: roleOptions.map((role) => ({ role: role.value, required_count: roleCounts[role.value] })).filter((item) => item.required_count > 0),
         guests: [],
       };
@@ -321,12 +426,15 @@ function CreateGameContent() {
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">2. Enter proposed plan</p>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <Field label="Proposed date"><input className={inputClass} min={today()} type="date" value={proposedDate} onChange={(event) => setProposedDate(event.target.value)} /></Field>
-                  <div className="grid grid-cols-2 gap-3"><Field label="Start time"><input className={inputClass} type="time" value={proposedStart} onChange={(event) => setProposedStart(event.target.value)} /></Field><Field label="End time"><input className={inputClass} type="time" value={proposedEnd} onChange={(event) => setProposedEnd(event.target.value)} /></Field></div>
-                  <Field label="Preferred area"><select className={inputClass} value={preferredArea} onChange={(event) => setPreferredArea(event.target.value)}><option value="">Choose area</option>{Object.entries(areasByDistrict).map(([district, options]) => <optgroup key={district} label={district}>{options.map((area) => <option key={area.value} value={area.value}>{area.label}</option>)}</optgroup>)}</select></Field>
+                  <Field label="Proposed date"><input className={inputClass} min={today()} type="date" value={proposedDate} onChange={(event) => { setProposedDate(event.target.value); setProposedStart(""); }} /><div className="mt-2 flex flex-wrap gap-2">{quickDateOptions().map((option) => <button className={`rounded-full border px-3 py-1.5 text-xs font-black transition ${proposedDate === option.value ? "border-sportGreen bg-green-50 text-sportGreen" : "border-slate-200 text-slate-600 hover:border-green-200"}`} key={option.value} onClick={() => { setProposedDate(option.value); setProposedStart(""); }} type="button">{option.label}</button>)}</div></Field>
+                  <Field label="Start time"><select className={inputClass} disabled={!proposedDate} value={proposedStart} onChange={(event) => setProposedStart(event.target.value)}><option value="">Choose a start time</option>{planningStartTimes.filter((time) => canFitDuration(time, proposedDuration) && canStartAt(proposedDate, time, deadlineConfig.minimum_plan_lead_minutes)).map((time) => <option key={time} value={time}>{formatTimeLabel(time)}</option>)}</select><p className="mt-1 text-xs font-semibold text-slate-500">Choose from 30-minute start times.</p></Field>
+                  <Field label="Duration" wide><div className="flex flex-wrap gap-2">{DURATION_OPTIONS.map((duration) => <button className={`min-h-10 rounded-xl border px-4 text-sm font-black transition ${proposedDuration === duration ? "border-sportGreen bg-green-50 text-sportGreen" : "border-slate-200 text-slate-600 hover:border-green-200"}`} key={duration} onClick={() => setProposedDuration(duration)} type="button">{formatDuration(duration)}</button>)}</div><p className="mt-2 text-sm font-semibold text-slate-600">{proposedStart && proposedEnd ? `Game ends at ${formatTimeLabel(proposedEnd)}.` : "The end time is calculated from the selected duration."}</p></Field>
+                  <Field label="District"><select className={inputClass} value={preferredDistrict} onChange={(event) => { setPreferredDistrict(event.target.value); setPreferredArea(""); }}><option value="">Choose a district</option>{districts.map((district) => <option key={district.value} value={district.value}>{district.label}</option>)}</select></Field>
+                  <Field label="Preferred area"><select className={inputClass} disabled={!preferredDistrict} value={preferredArea} onChange={(event) => setPreferredArea(event.target.value)}><option value="">{preferredDistrict ? "Choose an area" : "Choose a district first"}</option>{areaOptions.map((area) => <option key={area.value} value={area.value}>{area.label}</option>)}</select><p className="mt-1 text-xs font-semibold text-slate-500">Areas are filtered by district and come from SportSpot’s supported locations.</p></Field>
                   <Field label="Preferred venue optional"><input className={inputClass} placeholder="Venue name if you have one in mind" value={preferredVenue} onChange={(event) => setPreferredVenue(event.target.value)} /></Field>
                   <Field label="Alternative area or time" wide><input className={inputClass} placeholder="Example: Jawalakhel also works, evening preferred" value={alternativeDetails} onChange={(event) => setAlternativeDetails(event.target.value)} /></Field>
                 </div>
+                {planStartIsTooSoon ? <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Choose a game time with at least {formatMinutesAsDuration(deadlineConfig.minimum_plan_lead_minutes)} available for recruitment and court booking.</p> : null}
                 <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">Players will see this as Planning - Court Not Booked Yet until a real confirmed SportSpot booking is attached.</p>
               </section>
             )}
@@ -356,8 +464,12 @@ function CreateGameContent() {
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <Field label="Game title" wide><input className={inputClass} placeholder="Example: Saturday evening pickup" value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
                 <Field label="Game type"><select className={inputClass} value={intensity} onChange={(event) => setIntensity(event.target.value as GameIntensity)}><option value="CASUAL">Casual</option><option value="COMPETITIVE">Competitive</option><option value="PRACTICE">Practice / Friendly</option></select></Field>
-                <Field label="Recruitment deadline"><input className={inputClass} type="datetime-local" value={recruitmentDeadline} onChange={(event) => setRecruitmentDeadline(event.target.value)} /></Field>
-                {mode === "PLAN_FIRST" ? <Field label="Court booking deadline"><input className={inputClass} type="datetime-local" value={bookingDeadline} onChange={(event) => setBookingDeadline(event.target.value)} /></Field> : null}
+                <Field label="Players can join until"><div className="grid grid-cols-[1.15fr_.85fr] gap-2"><input aria-label="Recruitment deadline date" className={inputClass} min={today()} type="date" value={recruitmentDeadlineDate} onChange={(event) => setRecruitmentDeadlineDate(event.target.value)} /><input aria-label="Recruitment deadline time" className={inputClass} step={900} type="time" value={recruitmentDeadlineTime} onChange={(event) => setRecruitmentDeadlineTime(event.target.value)} /></div><p className="mt-1 text-xs font-semibold text-slate-500">Last time a new join request can be submitted. Choose the exact local date and time.</p><p className="mt-1 text-xs font-black text-sportGreen">{recruitmentDeadlineAt ? `Closes ${formatDateTimeInNepal(recruitmentDeadlineAt, { dateStyle: "medium", timeStyle: "short" })}.` : "Choose the proposed game time first."}</p></Field>
+                {mode === "PLAN_FIRST" ? <Field label="Secure the court by"><div className="grid grid-cols-[1.15fr_.85fr] gap-2"><input aria-label="Court booking deadline date" className={inputClass} min={today()} type="date" value={bookingDeadlineDate} onChange={(event) => setBookingDeadlineDate(event.target.value)} /><input aria-label="Court booking deadline time" className={inputClass} step={900} type="time" value={bookingDeadlineTime} onChange={(event) => setBookingDeadlineTime(event.target.value)} /></div><p className="mt-1 text-xs font-semibold text-slate-500">Latest time to select and pay for a court after recruitment closes. Keep at least {formatMinutesAsDuration(deadlineConfig.minimum_booking_lead_minutes)} before the game starts.</p><p className="mt-1 text-xs font-black text-sportGreen">{bookingDeadlineAt ? `Book by ${formatDateTimeInNepal(bookingDeadlineAt, { dateStyle: "medium", timeStyle: "short" })}.` : "Choose the proposed game time first."}</p></Field> : null}
+                {deadlineBufferInvalid ? <p className="md:col-span-2 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Leave at least {formatMinutesAsDuration(deadlineConfig.minimum_recruitment_to_booking_minutes)} between recruitment closing and the court-booking deadline.</p> : null}
+                {bookingLeadInvalid ? <p className="md:col-span-2 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">The court must be secured at least {formatMinutesAsDuration(deadlineConfig.minimum_booking_lead_minutes)} before the game starts.</p> : null}
+                {selectedStartIsTooSoon ? <p className="md:col-span-2 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Both deadlines must be in the future. Choose a later deadline or a later game time.</p> : null}
+                {recruitmentAfterStartInvalid ? <p className="md:col-span-2 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Recruitment must close before the game starts.</p> : null}
                 <Field label="Description" wide><textarea className={`${inputClass} min-h-24 py-3`} placeholder="Tell players the game mood, expectations and format." value={description} onChange={(event) => setDescription(event.target.value)} /></Field>
                 <Field label="Reporting instructions" wide><input className={inputClass} placeholder="Example: arrive 15 minutes early near reception" value={reportingInstructions} onChange={(event) => setReportingInstructions(event.target.value)} /></Field>
                 <Field label="Equipment or dress instructions" wide><input className={inputClass} placeholder="Example: bring gloves; turf shoes required" value={equipmentInstructions} onChange={(event) => setEquipmentInstructions(event.target.value)} /></Field>
@@ -372,12 +484,14 @@ function CreateGameContent() {
             <h2 className="mt-2 text-xl font-black text-sportNavy">{gameType === "FILL_SQUAD" ? "Squad Summary" : "Pickup Game Summary"}</h2>
             <div className="mt-4 space-y-3 text-sm font-semibold text-slate-600">
               <SummaryRow label="Status" value={mode === "BOOKING_FIRST" ? "Verified SportSpot Booking" : "Planning - Court Not Booked Yet"} />
-              <SummaryRow label="Place" value={mode === "BOOKING_FIRST" ? selectedBooking ? `${selectedBooking.venue_name}, ${selectedBooking.venue_area || selectedBooking.venue_city}` : "Choose booking" : preferredVenue || preferredArea || "Choose preferred area"} />
+              <SummaryRow label="Place" value={mode === "BOOKING_FIRST" ? selectedBooking ? `${selectedBooking.venue_name}, ${selectedBooking.venue_area || selectedBooking.venue_city}` : "Choose booking" : preferredVenue || [preferredArea, preferredDistrict].filter(Boolean).join(", ") || "Choose preferred area"} />
               <SummaryRow label="Time" value={mode === "BOOKING_FIRST" ? selectedBooking?.booking_display_time || "Choose booking" : proposedDate && proposedStart ? `${proposedDate}, ${proposedStart} - ${proposedEnd || "end time"}` : "Choose proposed time"} />
+              <SummaryRow label="Recruitment closes" value={recruitmentDeadlineAt ? formatDateTimeInNepal(recruitmentDeadlineAt, { dateStyle: "medium", timeStyle: "short" }) : "Choose a deadline"} />
+              {mode === "PLAN_FIRST" ? <SummaryRow label="Court booking by" value={bookingDeadlineAt ? formatDateTimeInNepal(bookingDeadlineAt, { dateStyle: "medium", timeStyle: "short" }) : "Choose a deadline"} /> : null}
               <SummaryRow label="Roster" value={`${baselineSpots} selected + ${recruitedSpots} temporary role needs`} />
               <SummaryRow label="Minimum" value={`${minimumPlayers} players before proceeding`} />
             </div>
-            <button className="mt-5 min-h-12 w-full rounded-xl bg-sportGreen text-sm font-black text-white shadow-sm hover:bg-green-700 disabled:opacity-60" disabled={isSubmitting || needsRoleWarning} onClick={publishGame} type="button">{isSubmitting ? "Publishing..." : gameType === "FILL_SQUAD" ? "Publish Fill My Squad" : "Publish Pickup Game"}</button>
+            <button className="mt-5 min-h-12 w-full rounded-xl bg-sportGreen text-sm font-black text-white shadow-sm hover:bg-green-700 disabled:opacity-60" disabled={isSubmitting || needsRoleWarning || selectedStartIsTooSoon || planStartIsTooSoon || deadlineBufferInvalid || bookingLeadInvalid || recruitmentAfterStartInvalid} onClick={publishGame} type="button">{isSubmitting ? "Publishing..." : gameType === "FILL_SQUAD" ? "Publish Fill My Squad" : "Publish Pickup Game"}</button>
             <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">{gameType === "FILL_SQUAD" ? "Accepted temporary players join this game only. Permanent team invitations stay separate." : "Accepted players get access to a planning room first. A full Game Room appears after the court booking is verified."}</p>
           </aside>
         </section>
@@ -406,8 +520,144 @@ function formatRole(value: string) { return value === "ALL_ROUNDER" ? "All-round
 
 const inputClass = "h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100";
 
+function addMinutesToTime(value: string, minutesToAdd: number) {
+  if (!value) return "";
+  const [hours, minutes] = value.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return "";
+  const totalMinutes = hours * 60 + minutes + minutesToAdd;
+  if (totalMinutes >= 24 * 60) return "";
+  return `${Math.floor(totalMinutes / 60).toString().padStart(2, "0")}:${(totalMinutes % 60).toString().padStart(2, "0")}`;
+}
+
+function canFitDuration(value: string, duration: number) {
+  return Boolean(addMinutesToTime(value, duration));
+}
+
+function canStartAt(dateValue: string, timeValue: string, minimumLeadMinutes = 0) {
+  if (!dateValue || dateValue !== today()) return true;
+  const startAt = appDateTimeToIso(dateValue, timeValue);
+  return Boolean(startAt && new Date(startAt).getTime() > Date.now() + minimumLeadMinutes * 60 * 1000);
+}
+
+function formatTimeLabel(value: string) {
+  if (!value) return "Choose a time";
+  const [hours, minutes] = value.split(":").map(Number);
+  const date = new Date(2000, 0, 1, hours, minutes);
+  return new Intl.DateTimeFormat("en-NP", { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function formatDuration(minutes: number) {
+  if (minutes % 60 === 0) return `${minutes / 60} hour${minutes === 60 ? "" : "s"}`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+function appDateTimeToIso(dateValue: string, timeValue: string) {
+  return localDateTimeToIso(dateValue, timeValue);
+}
+
+function localDateTimeToIso(dateValue: string, timeValue: string) {
+  if (!dateValue || !timeValue) return "";
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const [hour, minute] = timeValue.split(":").map(Number);
+  if (![year, month, day, hour, minute].every(Number.isFinite)) return "";
+
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  const zoneParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(utcGuess).reduce<Record<string, string>>((parts, part) => {
+    if (part.type !== "literal") parts[part.type] = part.value;
+    return parts;
+  }, {});
+  const zoneAsUtc = Date.UTC(
+    Number(zoneParts.year),
+    Number(zoneParts.month) - 1,
+    Number(zoneParts.day),
+    Number(zoneParts.hour),
+    Number(zoneParts.minute),
+    Number(zoneParts.second),
+  );
+  return new Date(utcGuess.getTime() - (zoneAsUtc - utcGuess.getTime())).toISOString();
+}
+
+function addMinutesToIso(startAt: string | null, minutes: number) {
+  if (!startAt) return "";
+  const timestamp = new Date(startAt).getTime();
+  return Number.isNaN(timestamp) ? "" : new Date(timestamp + minutes * 60 * 1000).toISOString();
+}
+
+function splitAppDateTime(value: string) {
+  if (!value) return { date: "", time: "" };
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(value)).reduce<Record<string, string>>((result, part) => {
+    if (part.type !== "literal") result[part.type] = part.value;
+    return result;
+  }, {});
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
+}
+
+function recommendedDeadlineParts(startAt: string, mode: CreationMode, config: DeadlineConfig) {
+  const startTimestamp = new Date(startAt).getTime();
+  if (mode !== "PLAN_FIRST") {
+    return {
+      recruitment: splitAppDateTime(addMinutesToIso(startAt, -config.recommended_booked_game_recruitment_lead_minutes)),
+      booking: { date: "", time: "" },
+    };
+  }
+
+  const nowTimestamp = Date.now();
+  const bookingFloor = nowTimestamp + (config.minimum_recruitment_to_booking_minutes + 15) * 60 * 1000;
+  const latestBooking = startTimestamp - config.minimum_booking_lead_minutes * 60 * 1000;
+  const preferredBooking = startTimestamp - config.recommended_booking_lead_minutes * 60 * 1000;
+  const bookingTimestamp = Math.min(Math.max(preferredBooking, bookingFloor), latestBooking);
+  const recruitmentFloor = nowTimestamp + 15 * 60 * 1000;
+  const preferredRecruitment = startTimestamp - config.recommended_recruitment_lead_minutes * 60 * 1000;
+  const recruitmentTimestamp = Math.min(
+    Math.max(preferredRecruitment, recruitmentFloor),
+    bookingTimestamp - config.minimum_recruitment_to_booking_minutes * 60 * 1000,
+  );
+  return {
+    recruitment: splitAppDateTime(new Date(recruitmentTimestamp).toISOString()),
+    booking: splitAppDateTime(new Date(bookingTimestamp).toISOString()),
+  };
+}
+
+function formatMinutesAsDuration(minutes: number) {
+  if (minutes % 60 === 0) return `${minutes / 60} hour${minutes === 60 ? "" : "s"}`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+function quickDateOptions() {
+  const currentDate = today();
+  return [
+    { label: "Today", value: currentDate },
+    { label: "Tomorrow", value: addCalendarDays(currentDate, 1) },
+    { label: "In 3 days", value: addCalendarDays(currentDate, 3) },
+  ];
+}
+
 function today() {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date()).reduce<Record<string, string>>((result, part) => {
+    if (part.type !== "literal") result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }

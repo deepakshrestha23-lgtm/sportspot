@@ -6,8 +6,8 @@ export type GameIntensity = "CASUAL" | "COMPETITIVE" | "PRACTICE";
 export type GameStatus = "DRAFT" | "RECRUITING" | "FULL" | "CLOSED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type GameSkillLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "OPEN";
 export type GameRole = "BATSMAN" | "BOWLER" | "ALL_ROUNDER" | "WICKETKEEPER" | "ANY";
-export type JoinRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "WAITLISTED" | "INVITED" | "WITHDRAWN" | "EXPIRED";
-export type ParticipantStatus = "CONFIRMED" | "PROVISIONAL" | "RECONFIRM_REQUIRED" | "DECLINED" | "LEFT" | "REMOVED";
+export type JoinRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "WAITLISTED" | "INVITED" | "WITHDRAWN" | "REMOVED" | "EXPIRED";
+export type ParticipantStatus = "CONFIRMED" | "PROVISIONAL" | "RECONFIRM_REQUIRED" | "GUEST_CONFIRMATION_REQUIRED" | "DECLINED" | "LEFT" | "REMOVED";
 
 export type GameRoleRequirement = {
   id: number;
@@ -38,6 +38,8 @@ export type GameParticipant = {
   role_label: string;
   status: ParticipantStatus;
   status_label: string;
+  reconfirmation_required: boolean;
+  reconfirmation_kind: "PLAYER_RESPONSE" | "HOST_ACKNOWLEDGEMENT" | "NONE";
   joined_at: string;
 };
 
@@ -46,6 +48,7 @@ export type GameUserState = {
   is_participant: boolean;
   participant_status?: ParticipantStatus | "";
   requires_reconfirmation: boolean;
+  reconfirmation_status?: "PENDING" | "";
   request_status: JoinRequestStatus | "";
   join_request_id: number | null;
 };
@@ -100,6 +103,7 @@ export type MatchmakingGame = {
   proposed_date: string | null;
   proposed_start_time: string | null;
   proposed_end_time: string | null;
+  preferred_district: string;
   preferred_area: string;
   preferred_venue_name: string;
   alternative_details: string;
@@ -118,6 +122,9 @@ export type MatchmakingGame = {
   occupied_spots_count: number;
   available_spots: number;
   waitlist_count: number;
+  reconfirmation_pending_count: number;
+  guest_confirmation_pending_count: number;
+  registered_reconfirmation_pending_count: number;
   role_requirements: GameRoleRequirement[];
   role_progress: GameRoleProgress[];
   participants: GameParticipant[];
@@ -181,6 +188,7 @@ export type GameCreatePayload = {
   proposed_date?: string | null;
   proposed_start_time?: string | null;
   proposed_end_time?: string | null;
+  preferred_district?: string;
   preferred_area?: string;
   preferred_venue_name?: string;
   alternative_details?: string;

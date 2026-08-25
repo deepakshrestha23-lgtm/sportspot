@@ -105,8 +105,25 @@ function FindGameContent() {
       const nextUrl = query.toString() ? `/find-game?${query.toString()}` : "/find-game";
       window.history.replaceState(null, "", nextUrl);
     }, 350);
-    return () => window.clearTimeout(timeout);
+    const refreshInterval = window.setInterval(() => loadGames(query), 60000);
+    return () => {
+      window.clearTimeout(timeout);
+      window.clearInterval(refreshInterval);
+    };
   }, [query]);
+
+  useEffect(() => {
+    const deadlineTimes = games
+      .map((game) => game.recruitment_deadline)
+      .filter((deadline): deadline is string => Boolean(deadline))
+      .map((deadline) => new Date(deadline).getTime())
+      .filter((timestamp) => Number.isFinite(timestamp) && timestamp > Date.now());
+    if (deadlineTimes.length === 0) return;
+
+    const nextDeadline = Math.min(...deadlineTimes);
+    const timeout = window.setTimeout(() => loadGames(query), Math.max(nextDeadline - Date.now() + 250, 250));
+    return () => window.clearTimeout(timeout);
+  }, [games, query]);
 
   async function loadGames(params: URLSearchParams) {
     setIsLoading(true);
@@ -213,7 +230,7 @@ function GameCard({ game }: { game: MatchmakingGame }) {
         </div>
         <div className="mt-4 space-y-2 text-sm font-semibold text-slate-600">
           <p className="font-black text-sportNavy">{game.venue_name}</p>
-          <p>{game.is_booking_verified ? game.court_name : game.preferred_area}</p>
+          <p>{game.is_booking_verified ? game.court_name : [game.preferred_area, game.preferred_district].filter(Boolean).join(", ")}</p>
           <p>{game.game_type === "FILL_SQUAD" && game.team_name ? `${game.team_name} captain: ${game.host_name}` : `Hosted by ${game.host_name}`}</p>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">

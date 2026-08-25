@@ -18,6 +18,8 @@ export default function PaymentPage() {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingKhalti, setIsStartingKhalti] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [noticeTone, setNoticeTone] = useState<"success" | "warning">("success");
@@ -104,6 +106,30 @@ export default function PaymentPage() {
     }
   }
 
+  async function cancelReservation() {
+    if (!booking || booking.status !== "RESERVED") return;
+
+    setIsCancelling(true);
+    setError("");
+    try {
+      const response = await api.post<{ booking: Booking }>(`/api/venues/bookings/${booking.id}/cancel/`, {
+        reason: "Player cancelled the unpaid reservation.",
+      });
+      setBooking(response.data.booking);
+      setShowCancelConfirmation(false);
+      setNoticeTone("warning");
+      setNotice("Your reservation was cancelled and the held time was released.");
+      emitToast({ message: "Your reservation was cancelled.", type: "success", dedupeKey: `reservation-cancelled-${booking.id}` });
+    } catch (requestError) {
+      const message = getApiErrorMessage(requestError, "We could not cancel this reservation. Please try again.");
+      setError(message);
+      emitToast({ message, type: "error", dedupeKey: `reservation-cancel-error-${booking.id}` });
+      loadBooking({ silent: true });
+    } finally {
+      setIsCancelling(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -132,6 +158,9 @@ export default function PaymentPage() {
           <p className="mt-1 text-sm font-semibold text-green-900">After Khalti confirms payment, SportSpot will attach this court booking to {booking.matchmaking_game_title || "your game plan"} automatically.</p>
         </section>
       ) : null}
+
+      {notice ? <div className={`rounded-lg border p-4 text-sm font-semibold ${noticeTone === "warning" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-900"}`}>{notice}</div> : null}
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">{error}</div> : null}
 
       <section className="overflow-hidden rounded-xl bg-sportNavy text-white shadow-sm">
         <div className="grid gap-6 p-6 lg:grid-cols-[1fr_340px]">
@@ -231,6 +260,35 @@ export default function PaymentPage() {
             >
               {isStartingKhalti ? "Opening Khalti..." : "Pay with Khalti"}
             </button>
+
+            {booking.status === "RESERVED" ? (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                {!showCancelConfirmation ? (
+                  <button className="text-sm font-black text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-red-700" disabled={isCancelling} onClick={() => setShowCancelConfirmation(true)} type="button">
+                    Cancel reservation
+                  </button>
+                ) : (
+                  <div>
+                    <p className="text-sm font-black text-sportNavy">Release this held time?</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">No payment has been completed. The reservation will be cancelled and the time made available again.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button className="rounded-md bg-red-600 px-4 py-2.5 text-sm font-black text-white hover:bg-red-700 disabled:opacity-60" disabled={isCancelling} onClick={cancelReservation} type="button">
+                        {isCancelling ? "Cancelling..." : "Release Reservation"}
+                      </button>
+                      <button className="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-100" disabled={isCancelling} onClick={() => setShowCancelConfirmation(false)} type="button">
+                        Keep Reservation
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {booking.status === "CANCELLED" || booking.status === "EXPIRED" ? (
+              <Link className="mt-4 block text-center text-sm font-black text-sportGreen hover:text-green-700" href={`/courts/${booking.court}`}>
+                Choose another time
+              </Link>
+            ) : null}
 
             <div className="mt-4 rounded-lg bg-purple-50 p-4 text-xs font-semibold leading-relaxed text-purple-900">
               Your booking will remain reserved until the countdown ends. If payment is not completed in time, the slot will be released.

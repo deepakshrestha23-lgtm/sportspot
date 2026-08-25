@@ -7,9 +7,17 @@ from django.utils import timezone
 from teams.models import Team
 from venues.models import Booking
 from venues.policies import get_booking_start_at
+from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG
 
 
-ACTIVE_PARTICIPANT_STATUSES = ["CONFIRMED", "PROVISIONAL", "RECONFIRM_REQUIRED"]
+ACTIVE_PARTICIPANT_STATUSES = [
+    "CONFIRMED",
+    "PROVISIONAL",
+    "RECONFIRM_REQUIRED",
+    "GUEST_CONFIRMATION_REQUIRED",
+]
+RECONFIRMATION_PENDING_STATUSES = ["RECONFIRM_REQUIRED", "GUEST_CONFIRMATION_REQUIRED"]
+AUTOMATIC_PLAN_FIRST_CANCELLATION_REASON = "The court-booking deadline passed before a court was confirmed."
 
 
 class Game(models.Model):
@@ -62,6 +70,7 @@ class Game(models.Model):
     proposed_date = models.DateField(blank=True, null=True)
     proposed_start_time = models.TimeField(blank=True, null=True)
     proposed_end_time = models.TimeField(blank=True, null=True)
+    preferred_district = models.CharField(max_length=50, blank=True)
     preferred_area = models.CharField(max_length=100, blank=True)
     preferred_venue_name = models.CharField(max_length=120, blank=True)
     alternative_details = models.CharField(max_length=300, blank=True)
@@ -110,13 +119,28 @@ class Game(models.Model):
                 raise ValidationError("The proposed end time must be after the start time.")
             if not self.preferred_area.strip():
                 raise ValidationError("Choose a preferred area.")
+            area_key = self.preferred_area.strip().casefold()
+            if self.preferred_district.strip():
+                district_areas = SPORTSPOT_AREAS_BY_DISTRICT.get(self.preferred_district.strip(), [])
+                if area_key not in {area.casefold() for area in district_areas}:
+                    raise ValidationError("Choose an area from the selected district.")
+            else:
+                supported_areas = {
+                    area.casefold()
+                    for areas in SPORTSPOT_AREAS_BY_DISTRICT.values()
+                    for area in areas
+                }
+                if area_key not in supported_areas:
+                    raise ValidationError("Choose an area from the supported SportSpot locations.")
             proposed_start = self.start_at
             if proposed_start and proposed_start <= timezone.now():
                 raise ValidationError("Choose a future game time.")
             if not self.booking_deadline:
                 raise ValidationError("Choose a court booking deadline.")
-            if proposed_start and self.booking_deadline >= proposed_start:
-                raise ValidationError("The booking deadline must be before the game starts.")
+            if proposed_start and self.booking_deadline > proposed_start - timezone.timedelta(minutes=SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG["minimum_booking_lead_minutes"]):
+                raise ValidationError("Leave at least 1 hour between the court-booking deadline and game start.")
+            if self.recruitment_deadline and self.recruitment_deadline > self.booking_deadline - timezone.timedelta(minutes=SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG["minimum_recruitment_to_booking_minutes"]):
+                raise ValidationError("Recruitment must close at least 30 minutes before the court-booking deadline.")
         if self.booking_id:
             if self.booking.player_id != self.host_id:
                 raise ValidationError("You can publish games only from your own confirmed booking.")
@@ -134,7 +158,7 @@ class Game(models.Model):
 
     def save(self, *args, **kwargs):
         update_fields = kwargs.get("update_fields")
-        lifecycle_fields = {"status", "updated_at", "cancelled_at", "cancellation_reason"}
+        lifecycle_fields = {"status", "is_public", "updated_at", "cancelled_at", "cancellation_reason"}
         if update_fields is not None and set(update_fields).issubset(lifecycle_fields):
             super().save(*args, **kwargs)
             return
@@ -179,7 +203,29 @@ class Game(models.Model):
 
     @property
     def provisional_participants_count(self):
-        return self.participants.filter(status__in=[GameParticipant.Status.PROVISIONAL, GameParticipant.Status.RECONFIRM_REQUIRED]).count()
+        return self.participants.filter(
+            status__in=[
+                GameParticipant.Status.PROVISIONAL,
+                GameParticipant.Status.RECONFIRM_REQUIRED,
+                GameParticipant.Status.GUEST_CONFIRMATION_REQUIRED,
+            ]
+        ).count()
+
+    @property
+    def reconfirmation_pending_count(self):
+        return self.participants.filter(status__in=RECONFIRMATION_PENDING_STATUSES).count()
+
+    @property
+    def guest_confirmation_pending_count(self):
+        return self.participants.filter(
+            status=GameParticipant.Status.GUEST_CONFIRMATION_REQUIRED,
+        ).count()
+
+    @property
+    def registered_reconfirmation_pending_count(self):
+        return self.participants.filter(
+            status=GameParticipant.Status.RECONFIRM_REQUIRED,
+        ).count()
 
     @property
     def occupied_spots_count(self):
@@ -205,6 +251,10 @@ class Game(models.Model):
             next_status = self.Status.IN_PROGRESS
         elif self.creation_mode == self.CreationMode.PLAN_FIRST and not self.booking_id and self.booking_deadline and self.booking_deadline <= now:
             next_status = self.Status.CANCELLED
+        elif self.status == self.Status.CLOSED and not self.is_public:
+            # A host can intentionally stop recruitment before the deadline
+            # while keeping the private game and its linked booking intact.
+            next_status = self.Status.CLOSED
         elif self.recruitment_deadline and self.recruitment_deadline <= now:
             next_status = self.Status.CLOSED
         elif self.available_spots == 0:
@@ -214,7 +264,15 @@ class Game(models.Model):
         if next_status != self.status:
             self.status = next_status
             if save:
-                self.save(update_fields=["status", "updated_at"])
+                update_fields = ["status", "updated_at"]
+                if next_status == self.Status.CANCELLED:
+                    if not self.cancelled_at:
+                        self.cancelled_at = now
+                        update_fields.append("cancelled_at")
+                    if not self.cancellation_reason:
+                        self.cancellation_reason = AUTOMATIC_PLAN_FIRST_CANCELLATION_REASON
+                        update_fields.append("cancellation_reason")
+                self.save(update_fields=update_fields)
         return self.status
 
     def __str__(self):
@@ -254,6 +312,7 @@ class GameParticipant(models.Model):
         CONFIRMED = "CONFIRMED", "Confirmed"
         PROVISIONAL = "PROVISIONAL", "Provisional"
         RECONFIRM_REQUIRED = "RECONFIRM_REQUIRED", "Reconfirmation Required"
+        GUEST_CONFIRMATION_REQUIRED = "GUEST_CONFIRMATION_REQUIRED", "Host Confirmation Required"
         DECLINED = "DECLINED", "Declined"
         LEFT = "LEFT", "Left"
         REMOVED = "REMOVED", "Removed"
@@ -263,7 +322,7 @@ class GameParticipant(models.Model):
     guest_name = models.CharField(max_length=100, blank=True)
     participant_type = models.CharField(max_length=20, choices=ParticipantType.choices)
     role = models.CharField(max_length=20, choices=GameRoleRequirement.CricksalRole.choices, default=GameRoleRequirement.CricksalRole.ANY)
-    status = models.CharField(max_length=24, choices=Status.choices, default=Status.CONFIRMED)
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.CONFIRMED)
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="added_game_participants", blank=True, null=True)
     joined_at = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -309,6 +368,7 @@ class JoinRequest(models.Model):
         WAITLISTED = "WAITLISTED", "Waitlisted"
         INVITED = "INVITED", "Invited"
         WITHDRAWN = "WITHDRAWN", "Withdrawn"
+        REMOVED = "REMOVED", "Removed by host"
         EXPIRED = "EXPIRED", "Expired"
 
     game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="join_requests")

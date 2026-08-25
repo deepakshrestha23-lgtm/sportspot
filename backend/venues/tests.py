@@ -924,3 +924,274 @@ class BookingCompletionLifecycleTests(APITestCase):
         self.assertEqual(expired_slot.status, CourtSlot.Status.AVAILABLE)
         self.assertEqual(finished_booking.status, Booking.BookingStatus.COMPLETED)
         self.assertIn("Booking maintenance complete", output.getvalue())
+
+
+class GenerateSlotsApiTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            email="slot-owner@example.com",
+            password="test-password",
+            full_name="Slot Owner",
+            phone="9800000099",
+            role="COURT_OWNER",
+        )
+        self.venue = Venue.objects.create(
+            owner=self.owner,
+            name="Slot Test Venue",
+            city="Kathmandu",
+            area="Baneshwor",
+            status=Venue.Status.DRAFT,
+        )
+        self.court = Court.objects.create(
+            venue=self.venue,
+            name="Court 1",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.MAT,
+        )
+        self.client.force_authenticate(self.owner)
+
+    def test_generation_honours_explicit_range_and_is_idempotent(self):
+        start_date = timezone.localdate() + timedelta(days=1)
+        end_date = start_date + timedelta(days=6)
+        payload = {
+            "available_days": [start_date.strftime("%A")],
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "opening_time": "10:00",
+            "closing_time": "12:00",
+            "slot_duration_minutes": 60,
+            "base_price": "1200",
+        }
+
+        first_response = self.client.post(reverse("owner-generate-slots", args=[self.court.id]), payload, format="json")
+        self.assertEqual(first_response.status_code, 201)
+        self.assertEqual(first_response.data["created_count"], 2)
+        self.assertEqual(first_response.data["days_in_range"], 7)
+        self.assertEqual(first_response.data["start_date"], start_date.isoformat())
+        self.assertEqual(first_response.data["end_date"], end_date.isoformat())
+
+        second_response = self.client.post(reverse("owner-generate-slots", args=[self.court.id]), payload, format="json")
+        self.assertEqual(second_response.status_code, 201)
+        self.assertEqual(second_response.data["created_count"], 0)
+        self.assertEqual(second_response.data["existing_count"], 2)
+        self.assertEqual(CourtSlot.objects.filter(court=self.court).count(), 2)
+
+    def test_generation_rejects_past_and_overlong_ranges(self):
+        base_payload = {
+            "available_days": ["MONDAY"],
+            "opening_time": "10:00",
+            "closing_time": "12:00",
+            "slot_duration_minutes": 60,
+            "base_price": "1200",
+        }
+        past_date = timezone.localdate() - timedelta(days=1)
+        past_response = self.client.post(
+            reverse("owner-generate-slots", args=[self.court.id]),
+            {**base_payload, "start_date": past_date.isoformat(), "end_date": past_date.isoformat()},
+            format="json",
+        )
+        self.assertEqual(past_response.status_code, 400)
+        self.assertIn("today onward", past_response.data["detail"])
+
+        start_date = timezone.localdate()
+        long_response = self.client.post(
+            reverse("owner-generate-slots", args=[self.court.id]),
+            {**base_payload, "start_date": start_date.isoformat(), "end_date": (start_date + timedelta(days=90)).isoformat()},
+            format="json",
+        )
+        self.assertEqual(long_response.status_code, 400)
+        self.assertIn("up to 90 days", long_response.data["detail"])
+
+    def test_generation_never_creates_overlapping_duration_inventory(self):
+        slot_date = timezone.localdate() + timedelta(days=1)
+        CourtSlot.objects.create(
+            court=self.court,
+            date=slot_date,
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            slot_duration_minutes=60,
+            price=1200,
+        )
+
+        response = self.client.post(
+            reverse("owner-generate-slots", args=[self.court.id]),
+            {
+                "available_days": [slot_date.strftime("%A")],
+                "start_date": slot_date.isoformat(),
+                "end_date": slot_date.isoformat(),
+                "opening_time": "10:00",
+                "closing_time": "11:00",
+                "slot_duration_minutes": 30,
+                "base_price": "700",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["created_count"], 0)
+        self.assertEqual(response.data["overlap_count"], 2)
+        self.assertEqual(CourtSlot.objects.filter(court=self.court).count(), 1)
+
+    def test_booking_rejects_legacy_overlapping_inventory(self):
+        player = get_user_model().objects.create_user(
+            email="slot-player@example.com",
+            password="test-password",
+            full_name="Slot Player",
+            phone="9800000098",
+            role="PLAYER",
+        )
+        self.venue.status = Venue.Status.APPROVED
+        self.venue.save(update_fields=["status", "updated_at"])
+        primary_slot = CourtSlot.objects.create(
+            court=self.court,
+            date=timezone.localdate() + timedelta(days=2),
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            slot_duration_minutes=60,
+            price=1200,
+        )
+        CourtSlot.objects.create(
+            court=self.court,
+            date=primary_slot.date,
+            start_time=time(10, 0),
+            end_time=time(10, 30),
+            slot_duration_minutes=30,
+            price=700,
+        )
+        self.client.force_authenticate(player)
+
+        response = self.client.post(
+            reverse("booking-reserve"),
+            {"slot_ids": [primary_slot.id]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("overlapping", response.data["detail"])
+
+    def test_clear_future_availability_only_removes_unbooked_slots(self):
+        player = get_user_model().objects.create_user(
+            email="clear-player@example.com",
+            password="test-password",
+            full_name="Clear Player",
+            phone="9800000097",
+            role="PLAYER",
+        )
+        slot_date = timezone.localdate() + timedelta(days=2)
+        clearable = CourtSlot.objects.create(
+            court=self.court,
+            date=slot_date,
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            slot_duration_minutes=60,
+            price=1200,
+        )
+        booked = CourtSlot.objects.create(
+            court=self.court,
+            date=slot_date,
+            start_time=time(11, 0),
+            end_time=time(12, 0),
+            slot_duration_minutes=60,
+            price=1200,
+            status=CourtSlot.Status.BOOKED,
+        )
+        reserved = CourtSlot.objects.create(
+            court=self.court,
+            date=slot_date,
+            start_time=time(12, 0),
+            end_time=time(13, 0),
+            slot_duration_minutes=60,
+            price=1200,
+            status=CourtSlot.Status.RESERVED,
+            reserved_until=timezone.now() + timedelta(minutes=10),
+        )
+        blocked = CourtSlot.objects.create(
+            court=self.court,
+            date=slot_date,
+            start_time=time(13, 0),
+            end_time=time(14, 0),
+            slot_duration_minutes=60,
+            price=1200,
+            status=CourtSlot.Status.BLOCKED,
+        )
+        historical = CourtSlot.objects.create(
+            court=self.court,
+            date=slot_date,
+            start_time=time(14, 0),
+            end_time=time(15, 0),
+            slot_duration_minutes=60,
+            price=1200,
+        )
+        Booking.objects.create(
+            player=player,
+            venue=self.venue,
+            court=self.court,
+            slot=historical,
+            amount=Decimal("1200.00"),
+            status=Booking.BookingStatus.CANCELLED,
+            payment_status=Booking.PaymentStatus.CANCELLED,
+            reserved_until=timezone.now() + timedelta(minutes=10),
+            cancelled_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            reverse("owner-clear-future-slots", args=[self.court.id]),
+            {"start_date": slot_date.isoformat(), "end_date": slot_date.isoformat()},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["cleared_count"], 1)
+        self.assertEqual(response.data["protected_count"], 4)
+        self.assertFalse(CourtSlot.objects.filter(pk=clearable.pk).exists())
+        self.assertTrue(CourtSlot.objects.filter(pk=booked.pk).exists())
+        self.assertTrue(CourtSlot.objects.filter(pk=reserved.pk).exists())
+        self.assertTrue(CourtSlot.objects.filter(pk=blocked.pk).exists())
+        self.assertTrue(CourtSlot.objects.filter(pk=historical.pk).exists())
+
+    def test_clear_future_availability_requires_a_bounded_future_range(self):
+        response = self.client.post(
+            reverse("owner-clear-future-slots", args=[self.court.id]),
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("date range", response.data["detail"])
+
+        start_date = timezone.localdate()
+        response = self.client.post(
+            reverse("owner-clear-future-slots", args=[self.court.id]),
+            {"start_date": start_date.isoformat(), "end_date": (start_date + timedelta(days=90)).isoformat()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("up to 90 days", response.data["detail"])
+
+    def test_past_slots_are_history_not_bookable_availability(self):
+        past_slot = CourtSlot.objects.create(
+            court=self.court,
+            date=timezone.localdate() - timedelta(days=1),
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            slot_duration_minutes=60,
+            price=1200,
+        )
+        self.court.venue.status = Venue.Status.APPROVED
+        self.court.venue.save(update_fields=["status", "updated_at"])
+
+        owner_action = self.client.post(
+            reverse("owner-slot-status", args=[past_slot.id, "block"]),
+            {},
+            format="json",
+        )
+        self.assertEqual(owner_action.status_code, 400)
+        self.assertIn("kept for history", owner_action.data["detail"])
+
+        self.client.force_authenticate(user=None)
+        public_response = self.client.get(
+            reverse("public-court-slots", args=[self.court.id]),
+            {"date": past_slot.date.isoformat()},
+        )
+        self.assertEqual(public_response.status_code, 200)
+        self.assertEqual(public_response.data["slots"], [])

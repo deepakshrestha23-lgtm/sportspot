@@ -142,7 +142,7 @@ export default function GameDetailPage() {
               <div>
                 <div className="flex flex-wrap gap-2"><Badge tone="green">{game.game_type === "FILL_SQUAD" ? "Fill My Squad" : "Pickup Game"}</Badge><Badge tone={game.is_booking_verified ? "green" : "blue"}>{game.is_booking_verified ? "Verified SportSpot Booking" : "Planning - Court Not Booked Yet"}</Badge><Badge>{game.game_intensity_label}</Badge></div>
                 <h1 className="mt-4 text-3xl font-black tracking-tight text-sportNavy">{game.title}</h1>
-                <p className="mt-2 text-sm font-semibold text-slate-600">{game.venue_name} - {game.is_booking_verified ? game.court_name : game.preferred_area}</p>
+                <p className="mt-2 text-sm font-semibold text-slate-600">{game.venue_name} - {game.is_booking_verified ? game.court_name : [game.preferred_area, game.preferred_district].filter(Boolean).join(", ")}</p>
               </div>
               <StatusBadge game={game} />
             </div>
@@ -177,7 +177,7 @@ export default function GameDetailPage() {
 
           {game.user_state.is_host ? <Link className="flex min-h-12 items-center justify-center rounded-xl bg-sportGreen text-sm font-black text-white" href={`/dashboard/player/games/${game.id}`}>Manage Game</Link> : null}
           {hasRoomAccess ? <Link className="flex min-h-12 items-center justify-center rounded-xl border border-green-200 bg-white text-sm font-black text-sportGreen" href={`/dashboard/player/games/${game.id}/room`}>{game.game_type === "FILL_SQUAD" ? (game.is_booking_verified ? "Open Squad Room" : "Open Squad Planning") : (game.is_booking_verified ? "Open Game Room" : "Open Planning Room")}</Link> : null}
-          {game.user_state.requires_reconfirmation ? <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5"><h2 className="text-lg font-black text-amber-950">Reconfirm your spot</h2><p className="mt-2 text-sm font-semibold text-amber-800">The final booking differs from the original plan. Confirm only if the new venue and time still work for you.</p><div className="mt-4 flex gap-2"><button className="min-h-11 flex-1 rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={isSubmitting} onClick={() => reconfirm("RECONFIRM")} type="button">Reconfirm</button><button className="min-h-11 flex-1 rounded-xl border border-amber-300 bg-white text-sm font-black text-amber-800 disabled:opacity-60" disabled={isSubmitting} onClick={() => reconfirm("DECLINE")} type="button">Decline</button></div></section> : null}
+          {game.user_state.requires_reconfirmation ? <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5"><h2 className="text-lg font-black text-amber-950">Confirm your updated schedule</h2><p className="mt-2 text-sm font-semibold leading-6 text-amber-800">{scheduleChangeMessage(game)} Confirm only if this final SportSpot booking still works for you. You can decline without a reliability penalty.</p><div className="mt-4 grid gap-2 text-sm font-black text-amber-950 sm:grid-cols-2"><div className="rounded-xl bg-white/70 p-3"><span className="block text-[11px] uppercase tracking-wide text-amber-700">Plan you joined</span>{formatProposedSchedule(game)}</div><div className="rounded-xl bg-white/70 p-3"><span className="block text-[11px] uppercase tracking-wide text-amber-700">Confirmed booking</span>{formatConfirmedSchedule(game)}</div></div><div className="mt-4 flex gap-2"><button className="min-h-11 flex-1 rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={isSubmitting} onClick={() => reconfirm("RECONFIRM")} type="button">Confirm my spot</button><button className="min-h-11 flex-1 rounded-xl border border-amber-300 bg-white text-sm font-black text-amber-800 disabled:opacity-60" disabled={isSubmitting} onClick={() => reconfirm("DECLINE")} type="button">I cannot attend</button></div></section> : null}
           {!game.user_state.is_host && game.user_state.is_participant && !game.user_state.requires_reconfirmation ? <button className="min-h-12 w-full rounded-xl border border-red-200 bg-white text-sm font-black text-red-600 disabled:opacity-60" disabled={isSubmitting} onClick={leave} type="button">Leave Game</button> : null}
           {game.user_state.request_status === "INVITED" ? <section className="rounded-3xl border border-green-200 bg-green-50 p-5"><h2 className="text-lg font-black text-green-950">You are invited</h2><p className="mt-2 text-sm font-semibold text-green-800">Review the game details before accepting your spot.</p><div className="mt-4 flex gap-2"><button className="min-h-11 flex-1 rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={isSubmitting} onClick={() => respondInvitation("ACCEPT")} type="button">Accept Invite</button><button className="min-h-11 flex-1 rounded-xl border border-red-200 bg-white text-sm font-black text-red-600 disabled:opacity-60" disabled={isSubmitting} onClick={() => respondInvitation("DECLINE")} type="button">Decline</button></div></section> : game.user_state.request_status ? <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-black text-green-900">Your request is {formatStatus(game.user_state.request_status)}.</div> : null}
           {canRequest || canWaitlist ? <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-black text-sportNavy">{canWaitlist ? "Join waitlist" : "Request to join"}</h2><label className="mt-4 block"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Your role</span><select className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold" onChange={(event) => setRequestedRole(event.target.value as GameRole)} value={requestedRole}>{availableRoles.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="mt-3 block"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Message</span><textarea className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 p-3 text-sm font-semibold" onChange={(event) => setMessage(event.target.value)} placeholder="Add a short note for the host" value={message} /></label><label className="mt-3 flex gap-3 text-sm font-semibold text-slate-600"><input className="mt-1" checked={attendanceConfirmed} onChange={(event) => setAttendanceConfirmed(event.target.checked)} type="checkbox" /> I confirm that I can attend this schedule if accepted.</label><button className="mt-4 min-h-12 w-full rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={isSubmitting} onClick={requestToJoin} type="button">{isSubmitting ? "Sending..." : canWaitlist ? "Join Waitlist" : "Request to Join"}</button></section> : null}
@@ -195,5 +195,34 @@ function useCountdown(target: string | null) { const [now, setNow] = useState<Da
 function formatDateTime(value: string | null) { if (!value) return "Date to be confirmed"; return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
 function formatSkill(value: string) { if (value === "OPEN") return "Open to all"; return `${value.charAt(0)}${value.slice(1).toLowerCase()}+`; }
 function formatStatus(value: string) { return value.replace(/_/g, " ").toLowerCase(); }
+
+function scheduleChangeMessage(game: MatchmakingGame) {
+  if (game.proposed_start_time && game.start_at) return "The host booked a different final time than the original plan.";
+  return "The final booking differs from the plan you joined.";
+}
+
+function formatProposedSchedule(game: MatchmakingGame) {
+  if (!game.proposed_date || !game.proposed_start_time) return "Original schedule not available";
+  const date = new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(`${game.proposed_date}T${game.proposed_start_time}`));
+  const start = formatClock(game.proposed_start_time);
+  const end = game.proposed_end_time ? ` - ${formatClock(game.proposed_end_time)}` : "";
+  return `${date}, ${start}${end}`;
+}
+
+function formatConfirmedSchedule(game: MatchmakingGame) {
+  if (!game.start_at) return "Final schedule not available";
+  const start = new Date(game.start_at);
+  const end = game.end_at ? new Date(game.end_at) : null;
+  const date = new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(start);
+  const time = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(start);
+  const endTime = end ? ` - ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(end)}` : "";
+  return `${date}, ${time}${endTime}`;
+}
+
+function formatClock(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  const date = new Date(2000, 0, 1, hour, minute);
+  return new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(date);
+}
 
 

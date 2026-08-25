@@ -6,9 +6,17 @@ from rest_framework import serializers
 from teams.models import Team, TeamMember
 from venues.models import Booking
 from venues.policies import get_booking_start_at
+from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG
 from venues.serializers import BookingSerializer
 
-from .models import ACTIVE_PARTICIPANT_STATUSES, Game, GameParticipant, GameRoleRequirement, JoinRequest
+from .models import (
+    ACTIVE_PARTICIPANT_STATUSES,
+    RECONFIRMATION_PENDING_STATUSES,
+    Game,
+    GameParticipant,
+    GameRoleRequirement,
+    JoinRequest,
+)
 from .services import (
     add_initial_participants,
     booking_end_at,
@@ -29,6 +37,41 @@ def default_deadline_before(start_at, hours):
     return candidate if candidate > now_plus_buffer else now_plus_buffer
 
 
+def default_plan_first_deadlines(start_at):
+    now = timezone.now()
+    config = SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG
+    booking_floor = now + timezone.timedelta(
+        minutes=config["minimum_recruitment_to_booking_minutes"] + 15,
+    )
+    latest_booking = start_at - timezone.timedelta(minutes=config["minimum_booking_lead_minutes"])
+    preferred_booking = start_at - timezone.timedelta(minutes=config["recommended_booking_lead_minutes"])
+    booking_deadline = min(max(preferred_booking, booking_floor), latest_booking)
+
+    recruitment_floor = now + timezone.timedelta(minutes=15)
+    preferred_recruitment = start_at - timezone.timedelta(minutes=config["recommended_recruitment_lead_minutes"])
+    recruitment_deadline = min(max(preferred_recruitment, recruitment_floor), booking_deadline - timezone.timedelta(minutes=config["minimum_recruitment_to_booking_minutes"]))
+    return recruitment_deadline, booking_deadline
+
+
+def format_duration_label(minutes):
+    if minutes % 60 == 0:
+        hours = minutes // 60
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    return f"{minutes // 60}h {minutes % 60}m" if minutes > 60 else f"{minutes} minutes"
+
+
+SUPPORTED_PLAN_AREAS = {
+    area.casefold()
+    for areas in SPORTSPOT_AREAS_BY_DISTRICT.values()
+    for area in areas
+}
+AREA_TO_DISTRICT = {
+    area.casefold(): district
+    for district, areas in SPORTSPOT_AREAS_BY_DISTRICT.items()
+    for area in areas
+}
+
+
 class GameRoleRequirementSerializer(serializers.ModelSerializer):
     role_label = serializers.CharField(source="get_role_display", read_only=True)
 
@@ -47,6 +90,8 @@ class GameParticipantSerializer(serializers.ModelSerializer):
     role_label = serializers.CharField(source="get_role_display", read_only=True)
     participant_type_label = serializers.CharField(source="get_participant_type_display", read_only=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+    reconfirmation_required = serializers.SerializerMethodField()
+    reconfirmation_kind = serializers.SerializerMethodField()
 
     class Meta:
         model = GameParticipant
@@ -66,8 +111,20 @@ class GameParticipantSerializer(serializers.ModelSerializer):
             "role_label",
             "status",
             "status_label",
+            "reconfirmation_required",
+            "reconfirmation_kind",
             "joined_at",
         )
+
+    def get_reconfirmation_required(self, participant):
+        return participant.status in RECONFIRMATION_PENDING_STATUSES
+
+    def get_reconfirmation_kind(self, participant):
+        if participant.status == GameParticipant.Status.RECONFIRM_REQUIRED:
+            return "PLAYER_RESPONSE"
+        if participant.status == GameParticipant.Status.GUEST_CONFIRMATION_REQUIRED:
+            return "HOST_ACKNOWLEDGEMENT"
+        return "NONE"
 
     def get_sportspot_id(self, participant):
         return getattr(getattr(participant.user, "player_profile", None), "sportspot_id", "") if participant.user_id else ""
@@ -143,6 +200,29 @@ class JoinRequestSerializer(serializers.ModelSerializer):
         return str(getattr(profile, "average_rating", "")) if profile else ""
 
 
+class GameHostUpdateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=120, required=False)
+    description = serializers.CharField(max_length=800, required=False, allow_blank=True)
+    host_notes = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    reporting_instructions = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    equipment_instructions = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    game_intensity = serializers.ChoiceField(choices=Game.GameIntensity.choices, required=False)
+    min_skill_level = serializers.ChoiceField(choices=Game.SkillLevel.choices, required=False)
+    total_capacity = serializers.IntegerField(min_value=2, max_value=30, required=False)
+    minimum_players_to_proceed = serializers.IntegerField(min_value=2, max_value=30, required=False)
+    waitlist_enabled = serializers.BooleanField(required=False)
+    recruitment_deadline = serializers.DateTimeField(required=False)
+    proposed_date = serializers.DateField(required=False)
+    proposed_start_time = serializers.TimeField(required=False)
+    proposed_end_time = serializers.TimeField(required=False)
+    preferred_district = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    preferred_area = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    preferred_venue_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    alternative_details = serializers.CharField(max_length=300, required=False, allow_blank=True)
+    booking_deadline = serializers.DateTimeField(required=False)
+    role_requirements = GameRoleRequirementSerializer(many=True, required=False)
+
+
 class GameSerializer(serializers.ModelSerializer):
     host_name = serializers.CharField(source="host.full_name", read_only=True)
     host_sportspot_id = serializers.SerializerMethodField()
@@ -167,14 +247,18 @@ class GameSerializer(serializers.ModelSerializer):
     start_at = serializers.SerializerMethodField()
     end_at = serializers.SerializerMethodField()
     date = serializers.SerializerMethodField()
+    preferred_district = serializers.SerializerMethodField()
     confirmed_participants_count = serializers.IntegerField(read_only=True)
     provisional_participants_count = serializers.IntegerField(read_only=True)
     occupied_spots_count = serializers.IntegerField(read_only=True)
     available_spots = serializers.IntegerField(read_only=True)
     waitlist_count = serializers.IntegerField(read_only=True)
+    reconfirmation_pending_count = serializers.IntegerField(read_only=True)
+    guest_confirmation_pending_count = serializers.IntegerField(read_only=True)
+    registered_reconfirmation_pending_count = serializers.IntegerField(read_only=True)
     role_requirements = GameRoleRequirementSerializer(many=True, read_only=True)
     role_progress = serializers.SerializerMethodField()
-    participants = GameParticipantSerializer(many=True, read_only=True)
+    participants = serializers.SerializerMethodField()
     user_state = serializers.SerializerMethodField()
     is_booking_verified = serializers.BooleanField(read_only=True)
     creation_mode_label = serializers.CharField(source="get_creation_mode_display", read_only=True)
@@ -227,6 +311,7 @@ class GameSerializer(serializers.ModelSerializer):
             "proposed_date",
             "proposed_start_time",
             "proposed_end_time",
+            "preferred_district",
             "preferred_area",
             "preferred_venue_name",
             "alternative_details",
@@ -245,6 +330,9 @@ class GameSerializer(serializers.ModelSerializer):
             "occupied_spots_count",
             "available_spots",
             "waitlist_count",
+            "reconfirmation_pending_count",
+            "guest_confirmation_pending_count",
+            "registered_reconfirmation_pending_count",
             "role_requirements",
             "role_progress",
             "participants",
@@ -260,6 +348,9 @@ class GameSerializer(serializers.ModelSerializer):
     def get_host_reliability_label(self, game):
         profile = getattr(game.host, "player_profile", None)
         return getattr(profile, "reliability_label", "") if profile else ""
+
+    def get_preferred_district(self, game):
+        return game.preferred_district or AREA_TO_DISTRICT.get((game.preferred_area or "").strip().casefold(), "")
 
     def get_team_name(self, game):
         return game.team.name if game.team_id else ""
@@ -295,6 +386,10 @@ class GameSerializer(serializers.ModelSerializer):
             "temporary_roles": temporary_roles,
         }
 
+    def get_participants(self, game):
+        participants = game.participants.filter(status__in=ACTIVE_PARTICIPANT_STATUSES)
+        return GameParticipantSerializer(participants, many=True, context=self.context).data
+
     def get_venue_name(self, game):
         return game.booking.venue.name if game.booking_id else (game.preferred_venue_name or "Court to be booked")
 
@@ -302,7 +397,7 @@ class GameSerializer(serializers.ModelSerializer):
         return game.booking.venue.area if game.booking_id else game.preferred_area
 
     def get_venue_city(self, game):
-        return game.booking.venue.city if game.booking_id else ""
+        return game.booking.venue.city if game.booking_id else game.preferred_district
 
     def get_venue_address(self, game):
         return game.booking.venue.address if game.booking_id else ""
@@ -353,14 +448,26 @@ class GameSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
-            return {"is_host": False, "is_participant": False, "requires_reconfirmation": False, "request_status": "", "join_request_id": None}
-        participation = game.participants.filter(user=user).first()
-        join_request = game.join_requests.filter(player=user).exclude(status__in=[JoinRequest.Status.REJECTED, JoinRequest.Status.WITHDRAWN, JoinRequest.Status.EXPIRED]).first()
+            return {
+                "is_host": False,
+                "is_participant": False,
+                "participant_status": "",
+                "reconfirmation_status": "",
+                "requires_reconfirmation": False,
+                "request_status": "",
+                "join_request_id": None,
+            }
+        participation = game.participants.filter(user=user, status__in=ACTIVE_PARTICIPANT_STATUSES).first()
+        join_request = game.join_requests.filter(player=user).exclude(status__in=[JoinRequest.Status.REJECTED, JoinRequest.Status.WITHDRAWN, JoinRequest.Status.REMOVED, JoinRequest.Status.EXPIRED]).first()
         return {
             "is_host": game.host_id == user.id,
             "is_participant": bool(participation and participation.status in ACTIVE_PARTICIPANT_STATUSES),
             "participant_status": participation.status if participation else "",
             "requires_reconfirmation": bool(participation and participation.status == GameParticipant.Status.RECONFIRM_REQUIRED),
+            "reconfirmation_status": (
+                "PENDING" if participation and participation.status == GameParticipant.Status.RECONFIRM_REQUIRED
+                else ""
+            ),
             "request_status": join_request.status if join_request else "",
             "join_request_id": join_request.id if join_request else None,
         }
@@ -416,6 +523,7 @@ class GameCreateSerializer(serializers.Serializer):
     proposed_date = serializers.DateField(required=False, allow_null=True)
     proposed_start_time = serializers.TimeField(required=False, allow_null=True)
     proposed_end_time = serializers.TimeField(required=False, allow_null=True)
+    preferred_district = serializers.CharField(max_length=50, required=False, allow_blank=True)
     preferred_area = serializers.CharField(max_length=100, required=False, allow_blank=True)
     preferred_venue_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
     alternative_details = serializers.CharField(max_length=300, required=False, allow_blank=True)
@@ -476,6 +584,15 @@ class GameCreateSerializer(serializers.Serializer):
             proposed_end_time = attrs.get("proposed_end_time")
             if not proposed_date or not proposed_start_time or not proposed_end_time:
                 raise serializers.ValidationError({"proposed_date": "Choose a proposed date and time."})
+            preferred_area = str(attrs.get("preferred_area") or "").strip()
+            if preferred_area.casefold() not in SUPPORTED_PLAN_AREAS:
+                raise serializers.ValidationError({"preferred_area": "Choose an area from the supported SportSpot locations."})
+            preferred_district = str(attrs.get("preferred_district") or "").strip()
+            inferred_district = AREA_TO_DISTRICT[preferred_area.casefold()]
+            if preferred_district and preferred_district != inferred_district:
+                raise serializers.ValidationError({"preferred_district": "Choose an area from the selected district."})
+            attrs["preferred_district"] = preferred_district or inferred_district
+            attrs["preferred_area"] = preferred_area
             if proposed_end_time <= proposed_start_time:
                 raise serializers.ValidationError({"proposed_end_time": "The end time must be after the start time."})
             proposed_start = timezone.make_aware(
@@ -485,12 +602,24 @@ class GameCreateSerializer(serializers.Serializer):
             now = timezone.now()
             if proposed_start <= now:
                 raise serializers.ValidationError({"proposed_date": "Choose a future game time."})
-            attrs["booking_deadline"] = attrs.get("booking_deadline") or default_deadline_before(proposed_start, 12)
-            attrs["recruitment_deadline"] = attrs.get("recruitment_deadline") or default_deadline_before(proposed_start, 2)
+            default_recruitment_deadline, default_booking_deadline = default_plan_first_deadlines(proposed_start)
+            attrs["booking_deadline"] = attrs.get("booking_deadline") or default_booking_deadline
+            attrs["recruitment_deadline"] = attrs.get("recruitment_deadline") or default_recruitment_deadline
+            minimum_plan_lead = timezone.timedelta(minutes=SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG["minimum_plan_lead_minutes"])
+            minimum_booking_lead = timezone.timedelta(minutes=SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG["minimum_booking_lead_minutes"])
+            minimum_recruitment_buffer = timezone.timedelta(minutes=SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG["minimum_recruitment_to_booking_minutes"])
+            if proposed_start <= now + minimum_plan_lead:
+                raise serializers.ValidationError({"proposed_date": "Choose a game time with enough time to recruit players and secure a court."})
             if not attrs["booking_deadline"] or attrs["booking_deadline"] <= now:
                 raise serializers.ValidationError({"booking_deadline": "Choose a future court-booking deadline."})
-            if attrs["booking_deadline"] >= proposed_start:
-                raise serializers.ValidationError({"booking_deadline": "The court-booking deadline must be before the game starts."})
+            if attrs["booking_deadline"] > proposed_start - minimum_booking_lead:
+                lead = format_duration_label(SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG["minimum_booking_lead_minutes"])
+                raise serializers.ValidationError({"booking_deadline": f"Leave at least {lead} between the court-booking deadline and game start."})
+            if attrs["recruitment_deadline"] and attrs["recruitment_deadline"] <= now:
+                raise serializers.ValidationError({"recruitment_deadline": "Choose a future recruitment deadline."})
+            if attrs["recruitment_deadline"] and attrs["recruitment_deadline"] > attrs["booking_deadline"] - minimum_recruitment_buffer:
+                buffer = format_duration_label(SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG["minimum_recruitment_to_booking_minutes"])
+                raise serializers.ValidationError({"recruitment_deadline": f"Recruitment must close at least {buffer} before the court-booking deadline."})
 
         occupied_baseline = 1 + selected_team_member_count
         if attrs["total_capacity"] < occupied_baseline:
@@ -575,13 +704,32 @@ class JoinRequestCreateSerializer(serializers.ModelSerializer):
             if game.status == Game.Status.FULL and game.waitlist_enabled:
                 status = JoinRequest.Status.WAITLISTED
                 position = next_waitlist_position(game)
-            join_request = JoinRequest.objects.create(
-                game=game,
-                player=player,
-                status=status,
-                waitlist_position=position,
-                **validated_data,
-            )
+            terminal_statuses = [
+                JoinRequest.Status.REJECTED,
+                JoinRequest.Status.WITHDRAWN,
+                JoinRequest.Status.REMOVED,
+                JoinRequest.Status.EXPIRED,
+            ]
+            join_request = JoinRequest.objects.select_for_update().filter(game=game, player=player).first()
+            if join_request and join_request.status not in terminal_statuses:
+                raise serializers.ValidationError("You already have an active request for this game.")
+            if join_request:
+                join_request.requested_role = validated_data.get("requested_role", join_request.requested_role)
+                join_request.message = validated_data.get("message", "")
+                join_request.attendance_confirmed = validated_data.get("attendance_confirmed", False)
+                join_request.status = status
+                join_request.waitlist_position = position
+                join_request.decided_by = None
+                join_request.decided_at = None
+                join_request.save(update_fields=["requested_role", "message", "attendance_confirmed", "status", "waitlist_position", "decided_by", "decided_at", "updated_at"])
+            else:
+                join_request = JoinRequest.objects.create(
+                    game=game,
+                    player=player,
+                    status=status,
+                    waitlist_position=position,
+                    **validated_data,
+                )
         from .services import notify_join_request_received
 
         notify_join_request_received(join_request)

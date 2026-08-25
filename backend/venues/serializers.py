@@ -100,6 +100,7 @@ class SlotSerializer(serializers.ModelSerializer):
     block_type_display = serializers.CharField(source="get_block_type_display", read_only=True)
     blocked_by_name = serializers.CharField(source="blocked_by.full_name", read_only=True)
     is_past = serializers.SerializerMethodField()
+    is_in_progress = serializers.SerializerMethodField()
     active_booking = serializers.SerializerMethodField()
 
     class Meta:
@@ -122,6 +123,7 @@ class SlotSerializer(serializers.ModelSerializer):
             "blocked_at",
             "blocked_by_name",
             "is_past",
+            "is_in_progress",
             "active_booking",
             "reserved_until",
             "created_at",
@@ -136,6 +138,7 @@ class SlotSerializer(serializers.ModelSerializer):
             "blocked_at",
             "blocked_by_name",
             "is_past",
+            "is_in_progress",
             "active_booking",
             "reserved_until",
             "created_at",
@@ -146,6 +149,11 @@ class SlotSerializer(serializers.ModelSerializer):
         today = timezone.localdate()
         now_time = timezone.localtime().time()
         return slot.date < today or (slot.date == today and slot.start_time <= now_time)
+
+    def get_is_in_progress(self, slot):
+        today = timezone.localdate()
+        now_time = timezone.localtime().time()
+        return slot.date == today and slot.start_time <= now_time < slot.end_time
 
     def get_active_booking(self, slot):
         request = self.context.get("request")

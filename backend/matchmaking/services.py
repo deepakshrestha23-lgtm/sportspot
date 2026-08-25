@@ -11,7 +11,14 @@ from teams.models import TeamMember
 from venues.models import Booking
 from venues.policies import get_booking_start_at
 
-from .models import ACTIVE_PARTICIPANT_STATUSES, Game, GameParticipant, GameRoleRequirement, JoinRequest
+from .models import (
+    ACTIVE_PARTICIPANT_STATUSES,
+    RECONFIRMATION_PENDING_STATUSES,
+    Game,
+    GameParticipant,
+    GameRoleRequirement,
+    JoinRequest,
+)
 
 
 ACTIVE_GAME_STATUSES = [
@@ -35,6 +42,130 @@ REQUEST_EXPIRING_GAME_STATUSES = [
     Game.Status.IN_PROGRESS,
     Game.Status.COMPLETED,
 ]
+
+
+def synchronize_game_lifecycle(game, now=None, expire_requests=False):
+    """Apply the current lifecycle rules before reading or mutating a game.
+
+    The maintenance worker remains responsible for bulk cleanup, but request-time
+    synchronization keeps user actions correct when the worker is delayed or
+    temporarily unavailable.
+    """
+    now = now or timezone.now()
+    # Lifecycle synchronization may update the game and lock join requests.
+    # Keep both operations in one transaction so read endpoints can safely
+    # repair stale lifecycle data without raising a transaction error.
+    with transaction.atomic():
+        synchronize_linked_booking_state(game, now=now)
+        game.refresh_status(now=now)
+        if expire_requests and game_should_expire_open_requests(game, now):
+            expire_open_join_requests_for_game(game, now=now)
+    return game
+
+
+def _cancel_game_for_linked_booking(game, actor=None, reason="", now=None):
+    """End a game whose confirmed court booking is no longer usable.
+
+    The booking remains the source of truth for payment and refunds. This
+    helper only closes the matchmaking lifecycle and preserves its history.
+    """
+    if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED]:
+        return False
+    now = now or timezone.now()
+    game.status = Game.Status.CANCELLED
+    game.is_public = False
+    game.cancelled_at = game.cancelled_at or now
+    game.cancellation_reason = reason or "The linked court booking was cancelled."
+    game.save(update_fields=["status", "is_public", "cancelled_at", "cancellation_reason", "updated_at"])
+    expire_open_join_requests_for_game(game, now=now)
+    notify_game_cancelled(game, actor)
+    return True
+
+
+def synchronize_linked_booking_state(game, now=None):
+    """Synchronize a linked game when its confirmed booking was cancelled."""
+    if not game.booking_id or game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED]:
+        return False
+    booking = game.booking
+    if booking.status not in [Booking.BookingStatus.CANCELLED, Booking.BookingStatus.EXPIRED]:
+        return False
+    actor = getattr(booking, "cancelled_by", None)
+    return _cancel_game_for_linked_booking(
+        game,
+        actor=actor,
+        reason="The linked court booking was cancelled, so this game is no longer available.",
+        now=now,
+    )
+
+
+@transaction.atomic
+def cancel_games_for_booking(booking, actor=None):
+    """Cancel every still-active game linked to a cancelled booking.
+
+    A booking may be linked to at most one active game, but this is written as
+    a queryset so legacy data is repaired safely as well.
+    """
+    now = timezone.now()
+    games = list(
+        Game.objects.select_for_update()
+        .select_related("booking", "host")
+        .filter(booking_id=booking.id)
+        .exclude(status__in=[Game.Status.CANCELLED, Game.Status.COMPLETED])
+    )
+    for game in games:
+        _cancel_game_for_linked_booking(
+            game,
+            actor=actor or getattr(booking, "cancelled_by", None),
+            reason="The linked court booking was cancelled, so this game is no longer available.",
+            now=now,
+        )
+    return len(games)
+
+
+@transaction.atomic
+def close_game_recruitment(game, actor):
+    """Stop discovery and new requests without cancelling the game booking."""
+    locked_game = Game.objects.select_for_update().select_related("host", "booking").get(id=game.id)
+    if locked_game.host_id != actor.id:
+        raise ValidationError("Only the game host can close recruitment.")
+    synchronize_game_lifecycle(locked_game, expire_requests=True)
+    if locked_game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS]:
+        raise ValidationError("Recruitment cannot be changed for this game anymore.")
+    if locked_game.status == Game.Status.CLOSED and not locked_game.is_public:
+        return locked_game
+    locked_game.status = Game.Status.CLOSED
+    locked_game.is_public = False
+    locked_game.save(update_fields=["status", "is_public", "updated_at"])
+    expire_open_join_requests_for_game(locked_game)
+    notify_game_recruitment_closed(locked_game, actor)
+    return locked_game
+
+
+@transaction.atomic
+def reopen_game_recruitment(game, actor):
+    """Reopen discovery only while the original schedule remains safe."""
+    locked_game = Game.objects.select_for_update().select_related("host", "booking").get(id=game.id)
+    if locked_game.host_id != actor.id:
+        raise ValidationError("Only the game host can reopen recruitment.")
+    synchronize_game_lifecycle(locked_game, expire_requests=True)
+    if locked_game.status != Game.Status.CLOSED:
+        raise ValidationError("Only a closed game can reopen recruitment.")
+    now = timezone.now()
+    if not locked_game.recruitment_deadline or locked_game.recruitment_deadline <= now:
+        raise ValidationError("The recruitment deadline has passed. Create a new game if you still need players.")
+    if not locked_game.start_at or locked_game.start_at <= now:
+        raise ValidationError("This game is too close to its start time to reopen recruitment.")
+    if locked_game.creation_mode == Game.CreationMode.PLAN_FIRST and not locked_game.booking_id:
+        if locked_game.booking_deadline and locked_game.booking_deadline <= now:
+            raise ValidationError("The court-booking deadline has passed. Create a new game plan instead.")
+    if locked_game.booking_id:
+        ensure_booking_can_publish_game(locked_game.booking, actor, exclude_game_id=locked_game.id)
+    locked_game.is_public = True
+    locked_game.status = Game.Status.RECRUITING
+    locked_game.save(update_fields=["status", "is_public", "updated_at"])
+    locked_game.refresh_status()
+    notify_game_recruitment_reopened(locked_game, actor)
+    return locked_game
 
 STRICT_ROLES = [
     GameRoleRequirement.CricksalRole.BATSMAN,
@@ -85,7 +216,7 @@ def eligible_bookings_for_user(user):
 
 
 def validate_game_booking_handoff(game, host):
-    game.refresh_status()
+    synchronize_game_lifecycle(game, expire_requests=True)
     if game.host_id != host.id:
         raise ValidationError("Only the host can book a court for this game.")
     if game.creation_mode != Game.CreationMode.PLAN_FIRST:
@@ -242,27 +373,33 @@ def role_progress(game):
     return progress
 
 
-def role_filled_count(game, role):
-    return game.participants.filter(
+def role_filled_count(game, role, exclude_participant_id=None):
+    participants = game.participants.filter(
         status__in=ACTIVE_PARTICIPANT_STATUSES,
         participant_type__in=[GameParticipant.ParticipantType.TEMPORARY, GameParticipant.ParticipantType.GUEST],
         role=role,
-    ).count()
+    )
+    if exclude_participant_id:
+        participants = participants.exclude(id=exclude_participant_id)
+    return participants.count()
 
 
-def ensure_role_has_space(game, role, include_any=False):
+def ensure_role_has_space(game, role, include_any=False, exclude_participant_id=None):
     role = role or GameRoleRequirement.CricksalRole.ANY
     if role == GameRoleRequirement.CricksalRole.ANY:
-        if game.available_spots <= 0:
+        available_spots = game.available_spots
+        if exclude_participant_id:
+            available_spots += 1
+        if available_spots <= 0:
             raise ValidationError("This game is already full.")
         return
     requirement = game.role_requirements.filter(role=role).first()
     if not requirement:
         if include_any and game.role_requirements.filter(role=GameRoleRequirement.CricksalRole.ANY).exists():
-            ensure_role_has_space(game, GameRoleRequirement.CricksalRole.ANY)
+            ensure_role_has_space(game, GameRoleRequirement.CricksalRole.ANY, exclude_participant_id=exclude_participant_id)
             return
         raise ValidationError("This role is not being recruited for this game.")
-    if role_filled_count(game, role) >= requirement.required_count:
+    if role_filled_count(game, role, exclude_participant_id=exclude_participant_id) >= requirement.required_count:
         raise ValidationError("This role is already filled. Choose another available role.")
 
 
@@ -283,8 +420,235 @@ def validate_role_plan(total_capacity, role_requirements, occupied_baseline=1):
         raise ValidationError("Role requirements cannot exceed the temporary player spots available after the selected squad is counted.")
 
 
-def validate_join_request(game, player, requested_role=None):
+def refresh_reconfirmation_state(game, save=True):
+    """Keep the game-level flag derived from its participant responses.
+
+    The participant status is the source of truth.  This prevents a game from
+    staying permanently marked as needing confirmation after every affected
+    player has responded, and makes guest acknowledgement visible separately.
+    """
+    pending = game.participants.filter(status__in=RECONFIRMATION_PENDING_STATUSES).exists()
+    if game.requires_reconfirmation == pending:
+        return pending
+    game.requires_reconfirmation = pending
+    if save:
+        game.save(update_fields=["requires_reconfirmation", "updated_at"])
+    return pending
+
+
+def mark_schedule_reconfirmation_required(game):
+    """Mark existing participants after a material schedule/location change.
+
+    Registered players can respond themselves. Offline guests cannot, so their
+    record requires an explicit host acknowledgement instead of an impossible
+    account action.
+    """
+    active_non_host = game.participants.filter(
+        status__in=ACTIVE_PARTICIPANT_STATUSES,
+    ).exclude(participant_type=GameParticipant.ParticipantType.HOST)
+    active_non_host.exclude(
+        participant_type=GameParticipant.ParticipantType.GUEST,
+    ).update(status=GameParticipant.Status.RECONFIRM_REQUIRED)
+    active_non_host.filter(
+        participant_type=GameParticipant.ParticipantType.GUEST,
+    ).update(status=GameParticipant.Status.GUEST_CONFIRMATION_REQUIRED)
+    return refresh_reconfirmation_state(game)
+
+
+@transaction.atomic
+def update_game_host_settings(game_id, actor, changes):
+    """Apply host-owned game edits atomically.
+
+    A confirmed booking remains the source of truth for its venue and time. A
+    Plan First listing may change its proposal, but active non-host players
+    must reconfirm after a material schedule or location change.
+    """
+    game = (
+        Game.objects.select_for_update(of=("self",))
+        .select_related("host", "booking", "booking__venue")
+        .get(id=game_id)
+    )
+    if game.host_id != actor.id:
+        raise ValidationError("Only the host can edit this game.")
+    synchronize_game_lifecycle(game, expire_requests=True)
+    if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS]:
+        raise ValidationError("This game can no longer be edited.")
+
+    allowed_fields = {
+        "title", "description", "host_notes", "reporting_instructions",
+        "equipment_instructions", "game_intensity", "min_skill_level",
+        "total_capacity", "minimum_players_to_proceed", "waitlist_enabled",
+        "recruitment_deadline", "proposed_date", "proposed_start_time",
+        "proposed_end_time", "preferred_district", "preferred_area",
+        "preferred_venue_name", "alternative_details", "booking_deadline",
+        "role_requirements",
+    }
+    unknown = set(changes) - allowed_fields
+    if unknown:
+        raise ValidationError("One or more game fields cannot be edited.")
+
+    if game.booking_id and any(
+        field in changes
+        for field in {
+            "proposed_date", "proposed_start_time", "proposed_end_time",
+            "preferred_district", "preferred_area", "preferred_venue_name",
+            "booking_deadline",
+        }
+    ):
+        raise ValidationError("The confirmed booking controls this game's venue, date, and time.")
+
+    active_participants = list(
+        game.participants.filter(status__in=ACTIVE_PARTICIPANT_STATUSES).order_by("id")
+    )
+    occupied_count = len(active_participants)
+    total_capacity = int(changes.get("total_capacity", game.total_capacity))
+    minimum_players = int(changes.get("minimum_players_to_proceed", game.minimum_players_to_proceed))
+    if total_capacity < occupied_count:
+        raise ValidationError(f"Capacity cannot be lower than the {occupied_count} occupied player spots.")
+    if minimum_players > total_capacity:
+        raise ValidationError("Minimum players cannot exceed total capacity.")
+
+    role_items = changes.get("role_requirements")
+    if role_items is not None:
+        role_values = []
+        for item in role_items:
+            role = item.get("role")
+            count = int(item.get("required_count") or 0)
+            role_values.append({"role": role, "required_count": count})
+        baseline = sum(
+            1
+            for participant in active_participants
+            if participant.participant_type in [
+                GameParticipant.ParticipantType.HOST,
+                GameParticipant.ParticipantType.TEAM_MEMBER,
+            ]
+        )
+        validate_role_plan(total_capacity, role_values, occupied_baseline=baseline)
+        for participant in active_participants:
+            if participant.participant_type not in [
+                GameParticipant.ParticipantType.TEMPORARY,
+                GameParticipant.ParticipantType.GUEST,
+            ]:
+                continue
+            matching = next((item for item in role_values if item["role"] == participant.role), None)
+            if not matching or matching["required_count"] < role_filled_count(game, participant.role):
+                raise ValidationError("A role requirement cannot be reduced below the players already filling it.")
+
+    previous_start = game.start_at
+    previous_end = game.end_at
+    previous_area = (game.preferred_area or "").strip().casefold()
+    model_changes = {key: value for key, value in changes.items() if key != "role_requirements"}
+    for key, value in model_changes.items():
+        setattr(game, key, value)
+    game.total_capacity = total_capacity
+    game.minimum_players_to_proceed = minimum_players
+
+    if game.recruitment_deadline is None:
+        raise ValidationError("Every game needs a recruitment deadline.")
+    game.full_clean()
+    game.save(update_fields=list(model_changes.keys()) + ["total_capacity", "minimum_players_to_proceed", "updated_at"])
+
+    if role_items is not None:
+        game.role_requirements.all().delete()
+        GameRoleRequirement.objects.bulk_create([
+            GameRoleRequirement(game=game, role=item["role"], required_count=int(item["required_count"]))
+            for item in role_values
+            if int(item["required_count"]) > 0
+        ])
+
+    next_start = game.start_at
+    next_end = game.end_at
+    next_area = (game.preferred_area or "").strip().casefold()
+    schedule_changed = bool(
+        previous_start != next_start
+        or previous_end != next_end
+        or previous_area != next_area
+    )
+    if schedule_changed and not game.booking_id:
+        mark_schedule_reconfirmation_required(game)
+    else:
+        refresh_reconfirmation_state(game)
+
     game.refresh_status()
+    notify_game_updated(game, actor, schedule_changed=schedule_changed)
+    return game
+
+
+@transaction.atomic
+def update_game_participant(game_id, participant_id, actor, changes):
+    game = Game.objects.select_for_update(of=("self",)).select_related("host").get(id=game_id)
+    if game.host_id != actor.id:
+        raise ValidationError("Only the host can edit the game roster.")
+    synchronize_game_lifecycle(game, expire_requests=True)
+    if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS]:
+        raise ValidationError("The roster can no longer be changed.")
+    participant = GameParticipant.objects.select_for_update(of=("self",)).select_related("user").filter(
+        id=participant_id,
+        game=game,
+        status__in=ACTIVE_PARTICIPANT_STATUSES,
+    ).first()
+    if not participant:
+        raise ValidationError("This player is no longer an active participant.")
+    if participant.participant_type == GameParticipant.ParticipantType.HOST:
+        raise ValidationError("The host cannot be edited from the roster.")
+
+    role = changes.get("role", participant.role) or GameRoleRequirement.CricksalRole.ANY
+    if role != participant.role:
+        ensure_role_has_space(game, role, include_any=True, exclude_participant_id=participant.id)
+    guest_name = changes.get("guest_name", participant.guest_name)
+    if participant.participant_type == GameParticipant.ParticipantType.GUEST:
+        guest_name = str(guest_name or "").strip()
+        if len(guest_name) < 2:
+            raise ValidationError("Enter the guest player's name.")
+        participant.guest_name = guest_name
+    elif "guest_name" in changes:
+        raise ValidationError("Only guest player names can be edited.")
+
+    participant.role = role
+    participant.save(update_fields=["guest_name", "role"])
+    if participant.user_id:
+        JoinRequest.objects.filter(
+            game=game,
+            player=participant.user,
+            status=JoinRequest.Status.ACCEPTED,
+        ).update(requested_role=role, updated_at=timezone.now())
+    return participant
+
+
+@transaction.atomic
+def remove_game_participant(game_id, participant_id, actor):
+    game = Game.objects.select_for_update(of=("self",)).select_related("host").get(id=game_id)
+    if game.host_id != actor.id:
+        raise ValidationError("Only the host can remove players from the roster.")
+    synchronize_game_lifecycle(game, expire_requests=True)
+    if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS]:
+        raise ValidationError("The roster can no longer be changed.")
+    participant = GameParticipant.objects.select_for_update(of=("self",)).select_related("user").filter(
+        id=participant_id,
+        game=game,
+        status__in=ACTIVE_PARTICIPANT_STATUSES,
+    ).first()
+    if not participant:
+        raise ValidationError("This player is no longer an active participant.")
+    if participant.participant_type == GameParticipant.ParticipantType.HOST:
+        raise ValidationError("The host cannot leave the roster.")
+    participant.status = GameParticipant.Status.REMOVED
+    participant.save(update_fields=["status"])
+    if participant.user_id:
+        JoinRequest.objects.filter(
+            game=game,
+            player=participant.user,
+            status=JoinRequest.Status.ACCEPTED,
+        ).update(status=JoinRequest.Status.REMOVED, decided_by=actor, decided_at=timezone.now(), updated_at=timezone.now())
+        notify_participant_removed(game, participant, actor)
+    resequence_waitlist(game)
+    refresh_reconfirmation_state(game)
+    game.refresh_status()
+    return participant
+
+
+def validate_join_request(game, player, requested_role=None):
+    synchronize_game_lifecycle(game, expire_requests=True)
     if game.status not in [Game.Status.RECRUITING, Game.Status.FULL]:
         raise ValidationError("This game is not accepting requests right now.")
     if game.recruitment_deadline and game.recruitment_deadline <= timezone.now():
@@ -295,7 +659,7 @@ def validate_join_request(game, player, requested_role=None):
         raise ValidationError("You are already in this game.")
     if is_active_registered_team_member(game, player):
         raise ValidationError("You are already part of this team. Fill My Squad is for temporary outside players.")
-    if JoinRequest.objects.filter(game=game, player=player).exclude(status__in=[JoinRequest.Status.WITHDRAWN, JoinRequest.Status.REJECTED, JoinRequest.Status.EXPIRED]).exists():
+    if JoinRequest.objects.filter(game=game, player=player).exclude(status__in=[JoinRequest.Status.WITHDRAWN, JoinRequest.Status.REJECTED, JoinRequest.Status.REMOVED, JoinRequest.Status.EXPIRED]).exists():
         raise ValidationError("You already have an active request for this game.")
     if not player_meets_skill(game, player):
         raise ValidationError("This game is looking for a higher skill level.")
@@ -314,8 +678,11 @@ def add_guest_participant(game_id, actor, guest_name, role):
     game = Game.objects.select_for_update().order_by().get(id=game_id)
     if game.host_id != actor.id:
         raise ValidationError("Only the host can add guest players.")
-    if game.status not in [Game.Status.RECRUITING, Game.Status.FULL, Game.Status.CLOSED]:
+    synchronize_game_lifecycle(game, expire_requests=True)
+    if game.status not in [Game.Status.RECRUITING, Game.Status.FULL]:
         raise ValidationError("Guests cannot be added to this game right now.")
+    if game.recruitment_deadline and game.recruitment_deadline <= timezone.now():
+        raise ValidationError("Recruitment for this game has closed.")
     name = str(guest_name or "").strip()
     if len(name) < 2:
         raise ValidationError("Enter the guest player's name.")
@@ -374,6 +741,7 @@ def invite_player_to_game(game_id, actor, sportspot_id, requested_role, message=
     if existing_request and existing_request.status not in [
         JoinRequest.Status.REJECTED,
         JoinRequest.Status.WITHDRAWN,
+        JoinRequest.Status.REMOVED,
         JoinRequest.Status.EXPIRED,
     ]:
         raise ValidationError("This player already has an active request or invitation for this game.")
@@ -473,13 +841,16 @@ def decide_join_request(join_request, actor, decision):
     # Lock the game first so this decision has the same lock ordering as join,
     # withdrawal and maintenance expiry.
     game = Game.objects.select_for_update().order_by().select_related("host").get(id=join_request.game_id)
-    locked_request = JoinRequest.objects.select_for_update().select_related("game", "player").get(id=join_request.id, game_id=game.id)
     if game.host_id != actor.id:
         raise ValidationError("Only the game host can manage requests.")
+    synchronize_game_lifecycle(game, expire_requests=True)
+    locked_request = JoinRequest.objects.select_for_update().select_related("game", "player").get(id=join_request.id, game_id=game.id)
     if locked_request.status not in [JoinRequest.Status.PENDING, JoinRequest.Status.WAITLISTED]:
         return locked_request
 
     normalized = str(decision).upper()
+    if normalized in {"ACCEPT", "WAITLIST"} and game.status not in [Game.Status.RECRUITING, Game.Status.FULL]:
+        raise ValidationError("This game is no longer accepting players.")
     if normalized == "ACCEPT":
         validate_join_request_decision_acceptance(game, locked_request)
         participant_status = GameParticipant.Status.CONFIRMED if game.booking_id else GameParticipant.Status.PROVISIONAL
@@ -568,6 +939,7 @@ def next_waitlist_position(game):
 @transaction.atomic
 def leave_game(game, player):
     locked_game = Game.objects.select_for_update().order_by().get(id=game.id)
+    synchronize_game_lifecycle(locked_game, expire_requests=True)
     participant = GameParticipant.objects.select_for_update().filter(
         game=locked_game,
         user=player,
@@ -582,6 +954,7 @@ def leave_game(game, player):
     participant.status = GameParticipant.Status.LEFT
     participant.save(update_fields=["status"])
     resequence_waitlist(locked_game)
+    refresh_reconfirmation_state(locked_game)
     locked_game.refresh_status()
     notify_participant_left(locked_game, player)
     return participant
@@ -592,6 +965,7 @@ def attach_booking_to_game(game, booking, actor):
     locked_game = Game.objects.select_for_update().order_by().select_related("host").get(id=game.id)
     if locked_game.host_id != actor.id:
         raise ValidationError("Only the host can attach a booking to this game.")
+    validate_game_booking_handoff(locked_game, actor)
     if locked_game.creation_mode != Game.CreationMode.PLAN_FIRST:
         raise ValidationError("This game already uses a confirmed booking.")
     if locked_game.booking_id:
@@ -610,14 +984,22 @@ def attach_booking_to_game(game, booking, actor):
         or (previous_end and booking_end and abs((booking_end - previous_end).total_seconds()) > 900)
         or (previous_area and booking_area and previous_area != booking_area)
     )
-    locked_game.requires_reconfirmation = material_change
+    locked_game.requires_reconfirmation = False
     locked_game.save(update_fields=["booking", "booking_attached_at", "requires_reconfirmation", "updated_at"])
-    participants = locked_game.participants.filter(status__in=[GameParticipant.Status.PROVISIONAL, GameParticipant.Status.RECONFIRM_REQUIRED])
+    participants = locked_game.participants.filter(status__in=ACTIVE_PARTICIPANT_STATUSES)
     if material_change:
-        participants.exclude(participant_type=GameParticipant.ParticipantType.HOST).update(status=GameParticipant.Status.RECONFIRM_REQUIRED)
-        participants.filter(participant_type=GameParticipant.ParticipantType.HOST).update(status=GameParticipant.Status.CONFIRMED)
+        participants.exclude(participant_type=GameParticipant.ParticipantType.HOST).exclude(
+            participant_type=GameParticipant.ParticipantType.GUEST,
+        ).update(status=GameParticipant.Status.RECONFIRM_REQUIRED)
+        participants.filter(
+            participant_type=GameParticipant.ParticipantType.GUEST,
+        ).update(status=GameParticipant.Status.GUEST_CONFIRMATION_REQUIRED)
+        participants.filter(
+            participant_type=GameParticipant.ParticipantType.HOST,
+        ).update(status=GameParticipant.Status.CONFIRMED)
     else:
         participants.update(status=GameParticipant.Status.CONFIRMED)
+    refresh_reconfirmation_state(locked_game)
     locked_game.refresh_status()
     notify_booking_attached(locked_game, material_change)
     return locked_game
@@ -625,8 +1007,12 @@ def attach_booking_to_game(game, booking, actor):
 
 @transaction.atomic
 def reconfirm_game(game, player, response):
+    locked_game = Game.objects.select_for_update().order_by().get(id=game.id)
+    synchronize_game_lifecycle(locked_game, expire_requests=True)
+    if locked_game.status in [Game.Status.CANCELLED, Game.Status.IN_PROGRESS, Game.Status.COMPLETED]:
+        raise ValidationError("This game is no longer accepting reconfirmations.")
     participant = GameParticipant.objects.select_for_update().filter(
-        game=game,
+        game=locked_game,
         user=player,
         status=GameParticipant.Status.RECONFIRM_REQUIRED,
     ).first()
@@ -640,7 +1026,38 @@ def reconfirm_game(game, player, response):
     else:
         raise ValidationError("Choose a valid reconfirmation response.")
     participant.save(update_fields=["status"])
-    game.refresh_status()
+    refresh_reconfirmation_state(locked_game)
+    locked_game.refresh_status()
+    notify_reconfirmation_response(locked_game, participant, normalized)
+    return participant
+
+
+@transaction.atomic
+def confirm_guest_schedule(game_id, participant_id, actor):
+    """Record the host's acknowledgement for an offline guest.
+
+    Guests do not have SportSpot accounts and therefore cannot respond to the
+    registered-player reconfirmation endpoint. The host explicitly confirms
+    that the guest was told about the final booking details.
+    """
+    locked_game = Game.objects.select_for_update().order_by().select_related("host").get(id=game_id)
+    if locked_game.host_id != actor.id:
+        raise ValidationError("Only the host can confirm an offline guest's schedule.")
+    synchronize_game_lifecycle(locked_game, expire_requests=True)
+    if locked_game.status in [Game.Status.CANCELLED, Game.Status.IN_PROGRESS, Game.Status.COMPLETED]:
+        raise ValidationError("Guest schedules can no longer be confirmed for this game.")
+    participant = GameParticipant.objects.select_for_update().filter(
+        id=participant_id,
+        game=locked_game,
+        participant_type=GameParticipant.ParticipantType.GUEST,
+        status=GameParticipant.Status.GUEST_CONFIRMATION_REQUIRED,
+    ).first()
+    if not participant:
+        raise ValidationError("This guest does not need schedule confirmation.")
+    participant.status = GameParticipant.Status.CONFIRMED
+    participant.save(update_fields=["status"])
+    refresh_reconfirmation_state(locked_game)
+    locked_game.refresh_status()
     return participant
 
 
@@ -725,6 +1142,11 @@ def expire_matchmaking_deadlines(now=None, dry_run=False, notify=True, limit=100
         | Q(proposed_date=today, proposed_end_time__lte=current_time)
     )
     due_lifecycle = (
+        Q(
+            booking__status__in=[Booking.BookingStatus.CANCELLED, Booking.BookingStatus.EXPIRED],
+            status__in=[Game.Status.DRAFT, Game.Status.RECRUITING, Game.Status.FULL, Game.Status.CLOSED, Game.Status.IN_PROGRESS],
+        )
+        |
         Q(recruitment_deadline__isnull=False, recruitment_deadline__lte=now)
         | Q(
             creation_mode=Game.CreationMode.PLAN_FIRST,
@@ -760,9 +1182,10 @@ def expire_matchmaking_deadlines(now=None, dry_run=False, notify=True, limit=100
             continue
 
         with transaction.atomic():
-            game = Game.objects.select_for_update().order_by().get(id=game_id)
+            game = Game.objects.select_for_update().select_related("booking").order_by().get(id=game_id)
             previous_status = game.status
-            next_status = game.refresh_status(save=True, now=now)
+            linked_booking_cancelled = synchronize_linked_booking_state(game, now=now)
+            next_status = game.status if linked_booking_cancelled else game.refresh_status(save=True, now=now)
             if previous_status != next_status:
                 _increment_lifecycle_stat(stats, next_status)
             if game_should_expire_open_requests(game, now):
@@ -921,7 +1344,7 @@ def notify_booking_attached(game, material_change=False):
             title="Court booking confirmed",
             message=(
                 f"{game.title} now has a verified SportSpot booking. Please reconfirm your spot."
-                if material_change
+                if material_change and recipient != game.host_id
                 else f"{game.title} now has a verified SportSpot booking."
             ),
             priority=Notification.Priority.IMPORTANT,
@@ -933,6 +1356,51 @@ def notify_booking_attached(game, material_change=False):
             metadata={"game_id": game.id, "booking_id": game.booking_id, "requires_reconfirmation": material_change},
             deduplication_key=f"game:{game.id}:booking-attached:{recipient.id}",
         )
+    if material_change and game.guest_confirmation_pending_count:
+        create_notification(
+            recipient=game.host,
+            actor=game.host,
+            notification_type=Notification.NotificationType.MATCH_UPDATED,
+            title="Confirm guest schedule",
+            message=f"The court time for {game.title} changed. Confirm that each offline guest knows the final booking details.",
+            priority=Notification.Priority.IMPORTANT,
+            action_url=f"/dashboard/player/games/{game.id}",
+            related_entity_type="game",
+            related_entity_id=game.id,
+            action_required=True,
+            action_status=Notification.ActionStatus.PENDING,
+            metadata={
+                "game_id": game.id,
+                "booking_id": game.booking_id,
+                "guest_confirmation_required": True,
+            },
+            deduplication_key=f"game:{game.id}:guest-schedule:{game.booking_id}",
+        )
+
+
+def notify_reconfirmation_response(game, participant, response):
+    if not participant.user_id:
+        return None
+    accepted = response == "RECONFIRM"
+    return create_notification(
+        recipient=game.host,
+        actor=participant.user,
+        notification_type=Notification.NotificationType.MATCH_UPDATED,
+        title="Player confirmed the updated schedule" if accepted else "Player declined the updated schedule",
+        message=(
+            f"{participant.user.full_name} confirmed the final details for {game.title}."
+            if accepted
+            else f"{participant.user.full_name} can no longer join {game.title} after the schedule changed."
+        ),
+        priority=Notification.Priority.NORMAL if accepted else Notification.Priority.IMPORTANT,
+        action_url=f"/dashboard/player/games/{game.id}",
+        related_entity_type="game",
+        related_entity_id=game.id,
+        action_required=not accepted,
+        action_status=Notification.ActionStatus.COMPLETED if accepted else Notification.ActionStatus.PENDING,
+        metadata={"game_id": game.id, "participant_id": participant.id, "response": response},
+        deduplication_key=f"game:{game.id}:reconfirm:{participant.id}:{response}",
+    )
 
 
 def notify_participant_left(game, player):
@@ -950,6 +1418,70 @@ def notify_participant_left(game, player):
         metadata={"game_id": game.id, "player_id": player.id},
         deduplication_key=f"game:{game.id}:left:{player.id}",
     )
+
+
+def notify_participant_removed(game, participant, actor):
+    if not participant.user_id:
+        return None
+    return create_notification(
+        recipient=participant.user,
+        actor=actor,
+        notification_type=Notification.NotificationType.MATCH_UPDATED,
+        title="Your game participation changed",
+        message=f"You are no longer part of {game.title}. The host has reopened your player spot.",
+        priority=Notification.Priority.IMPORTANT,
+        action_url=f"/find-game/{game.id}",
+        related_entity_type="game",
+        related_entity_id=game.id,
+        action_status=Notification.ActionStatus.REJECTED,
+        metadata={"game_id": game.id, "participant_id": participant.id, "change": "participant_removed"},
+        deduplication_key=f"game:{game.id}:participant-removed:{participant.id}",
+    )
+
+
+def notify_game_updated(game, actor, schedule_changed=False):
+    recipients = set(
+        game.participants.filter(
+            user__isnull=False,
+            status__in=ACTIVE_PARTICIPANT_STATUSES,
+        ).exclude(user_id=actor.id).values_list("user_id", flat=True)
+    )
+    for recipient in get_user_model().objects.filter(id__in=recipients):
+        create_notification(
+            recipient=recipient,
+            actor=actor,
+            notification_type=Notification.NotificationType.MATCH_UPDATED,
+            title="Game details updated",
+            message=(
+                f"{game.title} has a new schedule or location. Please reconfirm your spot."
+                if schedule_changed
+                else f"The host updated the details for {game.title}."
+            ),
+            priority=Notification.Priority.IMPORTANT,
+            action_url=f"/dashboard/player/games/{game.id}/room",
+            related_entity_type="game",
+            related_entity_id=game.id,
+            action_required=schedule_changed,
+            action_status=Notification.ActionStatus.PENDING if schedule_changed else Notification.ActionStatus.COMPLETED,
+            metadata={"game_id": game.id, "schedule_changed": schedule_changed},
+            deduplication_key=f"game:{game.id}:updated:{recipient.id}:{game.updated_at.isoformat()}",
+        )
+    if schedule_changed and game.guest_confirmation_pending_count:
+        create_notification(
+            recipient=game.host,
+            actor=actor,
+            notification_type=Notification.NotificationType.MATCH_UPDATED,
+            title="Confirm guest schedule",
+            message=f"The schedule for {game.title} changed. Confirm that each offline guest knows the updated plan.",
+            priority=Notification.Priority.IMPORTANT,
+            action_url=f"/dashboard/player/games/{game.id}",
+            related_entity_type="game",
+            related_entity_id=game.id,
+            action_required=True,
+            action_status=Notification.ActionStatus.PENDING,
+            metadata={"game_id": game.id, "guest_confirmation_required": True},
+            deduplication_key=f"game:{game.id}:guest-schedule-edit:{game.updated_at.isoformat()}",
+        )
 
 
 def notify_game_cancelled(game, actor):
@@ -971,6 +1503,50 @@ def notify_game_cancelled(game, actor):
             action_status=Notification.ActionStatus.CANCELLED,
             metadata={"game_id": game.id, "reason": game.cancellation_reason},
             deduplication_key=f"game:{game.id}:cancelled:{recipient.id}",
+        )
+
+
+def notify_game_recruitment_closed(game, actor):
+    recipients = game.participants.filter(
+        user__isnull=False,
+        status__in=ACTIVE_PARTICIPANT_STATUSES,
+    ).values_list("user_id", flat=True)
+    for recipient in get_user_model().objects.filter(id__in=set(recipients)):
+        create_notification(
+            recipient=recipient,
+            actor=actor,
+            notification_type=Notification.NotificationType.MATCH_UPDATED,
+            title="Recruitment closed",
+            message=f"Recruitment for {game.title} is closed. Your confirmed spot remains unchanged.",
+            priority=Notification.Priority.NORMAL,
+            action_url=f"/dashboard/player/games/{game.id}/room",
+            related_entity_type="game",
+            related_entity_id=game.id,
+            action_status=Notification.ActionStatus.COMPLETED,
+            metadata={"game_id": game.id, "change": "recruitment_closed"},
+            deduplication_key=f"game:{game.id}:recruitment-closed:{recipient}",
+        )
+
+
+def notify_game_recruitment_reopened(game, actor):
+    recipients = game.participants.filter(
+        user__isnull=False,
+        status__in=ACTIVE_PARTICIPANT_STATUSES,
+    ).exclude(user_id=actor.id).values_list("user_id", flat=True)
+    for recipient in get_user_model().objects.filter(id__in=set(recipients)):
+        create_notification(
+            recipient=recipient,
+            actor=actor,
+            notification_type=Notification.NotificationType.MATCH_UPDATED,
+            title="Recruitment reopened",
+            message=f"The host reopened recruitment for {game.title}. Your existing spot remains unchanged.",
+            priority=Notification.Priority.NORMAL,
+            action_url=f"/dashboard/player/games/{game.id}/room",
+            related_entity_type="game",
+            related_entity_id=game.id,
+            action_status=Notification.ActionStatus.COMPLETED,
+            metadata={"game_id": game.id, "change": "recruitment_reopened"},
+            deduplication_key=f"game:{game.id}:recruitment-reopened:{game.updated_at.isoformat()}:{recipient}",
         )
 
 

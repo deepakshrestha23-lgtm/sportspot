@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
 import { api } from "@/lib/api";
@@ -24,21 +24,33 @@ export default function PlayerGamesPage() {
   const [data, setData] = useState<MyGamesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const requestInFlight = useRef(false);
 
-  useEffect(() => { loadGames(); }, []);
-
-  async function loadGames() {
-    setIsLoading(true);
-    setError("");
+  const loadGames = useCallback(async (background = false) => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
+    if (!background) {
+      setIsLoading(true);
+      setError("");
+    }
     try {
       const response = await api.get<MyGamesResponse>("/api/matchmaking/games/my/");
       setData(response.data);
+      setError("");
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "We could not load your game activity right now."));
+      const message = getApiErrorMessage(requestError, "We could not load your game activity right now.", { notify: !background });
+      if (!background) setError(message);
     } finally {
-      setIsLoading(false);
+      requestInFlight.current = false;
+      if (!background) setIsLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadGames();
+    const refreshInterval = window.setInterval(() => void loadGames(true), 60000);
+    return () => window.clearInterval(refreshInterval);
+  }, [loadGames]);
 
   const tabCounts = useMemo(() => {
     if (!data) return {} as Record<Tab, number>;
@@ -83,9 +95,9 @@ function GameActivityCard({ game, hostMode }: { game: MatchmakingGame; hostMode:
         <div><div className="flex flex-wrap gap-2"><Badge tone="green">{game.game_type === "FILL_SQUAD" ? "Fill My Squad" : "Pickup"}</Badge><Badge tone={game.is_booking_verified ? "green" : "blue"}>{game.is_booking_verified ? "Verified Booking" : "Planning"}</Badge></div><h2 className="mt-3 text-xl font-black text-sportNavy">{game.title}</h2></div>
         <StatusBadge status={game.status_label || game.status} />
       </div>
-      <div className="mt-4 grid gap-2 text-sm font-semibold text-slate-600 sm:grid-cols-2"><p>{game.venue_name}</p><p>{game.is_booking_verified ? game.court_name : game.preferred_area}</p><p>{formatDate(game.start_at)}</p><p>{game.booking_display_time}</p></div>
+      <div className="mt-4 grid gap-2 text-sm font-semibold text-slate-600 sm:grid-cols-2"><p>{game.venue_name}</p><p>{game.is_booking_verified ? game.court_name : [game.preferred_area, game.preferred_district].filter(Boolean).join(", ")}</p><p>{formatDate(game.start_at)}</p><p>{game.booking_display_time}</p></div>
       <div className="mt-4 flex flex-wrap gap-2"><span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">{game.occupied_spots_count}/{game.total_capacity} occupied</span><span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-black text-slate-600">{game.available_spots} spots left</span>{game.waitlist_count ? <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{game.waitlist_count} waitlisted</span> : null}</div>
-      {game.user_state.requires_reconfirmation ? <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">Your spot needs reconfirmation.</p> : null}
+      {game.requires_reconfirmation ? <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-black text-amber-800">{game.user_state.requires_reconfirmation ? "The final booking changed. Confirm your spot before attending." : game.user_state.is_host ? `${game.registered_reconfirmation_pending_count} player response${game.registered_reconfirmation_pending_count === 1 ? "" : "s"} and ${game.guest_confirmation_pending_count} guest acknowledgement${game.guest_confirmation_pending_count === 1 ? "" : "s"} still pending.` : "The host is coordinating an updated game schedule."}</p> : null}
       <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4"><Link className="rounded-xl bg-sportGreen px-4 py-2.5 text-sm font-black text-white" href={isHost ? `/dashboard/player/games/${game.id}` : `/find-game/${game.id}`}>{isHost ? "Manage Game" : "View Game"}</Link>{game.user_state.is_participant || game.user_state.is_host ? <Link className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-black text-slate-700" href={`/dashboard/player/games/${game.id}/room`}>{game.game_type === "FILL_SQUAD" ? (game.is_booking_verified ? "Squad Room" : "Squad Planning") : (game.is_booking_verified ? "Open Game Room" : "Planning Room")}</Link> : null}</div>
     </article>
   );

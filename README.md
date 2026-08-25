@@ -208,7 +208,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Photos/proof upload | Completed | `VenuePhoto`, document fields, upload APIs | Production private storage |
 | Admin status handling | Completed | DRAFT/PENDING/NEEDS_CHANGES/APPROVED/REJECTED/SUSPENDED | Audit logs later |
 | Court management | Completed | owner court APIs/pages | Reactivation unclear |
-| Slot generation/pricing | Completed | `GenerateSlotsView` | No peak pricing |
+| Slot generation/pricing | Completed | `GenerateSlotsView`, owner setup and court slot screens | Explicit 1-90 day publishing window, weekday recurrence, idempotent regeneration, past-time validation, and overlap protection are implemented; persistent rolling schedule automation and peak pricing are not |
 | Block/unblock slots | Completed | `SlotStatusView`, block metadata on `CourtSlot` | Court-closure model can be added later |
 | Owner operations calendar | Completed | `/dashboard/owner/calendar`, `/api/venues/owner/calendar/`, `/api/venues/owner/calendar/block/` | Manual booking creation not implemented |
 | Offline booking | Planned | navigation concept but no complete model/API | Build owner offline booking flow |
@@ -274,7 +274,7 @@ Verified completed work includes:
 - Player Dashboard shell with Overview, My Profile, My Teams, My Games, My Bookings, Ratings & Reliability, Settings, and Help & Support navigation.
 - Player Settings page with horizontal sections, explicit Account edit/cancel mode, safer email-change verification, separate password updates, notification/privacy preferences, and account deactivation.
 - Team creation, redesigned Create Team page, captain permissions, registered invitation by SportSpot ID, guest players, member cards, and invitation decisions.
-- Court owner venue setup, photo gallery, verification document upload, admin review, court setup, slot generation, slot blocking, Venue Manager shell/sidebar, Overview, and operational Calendar with compact booking blocks.
+- Court owner venue setup, photo gallery, verification document upload, admin review, court setup, explicit date-range slot generation, slot blocking, Venue Manager shell/sidebar, Overview, and operational Calendar with compact booking blocks.
 - Venue-first public discovery with stable backend filter reference data.
 - Consecutive multi-slot booking, 10-minute holds, Khalti payment verification, booking pass/history, cancellation, and owner-managed refund records.
 - Central Notification Centre and global toast feedback.
@@ -290,6 +290,7 @@ Verified completed work includes:
 - Admin venue review works, but broader admin operations are incomplete.
 - Owner offline booking is not implemented as a full feature.
 - Venue Manager top bar, sidebar, mobile drawer, Overview, and Calendar are implemented; the remaining owner destination pages still need full workflow refinement.
+- Slot publishing accepts an explicit date range of up to 90 days and is intentionally add-only: it preserves existing/booked slots and rejects overlapping schedules. Owners can clear a selected future date range per court, but only future unbooked slots are removed; booked, reserved, blocked, past, and historical slots are protected. Past slots remain visible to owners as history but are not bookable or editable. Automatic rolling extension and bulk all-court schedule replacement are not implemented yet.
 - Dual-role account switching is not supported by the current backend user model, so “Switch to Player Mode” is intentionally hidden.
 - Khalti needs environment configuration and real end-to-end verification after credentials are added.
 - Media handling is local-development only.
@@ -430,7 +431,7 @@ Status: Planned. Current pages are placeholders.
 11. Guests can be added by name and optional role; each guest occupies a real roster spot but has no account access.
 12. Waitlisted players do not count as confirmed and can be promoted manually after capacity, role, skill, and conflict checks.
 13. When a plan-first game reaches the minimum threshold, the host uses the guided `Book Court for Game` action. Court discovery receives the game context, the booking reservation stores that context, Khalti payment is verified by the backend, and the confirmed booking is attached to the game automatically.
-14. If the verified booking differs materially from the original proposal, non-host provisional participants must reconfirm or decline without penalty.
+14. If the verified booking differs materially from the original proposal, each registered participant who was already in the roster must confirm or decline the new schedule without a reliability penalty. Offline guests cannot respond through an account, so they enter `Host Confirmation Required` and the host must confirm that each guest was told the final venue and time. Participants added after the booking is attached are confirmed against the final booking immediately.
 15. Host and active participants can access the structured Planning Room/Game Room/Squad Room; pending, rejected, and waitlisted users cannot access private room details.
 16. Cancelling the public game listing does not automatically cancel the court booking; booking cancellation and refunds stay in the existing My Bookings flow.
 ### Venue onboarding and verification
@@ -717,7 +718,7 @@ python manage.py run_sportspot_maintenance --no-notify --no-reminders
 python manage.py expire_matchmaking --dry-run
 ```
 
-For near real-time reservation expiry, booking completion, booking-completed notifications, and reminders during local development, keep a separate terminal running:
+For near real-time reservation expiry, booking completion, booking-completed notifications, and reminders during local development, use one background option. On Windows, prefer the hidden Task Scheduler registration described below. The watcher command is still available for foreground debugging:
 
 ```powershell
 .\scripts\run_booking_worker.ps1
@@ -740,12 +741,31 @@ python manage.py run_sportspot_maintenance --limit 100
 
 Each lifecycle transition is state-guarded and performed under record locks, so retries and overlapping one-shot runs are safe. Prefer one managed scheduler/worker rather than multiple permanent watch processes.
 
+### Windows automatic local scheduling
+
+On Windows, register the scheduler once from the repository root:
+
+```powershell
+.\scripts\register_sportspot_maintenance_task.ps1
+```
+
+This creates a current-user Task Scheduler entry that runs the unified lifecycle pass every minute through a windowless Windows Script Host wrapper. It uses the project virtual environment when available, includes the idempotent booking-reminder pass, and writes operational output to `.logs/sportspot-maintenance.log`. Reminder notifications and transactional emails use unique booking keys, so repeated checks do not send duplicates. The task starts automatically when its scheduled trigger is available; the computer and backend database must still be running. It should not open a PowerShell window.
+
+To inspect or remove it:
+
+```powershell
+Get-ScheduledTask -TaskName "SportSpot Platform Maintenance"
+.\scripts\unregister_sportspot_maintenance_task.ps1
+```
+
+This is a local Windows convenience. Staging and production should run the same one-shot command through a managed scheduler, container job, cron entry, or worker process. Do not run both the foreground watch worker and the scheduled task against the same environment. The watch worker intentionally stays attached to a terminal for debugging; it is not the production-style background option.
+
 No verified seed-data command or ER diagram is present.
 
-Lifecycle scheduling limitation: the repository provides the idempotent
-`run_sportspot_maintenance` command and a local worker script, but it does not
-install or configure a production scheduler. Deployment must run the one-shot
-command at a regular interval.
+Lifecycle scheduling limitation: the repository provides idempotent maintenance,
+request-time lifecycle safeguards, a local watch worker, and Windows registration
+scripts. It does not install a cloud production scheduler; staging and production
+must run the one-shot command through their managed infrastructure.
 
 Matchmaking expiry is part of the same platform maintenance pass. It:
 
@@ -810,6 +830,7 @@ Matchmaking: `/api/matchmaking/`
 - `POST games/{game_id}/invite/`
 - `POST games/{game_id}/attach-booking/`
 - `POST games/{game_id}/reconfirm/`
+- `POST games/{game_id}/participants/{participant_id}/confirm-schedule/` (host acknowledgement for offline guests only)
 - `POST games/{game_id}/leave/`
 - `POST games/{game_id}/cancel/`
 - `GET/PATCH games/{game_id}/room/`
@@ -878,7 +899,7 @@ Recommended next tests: permissions, email reset edge cases, concurrent reservat
 
 ## 20. Known Issues and Limitations
 
-- Pickup Game and Fill My Squad matchmaking are implemented for booking-first and plan-first journeys, including controlled area data, role-based requests, backend-validated discovery filters, host decisions, waitlist recovery, guest participants, registered-player invitations by SportSpot ID, invitation expiry, duplicate-request protection, guided court-booking handoff after a plan reaches its threshold, automatic booking attachment after verified Khalti payment, reconfirmation, safe public roster payloads, quiet detail-page refreshes, and structured room access. Remaining gaps include pagination, deeper high-concurrency/end-to-end coverage, richer room activity, and post-game permanent-team invitation prompts. Team Challenges, disputes, recommendations, and full rating submission are not active MVP features.
+- Pickup Game and Fill My Squad matchmaking are implemented for booking-first and plan-first journeys, including controlled area data, role-based requests, backend-validated discovery filters, host decisions, waitlist recovery, guest participants, registered-player invitations by SportSpot ID, invitation expiry, duplicate-request protection, guided court-booking handoff after a plan reaches its threshold, automatic booking attachment after verified Khalti payment, participant-specific schedule reconfirmation, explicit host acknowledgement for offline guests, safe public roster payloads, quiet detail-page refreshes, and structured room access. Remaining gaps include pagination, deeper high-concurrency/end-to-end coverage, richer room activity, and post-game permanent-team invitation prompts. Team Challenges, disputes, recommendations, and full rating submission are not active MVP features.
 - Several placeholder pages still exist for future modules.
 - Future-compatible Futsal fields remain in `PlayerProfile`, but current UI must stay Cricksal-only.
 - No production deployment files, Docker config, CI/CD, or monitoring.

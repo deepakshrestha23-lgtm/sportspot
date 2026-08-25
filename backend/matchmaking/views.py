@@ -20,6 +20,7 @@ from .serializers import (
     EligibleBookingSerializer,
     GameCreateSerializer,
     GameParticipantSerializer,
+    GameHostUpdateSerializer,
     GameSerializer,
     PublicGameSerializer,
     JoinRequestCreateSerializer,
@@ -32,6 +33,9 @@ from .services import (
     resequence_waitlist,
     add_guest_participant,
     attach_booking_to_game,
+    close_game_recruitment,
+    reopen_game_recruitment,
+    confirm_guest_schedule,
     decide_join_request,
     expire_open_join_requests_for_game,
     eligible_bookings_for_user,
@@ -41,6 +45,10 @@ from .services import (
     notify_game_cancelled,
     reconfirm_game,
     respond_game_invitation,
+    synchronize_game_lifecycle,
+    remove_game_participant,
+    update_game_host_settings,
+    update_game_participant,
 )
 
 
@@ -84,8 +92,13 @@ class GameDetailView(APIView):
         game = get_game_or_none(game_id)
         if not game:
             return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
-        game.refresh_status()
-        return Response({"game": PublicGameSerializer(game, context={"request": request}).data})
+        synchronize_game_lifecycle(game)
+        is_authenticated = bool(request.user and request.user.is_authenticated)
+        if not game.is_public and (not is_authenticated or not can_view_game_private(request.user, game)):
+            # Do not reveal whether a private game exists to an unauthorized user.
+            return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer_class = GameSerializer if not game.is_public else PublicGameSerializer
+        return Response({"game": serializer_class(game, context={"request": request}).data})
 
 
 class GameJoinRequestCreateView(APIView):
@@ -97,7 +110,13 @@ class GameJoinRequestCreateView(APIView):
             return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
         serializer = JoinRequestCreateSerializer(data=request.data, context={"request": request, "game": game})
         serializer.is_valid(raise_exception=True)
-        join_request = serializer.save()
+        try:
+            join_request = serializer.save()
+        except IntegrityError:
+            return Response(
+                {"detail": "You already have an active request for this game."},
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response({"request": JoinRequestSerializer(join_request).data}, status=status.HTTP_201_CREATED)
 
 
@@ -129,6 +148,7 @@ class JoinRequestWithdrawView(APIView):
             return Response({"detail": "Request not found."}, status=status.HTTP_404_NOT_FOUND)
         # Lock the game before the request, matching host decisions and expiry.
         game = Game.objects.select_for_update().get(pk=game_id)
+        synchronize_game_lifecycle(game, expire_requests=True)
         join_request = (
             JoinRequest.objects.select_for_update()
             .select_related("game", "player")
@@ -158,8 +178,12 @@ class MyGamesView(APIView):
         ).distinct()
         requests = JoinRequest.objects.filter(player=user).select_related("game", "game__booking", "game__booking__venue", "game__booking__court", "game__host")
         incoming_requests = JoinRequest.objects.filter(game__host=user).select_related("game", "player", "player__player_profile")
+        seen_game_ids = set()
         for game in list(hosted) + list(participating):
-            game.refresh_status()
+            if game.id in seen_game_ids:
+                continue
+            seen_game_ids.add(game.id)
+            synchronize_game_lifecycle(game, expire_requests=True)
         upcoming = participating.filter(status__in=[Game.Status.RECRUITING, Game.Status.FULL, Game.Status.CLOSED, Game.Status.IN_PROGRESS])
         completed = participating.filter(status=Game.Status.COMPLETED)
         cancelled = participating.filter(status=Game.Status.CANCELLED)
@@ -182,6 +206,7 @@ class GameManageView(APIView):
         game = get_game_or_none(game_id)
         if not game:
             return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        synchronize_game_lifecycle(game, expire_requests=True)
         if not can_view_game_private(request.user, game):
             return Response({"detail": "You do not have access to this game."}, status=status.HTTP_403_FORBIDDEN)
         payload = {"game": GameSerializer(game, context={"request": request}).data}
@@ -189,6 +214,46 @@ class GameManageView(APIView):
             payload["join_requests"] = JoinRequestSerializer(game.join_requests.select_related("player", "player__player_profile"), many=True).data
             payload["eligible_bookings"] = EligibleBookingSerializer(eligible_bookings_for_user(request.user), many=True).data
         return Response(payload)
+
+    def patch(self, request, game_id):
+        game = get_game_or_none(game_id)
+        if not game:
+            return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = GameHostUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            updated_game = update_game_host_settings(game.id, request.user, serializer.validated_data)
+        except ValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"game": GameSerializer(updated_game, context={"request": request}).data})
+
+
+class GameParticipantManageView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def patch(self, request, game_id, participant_id):
+        try:
+            participant = update_game_participant(game_id, participant_id, request.user, request.data)
+        except Game.DoesNotExist:
+            return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        except ValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"participant": GameParticipantSerializer(participant).data})
+
+    def delete(self, request, game_id, participant_id):
+        try:
+            participant = remove_game_participant(game_id, participant_id, request.user)
+        except Game.DoesNotExist:
+            return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        except ValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"participant": GameParticipantSerializer(participant).data})
 
 
 class GameGuestParticipantView(APIView):
@@ -216,6 +281,7 @@ class GamePlayerLookupView(APIView):
         game = get_game_or_none(game_id)
         if not game:
             return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        synchronize_game_lifecycle(game, expire_requests=True)
         if game.host_id != request.user.id:
             return Response({"detail": "Only the host can invite players."}, status=status.HTTP_403_FORBIDDEN)
         sportspot_id = str(request.query_params.get("sportspot_id", "")).strip().upper()
@@ -302,6 +368,19 @@ class GameReconfirmView(APIView):
         return Response({"game": GameSerializer(get_game_or_none(game_id), context={"request": request}).data})
 
 
+class GuestScheduleConfirmationView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def post(self, request, game_id, participant_id):
+        try:
+            participant = confirm_guest_schedule(game_id, participant_id, request.user)
+        except Game.DoesNotExist:
+            return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        except ValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"participant": GameParticipantSerializer(participant).data})
+
+
 class GameLeaveView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
@@ -326,6 +405,7 @@ class GameCancelView(APIView):
             return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
         if game.host_id != request.user.id:
             return Response({"detail": "Only the host can cancel this game."}, status=status.HTTP_403_FORBIDDEN)
+        synchronize_game_lifecycle(game, expire_requests=True)
         if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED]:
             return Response({"detail": "This game can no longer be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
         reason = str(request.data.get("reason", "")).strip()
@@ -335,11 +415,40 @@ class GameCancelView(APIView):
         now = timezone.now()
         game.cancelled_at = now
         game.cancellation_reason = reason
-        game.save(update_fields=["status", "cancelled_at", "cancellation_reason", "updated_at"])
+        game.is_public = False
+        game.save(update_fields=["status", "is_public", "cancelled_at", "cancellation_reason", "updated_at"])
         # Close pending requests immediately; the scheduled worker remains
         # the recovery path for cancellations made outside this endpoint.
         expire_open_join_requests_for_game(game, now=now)
         notify_game_cancelled(game, request.user)
+        return Response({"game": GameSerializer(game, context={"request": request}).data})
+
+
+class GameCloseRecruitmentView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def post(self, request, game_id):
+        game = Game.objects.filter(id=game_id).first()
+        if not game:
+            return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            game = close_game_recruitment(game, request.user)
+        except ValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"game": GameSerializer(game, context={"request": request}).data})
+
+
+class GameReopenRecruitmentView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def post(self, request, game_id):
+        game = Game.objects.filter(id=game_id).first()
+        if not game:
+            return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            game = reopen_game_recruitment(game, request.user)
+        except ValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"game": GameSerializer(game, context={"request": request}).data})
 
 
@@ -350,6 +459,7 @@ class GameRoomView(APIView):
         game = get_game_or_none(game_id)
         if not game:
             return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        synchronize_game_lifecycle(game, expire_requests=True)
         if not can_view_game_private(request.user, game):
             return Response({"detail": "You do not have access to this game room."}, status=status.HTTP_403_FORBIDDEN)
         return Response({"game": GameSerializer(game, context={"request": request}).data})
@@ -358,6 +468,7 @@ class GameRoomView(APIView):
         game = get_game_or_none(game_id)
         if not game:
             return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        synchronize_game_lifecycle(game, expire_requests=True)
         if game.host_id != request.user.id:
             return Response({"detail": "Only the host can update game room instructions."}, status=status.HTTP_403_FORBIDDEN)
         game.game_room_note = str(request.data.get("game_room_note", "")).strip()[:500]
@@ -379,8 +490,8 @@ def get_game_or_none(game_id):
 def get_public_games(request):
     games = list(get_public_games_queryset(request))
     for game in games:
-        game.refresh_status()
-    games = [game for game in games if game.status not in [Game.Status.DRAFT, Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS]]
+        synchronize_game_lifecycle(game)
+    games = [game for game in games if game.status in [Game.Status.RECRUITING, Game.Status.FULL]]
     sort = str(request.query_params.get("sort", "soonest")).lower()
     if sort == "newest":
         return sorted(games, key=lambda item: item.published_at, reverse=True)
@@ -399,6 +510,7 @@ def get_public_games_queryset(request):
         games = games.filter(
             Q(title__icontains=search)
             | Q(description__icontains=search)
+            | Q(preferred_district__icontains=search)
             | Q(preferred_area__icontains=search)
             | Q(preferred_venue_name__icontains=search)
             | Q(booking__venue__name__icontains=search)

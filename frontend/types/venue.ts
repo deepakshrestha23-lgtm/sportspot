@@ -198,6 +198,7 @@ export type CourtSlot = {
   blocked_at: string | null;
   blocked_by_name: string;
   is_past: boolean;
+  is_in_progress: boolean;
   active_booking: SlotBookingSummary | null;
   reserved_until: string | null;
   created_at: string;

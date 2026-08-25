@@ -2,6 +2,10 @@ import axios from "axios";
 
 import { emitToast } from "@/lib/toast";
 
+type ApiErrorMessageOptions = {
+  notify?: boolean;
+};
+
 function unwrapApiValue(value: unknown): unknown {
   if (Array.isArray(value)) return unwrapApiValue(value[0]);
   return value;
@@ -28,14 +32,18 @@ export function getApiErrorField(requestError: unknown, field: string) {
   return userMessage(value);
 }
 
-export function getApiErrorMessage(requestError: unknown, fallbackMessage: string) {
+export function getApiErrorMessage(requestError: unknown, fallbackMessage: string, options: ApiErrorMessageOptions = {}) {
+  const notify = options.notify !== false;
+  const returnMessage = (message: string) => {
+    if (notify) emitToast({ message, type: "error" });
+    return message;
+  };
   let message = fallbackMessage;
 
   if (axios.isAxiosError(requestError)) {
     if (!requestError.response) {
       message = "We could not connect to SportSpot right now. Please check your internet connection and try again.";
-      emitToast({ message, type: "error" });
-      return message;
+      return returnMessage(message);
     }
 
     const data = requestError.response.data;
@@ -44,25 +52,21 @@ export function getApiErrorMessage(requestError: unknown, fallbackMessage: strin
       const errors = data as Record<string, unknown>;
       const detail = userMessage(errors.detail);
       if (detail) {
-        emitToast({ message: detail, type: "error" });
-        return detail;
+        return returnMessage(detail);
       }
 
       const firstError = userMessage(Object.values(errors).find(Boolean));
 
       if (firstError) {
-        emitToast({ message: firstError, type: "error" });
-        return firstError;
+        return returnMessage(firstError);
       }
     }
 
     const responseMessage = userMessage(data);
     if (responseMessage) {
-      emitToast({ message: responseMessage, type: "error" });
-      return responseMessage;
+      return returnMessage(responseMessage);
     }
   }
 
-  emitToast({ message, type: "error" });
-  return message;
+  return returnMessage(message);
 }

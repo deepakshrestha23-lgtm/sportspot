@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q, Sum
+from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -38,7 +39,9 @@ from .reference_data import (
     SPORTSPOT_DISTRICTS,
     SPORTSPOT_DURATIONS,
     SPORTSPOT_FACILITIES,
+    SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG,
     SPORTSPOT_TIME_PERIODS,
+    SPORTSPOT_PLANNING_START_TIMES,
 )
 from .permissions import IsAdminRole, IsCourtOwner, IsPlayer
 from .serializers import AdminVenueSerializer, BookingMessageSerializer, BookingSerializer, CourtSerializer, PublicCourtDetailSerializer, PublicVenueSerializer, SlotSerializer, VenuePhotoSerializer, VenueSerializer
@@ -368,63 +371,275 @@ class OwnerCourtDeactivateView(APIView):
 class GenerateSlotsView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
 
+    # Concrete slots are the bookable inventory shown to players. Keep the
+    # publishing window bounded so one accidental request cannot create years
+    # of inventory at once.
+    max_generation_days = 90
+
     def post(self, request, court_id):
         court = get_owner_court(request.user, court_id)
-        available_days = request.data.get("available_days") or []
+        if not court.is_active:
+            return Response(
+                {"detail": "Reactivate this court before generating bookable slots."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw_available_days = request.data.get("available_days") or []
+        if isinstance(raw_available_days, str):
+            raw_available_days = [raw_available_days]
+        available_days = [str(day).strip().upper() for day in raw_available_days if str(day).strip()]
         opening_time = parse_time(request.data.get("opening_time"))
         closing_time = parse_time(request.data.get("closing_time"))
-        duration = int(request.data.get("slot_duration_minutes") or 60)
-        price = request.data.get("base_price")
+        try:
+            duration = int(request.data.get("slot_duration_minutes") or 60)
+        except (TypeError, ValueError):
+            duration = 0
+        raw_price = request.data.get("base_price")
+        try:
+            price = Decimal(str(raw_price).strip())
+        except (AttributeError, InvalidOperation, TypeError):
+            price = None
 
-        if not available_days or not opening_time or not closing_time or not price:
-            return Response({"detail": "Available days, opening time, closing time, and base price are required."}, status=status.HTTP_400_BAD_REQUEST)
+        today = timezone.localdate()
+        has_explicit_range = request.data.get("start_date") is not None or request.data.get("end_date") is not None
+        start_date = parse_date_value(request.data.get("start_date"))
+        end_date = parse_date_value(request.data.get("end_date"))
+        if not has_explicit_range:
+            # Preserve compatibility for older clients. The owner screens now
+            # always send an explicit range so there is no hidden fixed window.
+            start_date = today
+            end_date = today + timedelta(days=13)
+        elif start_date and not end_date:
+            end_date = start_date
+
+        if not available_days or not opening_time or not closing_time or price is None or not start_date or not end_date:
+            return Response(
+                {"detail": "Choose at least one day, valid times, a price, and a generation date range."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        valid_day_names = {"MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"}
+        if set(available_days) - valid_day_names:
+            return Response({"detail": "Choose valid weekdays for the slot schedule."}, status=status.HTTP_400_BAD_REQUEST)
         if duration not in [30, 60, 90]:
             return Response({"detail": "Slot duration must be 30, 60, or 90 minutes."}, status=status.HTTP_400_BAD_REQUEST)
         if opening_time >= closing_time:
             return Response({"detail": "Opening time must be before closing time."}, status=status.HTTP_400_BAD_REQUEST)
+        if court.venue.opening_time and opening_time < court.venue.opening_time:
+            return Response({"detail": "Opening time cannot be earlier than the venue opening time."}, status=status.HTTP_400_BAD_REQUEST)
+        if court.venue.closing_time and closing_time > court.venue.closing_time:
+            return Response({"detail": "Closing time cannot be later than the venue closing time."}, status=status.HTTP_400_BAD_REQUEST)
+        if (
+            price is None
+            or not price.is_finite()
+            or price <= 0
+            or price > Decimal("99999999.99")
+            or price.as_tuple().exponent < -2
+        ):
+            return Response(
+                {"detail": "Price per slot must be a valid positive amount with at most two decimal places."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if start_date < today:
+            return Response({"detail": "Slots can only be generated from today onward."}, status=status.HTTP_400_BAD_REQUEST)
+        if end_date < start_date:
+            return Response({"detail": "The end date must be on or after the start date."}, status=status.HTTP_400_BAD_REQUEST)
+
+        range_days = (end_date - start_date).days + 1
+        if range_days > self.max_generation_days:
+            return Response(
+                {"detail": f"Generate up to {self.max_generation_days} days at a time."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         allowed_day_numbers = {day_name_to_number(day) for day in available_days}
+        if not any((start_date + timedelta(days=offset)).weekday() in allowed_day_numbers for offset in range(range_days)):
+            return Response(
+                {"detail": "The selected weekdays do not occur in this date range. Extend the range or choose another day."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         created_slots = []
         skipped_count = 0
-        start_date = timezone.localdate()
+        existing_count = 0
+        overlap_count = 0
+        skipped_past_count = 0
+        trailing_minutes = 0
+        local_now = timezone.localtime()
 
-        for offset in range(14):
-            slot_date = start_date + timedelta(days=offset)
-            if slot_date.weekday() not in allowed_day_numbers:
-                continue
+        with transaction.atomic():
+            # Serialise schedule changes for this court. Without a court-level
+            # lock, two owners' requests could both see an empty interval and
+            # create overlapping slot definitions.
+            court = Court.objects.select_for_update().get(pk=court.pk)
+            existing_by_date = {}
+            for existing_slot in CourtSlot.objects.select_for_update().filter(
+                court=court,
+                date__range=(start_date, end_date),
+            ):
+                existing_by_date.setdefault(existing_slot.date, []).append(existing_slot)
 
-            cursor = datetime.combine(slot_date, opening_time)
-            close_at = datetime.combine(slot_date, closing_time)
-            while cursor + timedelta(minutes=duration) <= close_at:
-                start_time = cursor.time()
-                end_time = (cursor + timedelta(minutes=duration)).time()
-                try:
-                    slot, created = CourtSlot.objects.get_or_create(
-                        court=court,
-                        date=slot_date,
-                        start_time=start_time,
-                        end_time=end_time,
-                        defaults={
-                            "slot_duration_minutes": duration,
-                            "price": price,
-                            "status": CourtSlot.Status.AVAILABLE,
-                        },
+            for offset in range(range_days):
+                slot_date = start_date + timedelta(days=offset)
+                if slot_date.weekday() not in allowed_day_numbers:
+                    continue
+
+                cursor = datetime.combine(slot_date, opening_time)
+                close_at = datetime.combine(slot_date, closing_time)
+                window_minutes = int((close_at - cursor).total_seconds() // 60)
+                trailing_minutes += window_minutes % duration
+                while cursor + timedelta(minutes=duration) <= close_at:
+                    start_time = cursor.time()
+                    end_time = (cursor + timedelta(minutes=duration)).time()
+                    if slot_date == today and start_time <= local_now.time():
+                        skipped_past_count += 1
+                        cursor += timedelta(minutes=duration)
+                        continue
+
+                    exact_slot = next(
+                        (
+                            existing_slot
+                            for existing_slot in existing_by_date.get(slot_date, [])
+                            if existing_slot.start_time == start_time and existing_slot.end_time == end_time
+                        ),
+                        None,
                     )
-                    if created:
-                        created_slots.append(slot)
-                    else:
+                    if exact_slot:
                         skipped_count += 1
-                except IntegrityError:
-                    skipped_count += 1
-                cursor += timedelta(minutes=duration)
+                        existing_count += 1
+                        cursor += timedelta(minutes=duration)
+                        continue
+
+                    has_overlap = any(
+                        existing_slot.start_time < end_time and existing_slot.end_time > start_time
+                        for existing_slot in existing_by_date.get(slot_date, [])
+                    )
+                    if has_overlap:
+                        # A second slot duration must never create overlapping
+                        # bookable inventory on the same court. The owner can
+                        # choose a different generation duration or manage the
+                        # existing schedule first.
+                        skipped_count += 1
+                        overlap_count += 1
+                        cursor += timedelta(minutes=duration)
+                        continue
+
+                    try:
+                        slot, created = CourtSlot.objects.get_or_create(
+                            court=court,
+                            date=slot_date,
+                            start_time=start_time,
+                            end_time=end_time,
+                            defaults={
+                                "slot_duration_minutes": duration,
+                                "price": price,
+                                "status": CourtSlot.Status.AVAILABLE,
+                            },
+                        )
+                        if created:
+                            created_slots.append(slot)
+                            existing_by_date.setdefault(slot_date, []).append(slot)
+                        else:
+                            skipped_count += 1
+                            existing_count += 1
+                    except IntegrityError:
+                        skipped_count += 1
+                    cursor += timedelta(minutes=duration)
 
         return Response(
             {
                 "created_count": len(created_slots),
                 "skipped_count": skipped_count,
-                "slots": SlotSerializer(created_slots, many=True, context={"request": request}).data,
+                "existing_count": existing_count,
+                "overlap_count": overlap_count,
+                "skipped_past_count": skipped_past_count,
+                "trailing_minutes": trailing_minutes,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "days_in_range": range_days,
+                # A long range can create thousands of slots. The UI reloads
+                # the selected date, so return only a small sample here.
+                "slots": SlotSerializer(created_slots[:100], many=True, context={"request": request}).data,
+                "slots_truncated": len(created_slots) > 100,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class ClearFutureSlotsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+
+    # Keep destructive schedule changes bounded to the same planning window as
+    # slot generation. A required date range prevents accidental all-time wipes.
+    max_clear_days = 90
+
+    def post(self, request, court_id):
+        court = get_owner_court(request.user, court_id)
+        start_date = parse_date_value(request.data.get("start_date"))
+        end_date = parse_date_value(request.data.get("end_date"))
+        today = timezone.localdate()
+
+        if not start_date or not end_date:
+            return Response(
+                {"detail": "Choose the future date range whose unbooked availability you want to clear."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if start_date < today:
+            return Response(
+                {"detail": "Availability can only be cleared from today onward."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if end_date < start_date:
+            return Response(
+                {"detail": "The end date must be on or after the start date."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        range_days = (end_date - start_date).days + 1
+        if range_days > self.max_clear_days:
+            return Response(
+                {"detail": f"Clear up to {self.max_clear_days} days at a time."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now_time = timezone.localtime().time()
+        future_filter = Q(date__gt=today) | Q(date=today, start_time__gt=now_time)
+
+        with transaction.atomic():
+            # Serialise clearing against generation and booking updates for this
+            # court. Slots with any booking relation are intentionally excluded.
+            court = Court.objects.select_for_update().get(pk=court.pk)
+            future_slots = list(
+                CourtSlot.objects.select_for_update()
+                .filter(court=court, date__range=(start_date, end_date))
+                .filter(future_filter)
+            )
+            future_slot_count = len(future_slots)
+            available_ids = [slot.id for slot in future_slots if slot.status == CourtSlot.Status.AVAILABLE]
+            protected_by_history = set(
+                CourtSlot.objects.filter(pk__in=available_ids)
+                .filter(Q(booking_items__isnull=False) | Q(bookings__isnull=False))
+                .values_list("id", flat=True)
+            )
+            clearable_ids = [slot_id for slot_id in available_ids if slot_id not in protected_by_history]
+            cleared_count = 0
+            for slot_id in clearable_ids:
+                try:
+                    deleted_count, _ = CourtSlot.objects.filter(pk=slot_id, status=CourtSlot.Status.AVAILABLE).delete()
+                except ProtectedError:
+                    # A booking-history relation may have been committed after
+                    # the initial check. Preserve that slot rather than failing
+                    # the whole bulk operation.
+                    continue
+                cleared_count += deleted_count
+
+        return Response(
+            {
+                "cleared_count": cleared_count,
+                "protected_count": max(future_slot_count - cleared_count, 0),
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "days_in_range": range_days,
+            }
         )
 
 
@@ -637,6 +852,12 @@ class SlotStatusView(APIView):
     def post(self, request, slot_id, action):
         slot = get_object_or_404(CourtSlot.objects.select_related("court", "court__venue"), pk=slot_id, court__venue__owner=request.user)
         slot.release_if_expired()
+
+        if is_slot_in_past(slot):
+            return Response(
+                {"detail": "This slot has passed and is kept for history. Only future availability can be changed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if action == "block":
             if slot.status != CourtSlot.Status.AVAILABLE:
@@ -1227,6 +1448,8 @@ def build_discovery_filter_options(cards=None, params=None):
         ],
         "time_periods": SPORTSPOT_TIME_PERIODS,
         "durations": SPORTSPOT_DURATIONS,
+        "start_times": SPORTSPOT_PLANNING_START_TIMES,
+        "matchmaking_deadline_config": SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG,
         "price_min": decimal_to_string(min(prices)) if prices else None,
         "price_max": decimal_to_string(max(prices)) if prices else None,
         "supports_rating": False,
@@ -1370,9 +1593,10 @@ class PublicCourtSlotsView(APIView):
     def get(self, request, court_id):
         court = get_object_or_404(get_public_courts(), pk=court_id)
         slot_date = request.query_params.get("date") or timezone.localdate().isoformat()
-        slots = court.slots.filter(date=slot_date)
+        slots = list(court.slots.filter(date=slot_date).order_by("date", "start_time", "end_time"))
         release_expired_reservations(slots)
-        return Response({"slots": SlotSerializer(court.slots.filter(date=slot_date), many=True, context={"request": request}).data})
+        bookable_or_active_slots = [slot for slot in slots if not is_slot_in_past(slot)]
+        return Response({"slots": SlotSerializer(bookable_or_active_slots, many=True, context={"request": request}).data})
 
 
 class BookingReserveView(APIView):
@@ -1443,6 +1667,26 @@ class BookingReserveView(APIView):
         validation_error = validate_multi_slot_selection(slots)
         if validation_error:
             return Response({"detail": validation_error}, status=status.HTTP_400_BAD_REQUEST)
+
+        selected_start = slots[0].start_time
+        selected_end = slots[-1].end_time
+        overlapping_slots = list(
+            CourtSlot.objects.select_for_update()
+            .filter(
+                court_id=slots[0].court_id,
+                date=slots[0].date,
+                start_time__lt=selected_end,
+                end_time__gt=selected_start,
+            )
+            .exclude(id__in=slot_ids)
+        )
+        if overlapping_slots:
+            return Response(
+                {
+                    "detail": "This court has another schedule entry overlapping the selected time. Choose a non-overlapping slot or ask the venue to correct its schedule.",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
         unavailable_slots = [slot for slot in slots if slot.status != CourtSlot.Status.AVAILABLE]
         if unavailable_slots:
@@ -1942,6 +2186,14 @@ class BookingCancelView(APIView):
         )
 
         CourtSlot.objects.filter(id__in=slot_ids).update(status=cancellation_outcome["slot_status"], reserved_until=None, updated_at=now)
+
+        # A matchmaking game and its booking have separate lifecycles, but a
+        # cancelled confirmed booking must never leave a stale game claiming
+        # that its court is still verified. The booking flow remains the only
+        # place that decides refund and slot-release outcomes.
+        from matchmaking.services import cancel_games_for_booking
+
+        cancel_games_for_booking(booking, actor=request.user)
 
         if booking.refund_status == Booking.RefundStatus.PENDING_OWNER_ACTION:
             notify_owner_refund_requested(booking, request.user)
@@ -2596,7 +2848,7 @@ def build_calendar_stats(slots, bookings):
         "confirmed_bookings": len([booking for booking in bookings if booking.status in [Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED]]),
         "reserved_holds": len([booking for booking in bookings if booking.status == Booking.BookingStatus.RESERVED]),
         "blocked_slots": len([slot for slot in slots if slot.status == CourtSlot.Status.BLOCKED]),
-        "available_slots": len([slot for slot in slots if slot.status == CourtSlot.Status.AVAILABLE]),
+        "available_slots": len([slot for slot in slots if slot.status == CourtSlot.Status.AVAILABLE and not is_slot_in_past(slot)]),
     }
 
 
