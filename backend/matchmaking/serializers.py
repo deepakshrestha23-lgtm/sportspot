@@ -1,5 +1,4 @@
 ﻿from django.db import transaction
-from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -16,13 +15,16 @@ from .models import (
     GameParticipant,
     GameRoleRequirement,
     JoinRequest,
+    JoinRequestEvent,
 )
 from .services import (
     add_initial_participants,
     booking_end_at,
     eligible_bookings_for_user,
     ensure_booking_can_publish_game,
+    game_room_access_level,
     next_waitlist_position,
+    record_join_request_event,
     role_progress,
     validate_join_request,
     validate_role_plan,
@@ -388,6 +390,14 @@ class GameSerializer(serializers.ModelSerializer):
 
     def get_participants(self, game):
         participants = game.participants.filter(status__in=ACTIVE_PARTICIPANT_STATUSES)
+        room_access = self.context.get("room_access")
+        if room_access is None:
+            request = self.context.get("request")
+            user = getattr(request, "user", None)
+            if user and user.is_authenticated:
+                room_access = game_room_access_level(game, user)
+        if room_access == "PLANNING":
+            return PublicGameParticipantSerializer(participants, many=True, context=self.context).data
         return GameParticipantSerializer(participants, many=True, context=self.context).data
 
     def get_venue_name(self, game):
@@ -456,6 +466,7 @@ class GameSerializer(serializers.ModelSerializer):
                 "requires_reconfirmation": False,
                 "request_status": "",
                 "join_request_id": None,
+                "room_access": "NONE",
             }
         participation = game.participants.filter(user=user, status__in=ACTIVE_PARTICIPANT_STATUSES).first()
         join_request = game.join_requests.filter(player=user).exclude(status__in=[JoinRequest.Status.REJECTED, JoinRequest.Status.WITHDRAWN, JoinRequest.Status.REMOVED, JoinRequest.Status.EXPIRED]).first()
@@ -470,6 +481,7 @@ class GameSerializer(serializers.ModelSerializer):
             ),
             "request_status": join_request.status if join_request else "",
             "join_request_id": join_request.id if join_request else None,
+            "room_access": game_room_access_level(game, user),
         }
 
 
@@ -505,6 +517,7 @@ class PublicGameSerializer(GameSerializer):
 
 
 class GameCreateSerializer(serializers.Serializer):
+    client_request_id = serializers.CharField(max_length=64, required=False, allow_blank=True)
     game_type = serializers.ChoiceField(choices=Game.GameType.choices, default=Game.GameType.PICKUP)
     creation_mode = serializers.ChoiceField(choices=Game.CreationMode.choices)
     booking_id = serializers.IntegerField(required=False, allow_null=True)
@@ -534,6 +547,12 @@ class GameCreateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         request = self.context["request"]
+        client_request_id = str(attrs.get("client_request_id") or "").strip()
+        if client_request_id:
+            existing = Game.objects.filter(host=request.user, client_request_id=client_request_id).first()
+            if existing:
+                self._idempotent_existing = existing
+                return attrs
         game_type = attrs.get("game_type") or Game.GameType.PICKUP
         attrs["game_type"] = game_type
         selected_team_member_ids = attrs.get("selected_team_member_ids") or []
@@ -648,13 +667,18 @@ class GameCreateSerializer(serializers.Serializer):
     @transaction.atomic
     def create(self, validated_data):
         request = self.context["request"]
+        if getattr(self, "_idempotent_existing", None):
+            self.was_idempotent_replay = True
+            return self._idempotent_existing
         role_requirements = validated_data.pop("role_requirements", [])
         guests = validated_data.pop("guests", [])
         selected_team_member_ids = validated_data.pop("_selected_team_member_ids", [])
         validated_data.pop("selected_team_member_ids", None)
         validated_data.pop("booking_id", None)
         validated_data.pop("team_id", None)
+        client_request_id = str(validated_data.get("client_request_id") or "").strip()
         game = Game.objects.create(host=request.user, **validated_data)
+        self.was_idempotent_replay = False
         if not role_requirements:
             baseline = 1
             if game.game_type == Game.GameType.FILL_SQUAD:
@@ -695,7 +719,7 @@ class JoinRequestCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context["request"]
         with transaction.atomic():
-            game = Game.objects.select_for_update().get(pk=self.context["game"].pk)
+            game = Game.objects.select_for_update(of=("self",)).get(pk=self.context["game"].pk)
             player = request.user
             # Validation runs again under the game lock; this is the capacity boundary.
             validate_join_request(game, player, validated_data.get("requested_role"))
@@ -714,6 +738,7 @@ class JoinRequestCreateSerializer(serializers.ModelSerializer):
             if join_request and join_request.status not in terminal_statuses:
                 raise serializers.ValidationError("You already have an active request for this game.")
             if join_request:
+                previous_status = join_request.status
                 join_request.requested_role = validated_data.get("requested_role", join_request.requested_role)
                 join_request.message = validated_data.get("message", "")
                 join_request.attendance_confirmed = validated_data.get("attendance_confirmed", False)
@@ -721,8 +746,10 @@ class JoinRequestCreateSerializer(serializers.ModelSerializer):
                 join_request.waitlist_position = position
                 join_request.decided_by = None
                 join_request.decided_at = None
-                join_request.save(update_fields=["requested_role", "message", "attendance_confirmed", "status", "waitlist_position", "decided_by", "decided_at", "updated_at"])
+                join_request.attempt_number += 1
+                join_request.save(update_fields=["requested_role", "message", "attendance_confirmed", "status", "waitlist_position", "decided_by", "decided_at", "attempt_number", "updated_at"])
             else:
+                previous_status = ""
                 join_request = JoinRequest.objects.create(
                     game=game,
                     player=player,
@@ -730,6 +757,12 @@ class JoinRequestCreateSerializer(serializers.ModelSerializer):
                     waitlist_position=position,
                     **validated_data,
                 )
+            record_join_request_event(
+                join_request,
+                JoinRequestEvent.EventType.WAITLISTED if status == JoinRequest.Status.WAITLISTED else JoinRequestEvent.EventType.SUBMITTED,
+                actor=player,
+                previous_status=previous_status,
+            )
         from .services import notify_join_request_received
 
         notify_join_request_received(join_request)

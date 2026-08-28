@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
-from django.db.models import Avg
+from django.db.models import Avg, Count
 
 from .models import PlayerProfile, PlayerRating, PlayerRatingEligibility, ReliabilityEvent
 
@@ -166,13 +166,16 @@ def recalculate_player_average_rating(player):
 
 
 def get_player_rating_summary(player):
-    ratings = list(PlayerRating.objects.filter(rated_player=player).order_by("-created_at", "-id")[:50])
-    total_ratings = PlayerRating.objects.filter(rated_player=player).count()
-    average = PlayerRating.objects.filter(rated_player=player).aggregate(value=Avg("rating"))["value"] if total_ratings else None
-    distribution = [
-        {"rating": value, "count": PlayerRating.objects.filter(rated_player=player, rating=value).count()}
-        for value in [5, 4, 3, 2, 1]
-    ]
+    ratings_queryset = PlayerRating.objects.filter(rated_player=player)
+    ratings = list(ratings_queryset.order_by("-created_at", "-id")[:50])
+    rating_stats = ratings_queryset.aggregate(total=Count("id"), average=Avg("rating"))
+    distribution_counts = {
+        row["rating"]: row["count"]
+        for row in ratings_queryset.values("rating").annotate(count=Count("id"))
+    }
+    total_ratings = rating_stats["total"] or 0
+    average = rating_stats["average"] if total_ratings else None
+    distribution = [{"rating": value, "count": distribution_counts.get(value, 0)} for value in [5, 4, 3, 2, 1]]
     tag_counter = Counter(tag for rating in ratings for tag in rating.feedback_tags)
     completed_contexts = (
         PlayerRating.objects.filter(rated_player=player)

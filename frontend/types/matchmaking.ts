@@ -3,7 +3,7 @@ import type { Booking } from "@/types/venue";
 export type GameType = "PICKUP" | "FILL_SQUAD";
 export type GameCreationMode = "BOOKING_FIRST" | "PLAN_FIRST";
 export type GameIntensity = "CASUAL" | "COMPETITIVE" | "PRACTICE";
-export type GameStatus = "DRAFT" | "RECRUITING" | "FULL" | "CLOSED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type GameStatus = "DRAFT" | "RECRUITING" | "FULL" | "CLOSED" | "BOOKING_PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type GameSkillLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "OPEN";
 export type GameRole = "BATSMAN" | "BOWLER" | "ALL_ROUNDER" | "WICKETKEEPER" | "ANY";
 export type JoinRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "WAITLISTED" | "INVITED" | "WITHDRAWN" | "REMOVED" | "EXPIRED";
@@ -51,6 +51,7 @@ export type GameUserState = {
   reconfirmation_status?: "PENDING" | "";
   request_status: JoinRequestStatus | "";
   join_request_id: number | null;
+  room_access?: "NONE" | "PLANNING" | "CONFIRMED";
 };
 
 export type MatchmakingGame = {
@@ -168,6 +169,7 @@ export type EligibleGameBooking = Pick<
 };
 
 export type GameCreatePayload = {
+  client_request_id?: string;
   game_type: GameType;
   creation_mode: GameCreationMode;
   booking_id?: number | null;
@@ -198,7 +200,7 @@ export type GameCreatePayload = {
 };
 
 export type GameListResponse = { games: MatchmakingGame[] };
-export type GameResponse = { game: MatchmakingGame };
+export type GameResponse = { game: MatchmakingGame; room_access?: "NONE" | "PLANNING" | "CONFIRMED" };
 export type EligibleBookingsResponse = { bookings: EligibleGameBooking[] };
 export type JoinRequestResponse = { request: JoinRequest };
 

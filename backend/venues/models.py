@@ -1,4 +1,5 @@
 from datetime import timedelta
+from uuid import uuid4
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -8,7 +9,9 @@ from django.utils import timezone
 
 
 def booking_code_default():
-    return f"SSB-{timezone.now().strftime('%Y%m%d')}-{timezone.now().strftime('%H%M%S%f')[-8:]}"
+    # The date keeps references recognisable; UUID entropy prevents collisions
+    # when several reservations are created within the same clock tick.
+    return f"SSB-{timezone.now().strftime('%Y%m%d')}-{uuid4().hex[:12].upper()}"
 
 
 class Venue(models.Model):
@@ -304,6 +307,13 @@ class Booking(models.Model):
         OWNER_FULL_REFUND = "OWNER_FULL_REFUND", "Owner Full Refund"
         ADMIN_DECISION = "ADMIN_DECISION", "Admin Decision"
 
+    class MatchmakingSyncStatus(models.TextChoices):
+        NOT_APPLICABLE = "NOT_APPLICABLE", "Not Applicable"
+        PENDING_PAYMENT = "PENDING_PAYMENT", "Waiting for Payment"
+        ATTACHED = "ATTACHED", "Attached to Game"
+        RELEASED = "RELEASED", "Payment Was Not Completed"
+        RECONCILIATION_REQUIRED = "RECONCILIATION_REQUIRED", "Needs Review"
+
     booking_code = models.CharField(max_length=40, unique=True, default=booking_code_default, editable=False)
     player = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="court_bookings")
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="bookings")
@@ -346,6 +356,12 @@ class Booking(models.Model):
     cancellation_slot_action = models.CharField(max_length=20, blank=True)
     cancellation_policy_snapshot = models.JSONField(default=dict, blank=True)
     matchmaking_game = models.ForeignKey("matchmaking.Game", on_delete=models.SET_NULL, related_name="booking_handoffs", blank=True, null=True)
+    matchmaking_sync_status = models.CharField(
+        max_length=30,
+        choices=MatchmakingSyncStatus.choices,
+        default=MatchmakingSyncStatus.NOT_APPLICABLE,
+    )
+    matchmaking_sync_error = models.CharField(max_length=300, blank=True)
     cancellation_tier = models.CharField(
         max_length=30,
         choices=CancellationTier.choices,

@@ -41,8 +41,14 @@ export function getApiErrorMessage(requestError: unknown, fallbackMessage: strin
   let message = fallbackMessage;
 
   if (axios.isAxiosError(requestError)) {
+    if (requestError.code === "ERR_CANCELED") {
+      return fallbackMessage;
+    }
+
     if (!requestError.response) {
-      message = "We could not connect to SportSpot right now. Please check your internet connection and try again.";
+      message = ["ECONNABORTED", "ETIMEDOUT"].includes(requestError.code || "")
+        ? "SportSpot is taking longer than expected. Please try again in a moment."
+        : "SportSpot is temporarily unavailable. Please try again in a moment.";
       return returnMessage(message);
     }
 

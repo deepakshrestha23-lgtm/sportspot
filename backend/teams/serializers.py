@@ -141,6 +141,7 @@ class TeamSerializer(serializers.ModelSerializer):
             "preferred_playing_area",
             "preferred_playing_time",
             "skill_level",
+            "accepts_team_challenges",
             "captain",
             "captain_name",
             "members_count",

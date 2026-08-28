@@ -1624,7 +1624,7 @@ class BookingReserveView(APIView):
                 from matchmaking.models import Game
                 from matchmaking.services import validate_game_booking_handoff
 
-                matchmaking_game = Game.objects.select_for_update().get(id=int(matchmaking_game_id))
+                matchmaking_game = Game.objects.select_for_update(of=("self",)).get(id=int(matchmaking_game_id))
                 validate_game_booking_handoff(matchmaking_game, request.user)
             except (TypeError, ValueError):
                 return Response({"detail": "Choose a valid game plan."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1693,6 +1693,16 @@ class BookingReserveView(APIView):
             return Response({"detail": "One or more selected slots are no longer available."}, status=status.HTTP_400_BAD_REQUEST)
 
         reserved_until = timezone.now() + timedelta(minutes=10)
+        if matchmaking_game and matchmaking_game.booking_deadline:
+            # A plan-first handoff cannot keep a court beyond the host's stated
+            # booking deadline. Payment begun before that deadline remains
+            # valid only for the short, explicit reservation hold.
+            reserved_until = min(reserved_until, matchmaking_game.booking_deadline)
+            if reserved_until <= timezone.now():
+                return Response(
+                    {"detail": "The court-booking deadline for this game has passed."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         slot_ids = [slot.id for slot in slots]
         CourtSlot.objects.filter(id__in=slot_ids).update(status=CourtSlot.Status.RESERVED, reserved_until=reserved_until, updated_at=timezone.now())
 
@@ -1709,8 +1719,16 @@ class BookingReserveView(APIView):
                 slots[0].court.venue
             ),
             matchmaking_game=matchmaking_game,
+            matchmaking_sync_status=(
+                Booking.MatchmakingSyncStatus.PENDING_PAYMENT
+                if matchmaking_game else Booking.MatchmakingSyncStatus.NOT_APPLICABLE
+            ),
         )
         BookingSlot.objects.bulk_create([BookingSlot(booking=booking, slot=slot, price=slot.price) for slot in slots])
+        if matchmaking_game:
+            from matchmaking.services import mark_game_booking_payment_pending
+
+            mark_game_booking_payment_pending(matchmaking_game.id, booking.id, request.user)
         notify_owner_booking_reserved(booking, request.user)
         return Response({"booking": BookingSerializer(booking, context={"request": request}).data}, status=status.HTTP_201_CREATED)
 
@@ -1837,6 +1855,8 @@ def mark_khalti_payment_for_refund(booking, slots, pidx, khalti_status, khalti_r
     booking.cancellation_tier = Booking.CancellationTier.OWNER_FULL_REFUND
     booking.refund_percentage = 100
     booking.refund_amount = booking.amount
+    if booking.matchmaking_game_id:
+        booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.RELEASED
     booking.save(
         update_fields=[
             "status",
@@ -1852,6 +1872,7 @@ def mark_khalti_payment_for_refund(booking, slots, pidx, khalti_status, khalti_r
             "cancellation_tier",
             "refund_percentage",
             "refund_amount",
+            "matchmaking_sync_status",
             "updated_at",
         ]
     )
@@ -1860,6 +1881,10 @@ def mark_khalti_payment_for_refund(booking, slots, pidx, khalti_status, khalti_r
         reserved_until=None,
         updated_at=now,
     )
+    if booking.matchmaking_game_id:
+        from matchmaking.services import restore_game_after_booking_handoff_expiry
+
+        restore_game_after_booking_handoff_expiry(booking, now=now)
 
 
 def attach_matchmaking_game_after_payment(booking, actor):
@@ -1871,12 +1896,21 @@ def attach_matchmaking_game_after_payment(booking, actor):
 
         game = Game.objects.select_related("host", "booking").filter(id=booking.matchmaking_game_id).first()
         if not game:
-            return None, "Your booking was confirmed, but the game plan could not be found. You can still manage the booking from My Bookings."
-        updated_game = attach_booking_to_game(game, booking, actor)
+            booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.RECONCILIATION_REQUIRED
+            booking.matchmaking_sync_error = "The linked game plan could not be found."
+            booking.save(update_fields=["matchmaking_sync_status", "matchmaking_sync_error", "updated_at"])
+            return None, "Your court booking is confirmed. The linked game plan needs review before it can be updated."
+        updated_game = attach_booking_to_game(game, booking, actor, from_payment_handoff=True)
+        booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.ATTACHED
+        booking.matchmaking_sync_error = ""
+        booking.save(update_fields=["matchmaking_sync_status", "matchmaking_sync_error", "updated_at"])
         return updated_game, ""
     except Exception as exc:
         if exc.__class__.__name__ == "ValidationError":
-            return None, f"Your booking was confirmed, but we could not update the game automatically: {readable_error(exc)}"
+            booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.RECONCILIATION_REQUIRED
+            booking.matchmaking_sync_error = readable_error(exc)[:300]
+            booking.save(update_fields=["matchmaking_sync_status", "matchmaking_sync_error", "updated_at"])
+            return None, "Your court booking is confirmed. The linked game plan needs review before it can be updated."
         raise
 
 
@@ -1921,6 +1955,14 @@ class KhaltiPaymentVerifyView(APIView):
         khalti_status = str(khalti_response.get("status", "")).strip()
 
         with transaction.atomic():
+            # Keep Plan First handoffs in the same game -> booking -> slots
+            # lock order used by reservation, cancellation and maintenance.
+            if booking.matchmaking_game_id:
+                from matchmaking.models import Game
+
+                Game.objects.select_for_update(of=("self",)).filter(
+                    pk=booking.matchmaking_game_id
+                ).first()
             locked_booking = get_object_or_404(
                 Booking.objects.select_for_update()
                 .select_related("player", "venue", "court", "slot")
@@ -2014,6 +2056,8 @@ class KhaltiPaymentVerifyView(APIView):
                 locked_booking.khalti_response = khalti_response
                 locked_booking.refund_status = Booking.RefundStatus.NOT_REQUIRED
                 locked_booking.refund_reason = "Payment was not completed before the reservation expired."
+                if locked_booking.matchmaking_game_id:
+                    locked_booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.RELEASED
                 locked_booking.save(
                     update_fields=[
                         "status",
@@ -2024,6 +2068,7 @@ class KhaltiPaymentVerifyView(APIView):
                         "khalti_response",
                         "refund_status",
                         "refund_reason",
+                        "matchmaking_sync_status",
                         "updated_at",
                     ]
                 )
@@ -2032,6 +2077,10 @@ class KhaltiPaymentVerifyView(APIView):
                     reserved_until=None,
                     updated_at=timezone.now(),
                 )
+                if locked_booking.matchmaking_game_id:
+                    from matchmaking.services import restore_game_after_booking_handoff_expiry
+
+                    restore_game_after_booking_handoff_expiry(locked_booking)
                 notify_booking_payment_failed(locked_booking, request.user)
                 return Response(
                     {
@@ -2077,6 +2126,8 @@ class KhaltiPaymentVerifyView(APIView):
             locked_booking.khalti_response = khalti_response
             locked_booking.refund_status = Booking.RefundStatus.NOT_REQUIRED
             locked_booking.refund_reason = "Khalti payment was not completed before booking confirmation."
+            if locked_booking.matchmaking_game_id:
+                locked_booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.RELEASED
             locked_booking.save(
                 update_fields=[
                     "status",
@@ -2087,6 +2138,7 @@ class KhaltiPaymentVerifyView(APIView):
                     "khalti_response",
                     "refund_status",
                     "refund_reason",
+                    "matchmaking_sync_status",
                     "updated_at",
                 ]
             )
@@ -2095,6 +2147,10 @@ class KhaltiPaymentVerifyView(APIView):
                 reserved_until=None,
                 updated_at=timezone.now(),
             )
+            if locked_booking.matchmaking_game_id:
+                from matchmaking.services import restore_game_after_booking_handoff_expiry
+
+                restore_game_after_booking_handoff_expiry(locked_booking)
             notify_booking_payment_failed(locked_booking, request.user)
             return Response({"booking": BookingSerializer(locked_booking, context={"request": request}).data})
 
@@ -2103,6 +2159,17 @@ class BookingCancelView(APIView):
 
     @transaction.atomic
     def post(self, request, booking_id):
+        booking_hint = (
+            Booking.objects.filter(pk=booking_id)
+            .values("matchmaking_game_id")
+            .first()
+        )
+        if booking_hint and booking_hint["matchmaking_game_id"]:
+            from matchmaking.models import Game
+
+            Game.objects.select_for_update(of=("self",)).filter(
+                pk=booking_hint["matchmaking_game_id"]
+            ).first()
         booking = get_object_or_404(
             Booking.objects.select_for_update().select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot"),
             pk=booking_id,
@@ -2194,6 +2261,9 @@ class BookingCancelView(APIView):
         from matchmaking.services import cancel_games_for_booking
 
         cancel_games_for_booking(booking, actor=request.user)
+        from team_challenges.services import cancel_challenges_for_booking
+
+        cancel_challenges_for_booking(booking, actor=request.user)
 
         if booking.refund_status == Booking.RefundStatus.PENDING_OWNER_ACTION:
             notify_owner_refund_requested(booking, request.user)

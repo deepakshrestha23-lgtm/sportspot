@@ -10,7 +10,11 @@ load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-secret-key-change-me")
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+    if host.strip()
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -25,6 +29,7 @@ INSTALLED_APPS = [
     "players",
     "teams",
     "matchmaking",
+    "team_challenges",
     "notifications",
     "venues",
     "wishlists",
@@ -69,6 +74,15 @@ DATABASES = {
         "PASSWORD": os.getenv("DB_PASSWORD", "postgres"),
         "HOST": os.getenv("DB_HOST", "127.0.0.1"),
         "PORT": os.getenv("DB_PORT", "5432"),
+        # Keeping the test database separate makes it safe to run the suite
+        # without Django ever creating or dropping the development database.
+        "TEST": {
+            "NAME": os.getenv("TEST_DB_NAME", "test_sportspot_db"),
+            "USER": os.getenv("TEST_DB_USER", os.getenv("DB_USER", "postgres")),
+            "PASSWORD": os.getenv("TEST_DB_PASSWORD", os.getenv("DB_PASSWORD", "postgres")),
+            "HOST": os.getenv("TEST_DB_HOST", os.getenv("DB_HOST", "127.0.0.1")),
+            "PORT": os.getenv("TEST_DB_PORT", os.getenv("DB_PORT", "5432")),
+        },
     }
 }
 
@@ -137,9 +151,27 @@ ACCOUNT_RECOVERY_REVEAL_EMAIL_ERRORS = os.getenv(
 
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     raise ValueError("EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.")
-CORS_ALLOWED_ORIGINS = [
-    FRONTEND_URL,
-    "http://127.0.0.1:3000",
-    "http://localhost:3000",
-]
+CORS_ALLOWED_ORIGINS = list(dict.fromkeys(
+    [
+        FRONTEND_URL.rstrip("/"),
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+    ]
+    + [
+        origin.strip().rstrip("/")
+        for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
+))
+
+# Local browsers sometimes open the frontend through the computer's private
+# network address. Keep this development-only convenience out of production.
+if DEBUG:
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https?://localhost:\d+$",
+        r"^https?://127\.0\.0\.1:\d+$",
+        r"^https?://10(?:\.\d{1,3}){3}:\d+$",
+        r"^https?://172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}:\d+$",
+        r"^https?://192\.168(?:\.\d{1,3}){2}:\d+$",
+    ]
 

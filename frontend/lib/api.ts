@@ -4,11 +4,29 @@ import { clearAuthSession, getAccessToken, getRefreshToken, saveAccessToken } fr
 
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
+  timeout: 15000,
 });
 
 const refreshClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
+  timeout: 15000,
 });
+
+let refreshPromise: Promise<string> | null = null;
+const retryableMethods = new Set(["get", "head", "options"]);
+
+function refreshAccessToken(refreshToken: string) {
+  if (!refreshPromise) {
+    refreshPromise = refreshClient
+      .post<{ access: string }>("/api/auth/token/refresh/", { refresh: refreshToken })
+      .then((response) => response.data.access)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
 
 api.interceptors.request.use((config) => {
   const token = getAccessToken();
@@ -29,6 +47,18 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    if (
+      originalRequest &&
+      !error.response &&
+      error.code !== "ERR_CANCELED" &&
+      retryableMethods.has(String(originalRequest.method || "get").toLowerCase()) &&
+      !originalRequest._sportspotNetworkRetry
+    ) {
+      originalRequest._sportspotNetworkRetry = true;
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+      return api(originalRequest);
+    }
+
     if (error.response?.status !== 401 || originalRequest?._retry) {
       return Promise.reject(error);
     }
@@ -42,12 +72,9 @@ api.interceptors.response.use(
     originalRequest._retry = true;
 
     try {
-      const response = await refreshClient.post<{ access: string }>("/api/auth/token/refresh/", {
-        refresh: refreshToken,
-      });
-
-      saveAccessToken(response.data.access);
-      originalRequest.headers.Authorization = `Bearer ${response.data.access}`;
+      const accessToken = await refreshAccessToken(refreshToken);
+      saveAccessToken(accessToken);
+      originalRequest.headers.Authorization = `Bearer ${accessToken}`;
       return api(originalRequest);
     } catch (refreshError) {
       clearAuthSession();

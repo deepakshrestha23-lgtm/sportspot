@@ -29,6 +29,20 @@ def expire_reserved_booking(booking_id, *, now=None, notify=True):
     expired_booking = None
 
     with transaction.atomic():
+        # Linked Plan First payments use the game as the coordination lock.
+        # Acquire it before the booking so expiry, payment verification and
+        # cancellation all use the same game -> booking -> slots order.
+        booking_hint = (
+            Booking.objects.filter(pk=booking_id)
+            .values("matchmaking_game_id")
+            .first()
+        )
+        if booking_hint and booking_hint["matchmaking_game_id"]:
+            from matchmaking.models import Game
+
+            Game.objects.select_for_update(of=("self",)).filter(
+                pk=booking_hint["matchmaking_game_id"]
+            ).first()
         booking = (
             Booking.objects.select_for_update()
             .select_related("player", "venue", "venue__owner", "court", "slot")
@@ -50,12 +64,15 @@ def expire_reserved_booking(booking_id, *, now=None, notify=True):
         booking.payment_status = Booking.PaymentStatus.FAILED
         booking.refund_status = Booking.RefundStatus.NOT_REQUIRED
         booking.refund_reason = "Unpaid reservation expired before payment."
+        if booking.matchmaking_game_id:
+            booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.RELEASED
         booking.save(
             update_fields=[
                 "status",
                 "payment_status",
                 "refund_status",
                 "refund_reason",
+                "matchmaking_sync_status",
                 "updated_at",
             ]
         )
@@ -64,12 +81,61 @@ def expire_reserved_booking(booking_id, *, now=None, notify=True):
             reserved_until=None,
             updated_at=now,
         )
+        if booking.matchmaking_game_id:
+            # Keep a Plan First game coherent with the short Khalti hold. The
+            # game is restored as a private closed plan or cancelled when its
+            # own booking deadline has elapsed; it is never left claiming a
+            # court is being paid for after the hold disappeared.
+            from matchmaking.services import restore_game_after_booking_handoff_expiry
+
+            restore_game_after_booking_handoff_expiry(booking, now=now)
         expired_booking = booking
 
     if expired_booking and notify:
         notify_booking_payment_failed(expired_booking, expired_booking.player)
 
     return bool(expired_booking)
+
+
+def release_reserved_booking_for_game(game_id, *, now=None):
+    """Release an unpaid Plan First reservation when its game is cancelled."""
+    now = now or timezone.now()
+    with transaction.atomic():
+        from matchmaking.models import Game
+
+        Game.objects.select_for_update(of=("self",)).filter(pk=game_id).first()
+        booking = (
+            Booking.objects.select_for_update()
+            .prefetch_related("slot_items__slot")
+            .filter(
+                matchmaking_game_id=game_id,
+                status=Booking.BookingStatus.RESERVED,
+                payment_status=Booking.PaymentStatus.PENDING,
+            )
+            .first()
+        )
+        if not booking:
+            return False
+
+        slot_ids = get_booking_slot_ids(booking)
+        slots = CourtSlot.objects.select_for_update().filter(id__in=slot_ids)
+        booking.status = Booking.BookingStatus.CANCELLED
+        booking.payment_status = Booking.PaymentStatus.CANCELLED
+        booking.refund_status = Booking.RefundStatus.NOT_REQUIRED
+        booking.cancellation_tier = Booking.CancellationTier.UNPAID_RELEASE
+        booking.refund_reason = "The unpaid court reservation was released because the game was cancelled."
+        booking.cancelled_at = now
+        booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.RELEASED
+        booking.save(update_fields=[
+            "status", "payment_status", "refund_status", "cancellation_tier",
+            "refund_reason", "cancelled_at", "matchmaking_sync_status", "updated_at",
+        ])
+        slots.filter(status=CourtSlot.Status.RESERVED).update(
+            status=CourtSlot.Status.AVAILABLE,
+            reserved_until=None,
+            updated_at=now,
+        )
+        return True
 
 
 def complete_confirmed_booking(booking_id, *, now=None, notify=True):
@@ -149,4 +215,74 @@ def complete_finished_bookings(*, now=None, limit=100, notify=True):
     return {
         "checked_count": len(candidate_ids),
         "completed_count": completed_count,
+    }
+
+
+def reconcile_matchmaking_booking_handoffs(*, limit=100):
+    """Repair a confirmed plan-first payment whose game attachment was delayed.
+
+    A court booking remains confirmed once Khalti verification succeeds. This
+    worker retries only the secondary game-link operation and records a clear
+    review state if it cannot be repaired automatically.
+    """
+    booking_ids = list(
+        Booking.objects.filter(
+            matchmaking_game__isnull=False,
+            status=Booking.BookingStatus.CONFIRMED,
+            payment_status=Booking.PaymentStatus.PAID,
+            matchmaking_sync_status__in=[
+                Booking.MatchmakingSyncStatus.PENDING_PAYMENT,
+                Booking.MatchmakingSyncStatus.RECONCILIATION_REQUIRED,
+            ],
+        )
+        .order_by("confirmed_at", "id")
+        .values_list("id", flat=True)[:limit]
+    )
+    attached_count = 0
+    review_count = 0
+    for booking_id in booking_ids:
+        with transaction.atomic():
+            booking_hint = (
+                Booking.objects.filter(pk=booking_id)
+                .values("matchmaking_game_id")
+                .first()
+            )
+            if booking_hint and booking_hint["matchmaking_game_id"]:
+                from matchmaking.models import Game
+
+                Game.objects.select_for_update(of=("self",)).filter(
+                    pk=booking_hint["matchmaking_game_id"]
+                ).first()
+            booking = (
+                Booking.objects.select_for_update()
+                .select_related("player", "matchmaking_game")
+                .filter(id=booking_id)
+                .first()
+            )
+            if not booking or not booking.matchmaking_game_id:
+                continue
+            try:
+                from matchmaking.services import attach_booking_to_game
+
+                attach_booking_to_game(
+                    booking.matchmaking_game,
+                    booking,
+                    booking.player,
+                    from_payment_handoff=True,
+                )
+                booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.ATTACHED
+                booking.matchmaking_sync_error = ""
+                booking.save(update_fields=["matchmaking_sync_status", "matchmaking_sync_error", "updated_at"])
+                attached_count += 1
+            except Exception as exc:
+                if exc.__class__.__name__ != "ValidationError":
+                    raise
+                booking.matchmaking_sync_status = Booking.MatchmakingSyncStatus.RECONCILIATION_REQUIRED
+                booking.matchmaking_sync_error = str(exc)[:300]
+                booking.save(update_fields=["matchmaking_sync_status", "matchmaking_sync_error", "updated_at"])
+                review_count += 1
+    return {
+        "checked_count": len(booking_ids),
+        "attached_count": attached_count,
+        "review_count": review_count,
     }

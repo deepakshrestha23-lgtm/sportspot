@@ -99,6 +99,10 @@ function CreateGameContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [createRequestId] = useState(() => {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+    return `game-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  });
 
   useEffect(() => {
     loadContext();
@@ -312,6 +316,7 @@ function CreateGameContent() {
     setIsSubmitting(true);
     try {
       const payload: GameCreatePayload = {
+        client_request_id: createRequestId,
         game_type: gameType,
         team_id: gameType === "FILL_SQUAD" ? selectedTeamId : null,
         selected_team_member_ids: gameType === "FILL_SQUAD" ? selectedTeamMemberIds : [],

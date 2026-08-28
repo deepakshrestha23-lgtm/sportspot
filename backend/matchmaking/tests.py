@@ -13,8 +13,13 @@ from players.models import PlayerProfile
 from teams.models import Team, TeamMember
 from venues.models import Booking, Court, CourtSlot, Venue
 
-from .models import Game, GameParticipant, GameRoleRequirement, JoinRequest
-from .services import attach_booking_to_game, cancel_games_for_booking, expire_matchmaking_deadlines
+from .models import Game, GameParticipant, GameRoleRequirement, JoinRequest, JoinRequestEvent
+from .services import (
+    attach_booking_to_game,
+    cancel_games_for_booking,
+    expire_matchmaking_deadlines,
+    player_has_overlapping_confirmed_game,
+)
 
 
 class PickupGameApiTests(APITestCase):
@@ -1001,7 +1006,15 @@ class PickupGameApiTests(APITestCase):
         self.assertEqual(response.status_code, 201, response.data)
         previous_request.refresh_from_db()
         self.assertEqual(previous_request.status, JoinRequest.Status.PENDING)
+        self.assertEqual(previous_request.attempt_number, 2)
         self.assertEqual(JoinRequest.objects.filter(game=game, player=self.player_one).count(), 1)
+        self.assertTrue(
+            JoinRequestEvent.objects.filter(
+                join_request=previous_request,
+                event_type=JoinRequestEvent.EventType.SUBMITTED,
+                attempt_number=2,
+            ).exists()
+        )
 
     def test_non_host_cannot_edit_or_remove_game_participants(self):
         game = Game.objects.create(
@@ -1095,6 +1108,9 @@ class PickupGameApiTests(APITestCase):
         self.assertEqual(reserve_response.status_code, 201, reserve_response.data)
         booking = Booking.objects.get(id=reserve_response.data["booking"]["id"])
         self.assertEqual(booking.matchmaking_game_id, game.id)
+        self.assertEqual(booking.matchmaking_sync_status, Booking.MatchmakingSyncStatus.PENDING_PAYMENT)
+        game.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.BOOKING_PENDING)
         booking.payment_provider = Booking.PaymentProvider.KHALTI
         booking.khalti_pidx = "guided-plan-pidx"
         booking.khalti_payment_url = "https://pay.khalti.com/guided-plan"
@@ -1123,15 +1139,18 @@ class PickupGameApiTests(APITestCase):
     @patch("sportspot_api.maintenance.call_command")
     @patch("sportspot_api.maintenance.expire_matchmaking_deadlines")
     @patch("sportspot_api.maintenance.complete_finished_bookings")
+    @patch("sportspot_api.maintenance.reconcile_matchmaking_booking_handoffs")
     @patch("sportspot_api.maintenance.expire_expired_reservations")
     def test_unified_maintenance_runs_booking_matchmaking_and_reminders(
         self,
         expire_reservations,
+        reconcile_handoffs,
         complete_bookings,
         expire_matchmaking,
         call_command,
     ):
         expire_reservations.return_value = {"checked_count": 2, "expired_count": 1}
+        reconcile_handoffs.return_value = {"checked_count": 1, "attached_count": 1, "review_count": 0}
         complete_bookings.return_value = {"checked_count": 3, "completed_count": 1}
         expire_matchmaking.return_value = {
             "games_closed": 1,
@@ -1150,6 +1169,7 @@ class PickupGameApiTests(APITestCase):
         )
 
         expire_reservations.assert_called_once_with(now=run_at, limit=17, notify=True)
+        reconcile_handoffs.assert_called_once_with(limit=17)
         complete_bookings.assert_called_once_with(now=run_at, limit=17, notify=True)
         expire_matchmaking.assert_called_once_with(now=run_at, limit=17, notify=True)
         call_command.assert_called_once()
@@ -1185,4 +1205,88 @@ class PickupGameApiTests(APITestCase):
         self.assertIn("more confirmed or provisional player spot", str(response.data))
         slots[0].refresh_from_db()
         self.assertEqual(slots[0].status, CourtSlot.Status.AVAILABLE)
+
+    def test_provisional_participation_blocks_an_overlapping_game(self):
+        first_game = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="First proposed pickup",
+            proposed_date=timezone.localdate() + timedelta(days=5),
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=2),
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        GameParticipant.objects.create(
+            game=first_game,
+            user=self.player_one,
+            participant_type=GameParticipant.ParticipantType.TEMPORARY,
+            role="ANY",
+            status=GameParticipant.Status.PROVISIONAL,
+        )
+        second_game = Game.objects.create(
+            host=self.player_two,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Overlapping proposed pickup",
+            proposed_date=first_game.proposed_date,
+            proposed_start_time=time(19, 0),
+            proposed_end_time=time(21, 0),
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=2),
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+
+        self.assertTrue(player_has_overlapping_confirmed_game(self.player_one, second_game))
+
+    def test_planning_room_is_limited_and_cancelled_games_close_room_access(self):
+        game = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Private planning room",
+            proposed_date=timezone.localdate() + timedelta(days=5),
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=2),
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        GameParticipant.objects.create(
+            game=game,
+            user=self.host,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            role="ANY",
+            status=GameParticipant.Status.PROVISIONAL,
+        )
+        GameParticipant.objects.create(
+            game=game,
+            user=self.player_one,
+            participant_type=GameParticipant.ParticipantType.TEMPORARY,
+            role="ANY",
+            status=GameParticipant.Status.PROVISIONAL,
+        )
+
+        self.client.force_authenticate(self.player_one)
+        room_response = self.client.get(reverse("matchmaking-game-room", args=[game.id]))
+
+        self.assertEqual(room_response.status_code, 200, room_response.data)
+        self.assertEqual(room_response.data["room_access"], "PLANNING")
+        self.assertNotIn("sportspot_id", room_response.data["game"]["participants"][0])
+
+        self.client.force_authenticate(self.host)
+        cancel_response = self.client.post(
+            reverse("matchmaking-game-cancel", args=[game.id]),
+            {"reason": "The proposed game is no longer going ahead."},
+            format="json",
+        )
+        self.assertEqual(cancel_response.status_code, 200, cancel_response.data)
+        self.client.force_authenticate(self.player_one)
+        closed_room_response = self.client.get(reverse("matchmaking-game-room", args=[game.id]))
+        self.assertEqual(closed_room_response.status_code, 403, closed_room_response.data)
 

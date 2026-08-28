@@ -564,7 +564,11 @@ class BookingSerializer(serializers.ModelSerializer):
         return booking.matchmaking_game.title if booking.matchmaking_game_id else ""
 
     def get_venue_primary_image(self, booking):
-        photo = booking.venue.photos.order_by("id").first()
+        photo_cache = getattr(booking.venue, "_prefetched_objects_cache", {}).get("photos")
+        if photo_cache is not None:
+            photo = min(photo_cache, key=lambda item: item.id, default=None)
+        else:
+            photo = booking.venue.photos.order_by("id").first()
         if photo and photo.image:
             return photo.image.url
         for image_field in [booking.venue.front_photo, booking.venue.court_area_photo, booking.venue.additional_photo, booking.court.court_photo]:
@@ -645,8 +649,18 @@ class BookingSlotSerializer(serializers.ModelSerializer):
 
 
 def get_booking_slots(booking):
-    slots = [item.slot for item in booking.slot_items.select_related("slot").order_by("slot__date", "slot__start_time", "slot__end_time")]
-    return slots or [booking.slot]
+    cached_items = getattr(booking, "_prefetched_objects_cache", {}).get("slot_items")
+    if cached_items is not None:
+        slots = sorted(
+            [item.slot for item in cached_items if item.slot_id],
+            key=lambda slot: (slot.date, slot.start_time, slot.end_time),
+        )
+    else:
+        slots = [
+            item.slot
+            for item in booking.slot_items.select_related("slot").order_by("slot__date", "slot__start_time", "slot__end_time")
+        ]
+    return slots or ([booking.slot] if booking.slot_id else [])
 
 
 def can_booking_be_cancelled(booking, role=""):

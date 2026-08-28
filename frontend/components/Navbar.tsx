@@ -26,13 +26,19 @@ export default function Navbar() {
   useEffect(() => {
     const currentUser = getCurrentUser();
     setUser(currentUser);
-    setIsProfileOpen(false);
     if (currentUser?.role === "COURT_OWNER") {
       api
         .get<{ venue: Venue | null }>("/api/venues/owner/venue/")
         .then((response) => setOwnerVenueStatus(response.data.venue?.status || "NONE"))
         .catch(() => setOwnerVenueStatus("NONE"));
+    } else {
+      setOwnerVenueStatus("NONE");
     }
+  }, []);
+
+  useEffect(() => {
+    setIsProfileOpen(false);
+    setIsNotificationsOpen(false);
   }, [pathname]);
 
   function handleLogout() {

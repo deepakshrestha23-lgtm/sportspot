@@ -22,6 +22,7 @@ class Team(models.Model):
     preferred_playing_area = models.CharField(max_length=150)
     preferred_playing_time = models.CharField(max_length=120)
     skill_level = models.CharField(max_length=20, choices=SkillLevel.choices)
+    accepts_team_challenges = models.BooleanField(default=True)
     captain = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="captain_teams")
     team_reliability_score = models.PositiveSmallIntegerField(default=100)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0)

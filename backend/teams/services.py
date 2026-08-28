@@ -2,9 +2,37 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from notifications.services import notify_team_invitation_response
+from notifications.services import notify_team_invitation, notify_team_invitation_response
 
 from .models import TeamMember
+
+
+@transaction.atomic
+def invite_registered_player_to_team(*, team, actor, player, cricksal_role):
+    """Create one permanent-team invitation with the shared team rules."""
+    if team.captain_id != actor.id:
+        raise ValidationError("Only the team captain can invite registered players.")
+    if player.id == actor.id:
+        raise ValidationError("You cannot invite yourself to your own team.")
+    existing_member = TeamMember.objects.select_for_update().filter(
+        team=team,
+        user=player,
+        status__in=[TeamMember.MemberStatus.ACTIVE, TeamMember.MemberStatus.INVITED],
+    ).first()
+    if existing_member and existing_member.status == TeamMember.MemberStatus.ACTIVE:
+        raise ValidationError("This player is already an active member of the team.")
+    if existing_member:
+        raise ValidationError("This player already has a pending invitation.")
+    member = TeamMember.objects.create(
+        team=team,
+        user=player,
+        member_type=TeamMember.MemberType.REGISTERED,
+        role_in_team=TeamMember.TeamRole.PLAYER,
+        cricksal_role=cricksal_role or TeamMember.CricksalRole.NONE,
+        status=TeamMember.MemberStatus.INVITED,
+    )
+    notify_team_invitation(member, actor)
+    return member
 
 
 @transaction.atomic

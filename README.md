@@ -2,7 +2,7 @@
 
 SportSpot is a Nepal-focused sports web application for Cricksal players, teams, court owners, and administrators.
 
-Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, Pickup Game matchmaking, Fill My Squad temporary-player recruitment, a structured Game Room/Planning Room/Squad Room, and a dedicated Venue Manager workspace shell with top bar, sidebar, Overview, and Calendar exist in the repository. Team challenges, full rating submission, disputes, production deployment, owner offline booking, and several admin operations are not complete.
+Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, Pickup Game matchmaking, Fill My Squad temporary-player recruitment, a structured Game Room/Planning Room/Squad Room, booking-payment reconciliation, request lifecycle history, automatic platform maintenance, a dedicated Venue Manager workspace shell with top bar, sidebar, Overview, and Calendar, and the Team Challenge foundation with discovery, direct/open proposals, counter-proposals, acceptance, booking handoff, notifications, and expiry maintenance exist in the repository. Full team-fixture/Game Room integration, full rating submission, disputes, production deployment, owner offline booking, and several admin operations are not complete.
 
 Current sport scope: Cricksal only.
 
@@ -30,7 +30,7 @@ Outside current scope:
 - Real automatic refund transfer.
 - Split payment.
 - Team-based open games beyond Pickup Game.
-- Full team challenge flow.
+- Full team-fixture and Game Room integration for team challenges.
 - Full chat-based Game Room.
 - Rating submission and recommendation engine.
 - Production deployment and monitoring.
@@ -121,7 +121,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Player Dashboard Overview | Completed | `/dashboard/player/page.tsx` | Broader backend aggregation later |
 | Player My Profile page | Completed | `/dashboard/player/profile` | Public profile route polish |
 | Player My Teams page | Completed | `/dashboard/player/teams` | Team discovery later |
-| Player My Games page | Partially completed | `/dashboard/player/games` | Open-game/challenge backend still planned |
+| Player My Games page | Partially completed | `/dashboard/player/games` | Open-game coverage and a dedicated Team Challenge tab still need broader integration |
 | Player My Bookings page | Completed | `/dashboard/player/bookings` | More cancellation/refund QA |
 | Ratings & Reliability page | Partially completed | `/dashboard/player/ratings` | Real rating submission/reliability events incomplete |
 | Player Settings page | Completed | `/dashboard/player/settings` | Dual-role/account-mode support later |
@@ -163,7 +163,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Accept/reject invitation | Completed | `/api/teams/invitations/` | None known |
 | Guest player | Completed | `/members/guest/` | Extended guest lifecycle |
 | Remove member/invitation | Completed | status-based removal | Soft history improvements |
-| Public team browsing | Planned | No public team discovery backend | Needed for challenges |
+| Public team browsing | Partially completed | `/api/team-challenges/teams/`, `/challenge-teams` | Requires broader team discovery and moderation rules |
 
 ### Open Games
 
@@ -177,9 +177,12 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 
 | Feature | Status | Evidence | Remaining work |
 | --- | --- | --- | --- |
-| Challenge pages | Planned | placeholder pages in `challenge-teams` | Build real challenge module |
-| Accept/counter/decline | Planned | no challenge model/API found | Add lifecycle and notifications |
-| Game Room creation | Planned | no match/game-room model found | Depends on challenge/open-game flow |
+| Challenge discovery and team selection | Partially completed | `/challenge-teams`, `/api/team-challenges/teams/`, `/api/team-challenges/challenges/public/` | Broaden filters and end-to-end UX coverage |
+| Direct and open challenge creation | Partially completed | `/challenge-teams/create`, `TeamChallenge`, `ChallengeProposal` | Complete production UX and broader validation coverage |
+| Accept, counter, decline and withdraw | Partially completed | challenge detail actions and service layer | Add more concurrency and browser-flow tests |
+| Booking-first and plan-first challenge lifecycle | Partially completed | `/api/team-challenges/challenges/<id>/attach-booking/`, `TeamFixture` | Complete booking handoff, material-change reconfirmation and rescheduling rules |
+| Challenge notifications and deadline expiry | Partially completed | `team_challenges/notifications.py`, `expire_team_challenges` | Configure scheduled maintenance and expand notification coverage |
+| Game Room creation | Planned | Team fixtures are stored, but no reusable challenge Game Room is connected | Integrate least-privilege room access after fixture rules are final |
 
 ### Venue and Court Discovery
 
@@ -236,7 +239,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Notification Centre | Completed for connected modules | `notifications` app, `NotificationCenter.tsx` | Connect future modules later |
 | Seen/read behaviour | Completed | model timestamps and IntersectionObserver | Accessibility testing |
 | Bell badge and polling | Completed | Navbar polls unseen count | WebSockets future scope |
-| Notification actions | Partially completed | team invite/open actions | challenge/join actions await modules |
+| Notification actions | Partially completed | team invites, matchmaking events and Team Challenge notifications | Broaden challenge and join-request action links |
 | Transactional emails | Completed for connected modules | `email_service.py`, templates, `EmailDelivery` | Configure SMTP |
 | Global toast system | Completed | `ToastProvider`, `emitToast`; newer dashboard actions use global toasts | Some persistent page errors remain intentionally inline |
 
@@ -285,7 +288,7 @@ Verified completed work includes:
 ## 9. Partially Completed and In-Progress Work
 
 - Ratings/reliability are displayed but not calculated from real post-match ratings.
-- Team Challenge screens still require a complete lifecycle. Team-based open games beyond Pickup Game remain planned.
+- Team Challenges now have a real backend domain, migration, discovery/create/detail screens, direct and open challenge paths, immutable proposals, captain-only decisions, booking-first and plan-first states, challenge notifications, linked-booking cancellation synchronisation, and automatic deadline expiry. Remaining work includes complete team-fixture/Game Room integration, material schedule-change reconfirmation, rescheduling, broader end-to-end/concurrency coverage, and production scheduler configuration.
 - Pickup Game has a structured Planning Room/Game Room; live chat and reusable rooms for future challenge flows are not implemented.
 - Admin venue review works, but broader admin operations are incomplete.
 - Owner offline booking is not implemented as a full feature.
@@ -315,8 +318,8 @@ Verified completed work includes:
 | Finish booking UX QA | In progress | Test reservation, payment, cancellation, refund, notifications | Existing booking flow | Smooth player/owner booking lifecycle |
 | Complete owner operations | Partially completed | Build offline booking, refine owner destination pages, add deeper tests for calendar blocking/conflicts | Venue/court slots | Owner can protect offline bookings and use a polished management workspace |
 | Admin operations | Partially completed | Users/bookings/refund overview | Permissions | Admin can review operational risks |
-| Pickup Game and Fill My Squad matchmaking | Partially completed | Add pagination, deeper high-concurrency tests, richer room activity, post-game permanent-team invitation prompts, and broader end-to-end coverage | Booking, player profile, teams, notifications | Booking-first and plan-first flows work with backend deadline validation, controlled area options, role-based recruitment, skill/time/open-spot/waitlist discovery filters, transactional join-request creation, duplicate-invitation protection, invitation expiry, contiguous waitlist positions, guest participants, SportSpot ID invitations, reconfirmation, quiet detail-page refreshes, and structured room access. Public game payloads omit registered-player account and trust details. |
-| Team challenges | Planned | Challenge lifecycle and notifications | Team module plus stable matchmaking | Captains can accept/counter/decline after Pickup Game flows are stable |
+| Pickup Game and Fill My Squad matchmaking | Partially completed | Add pagination, deeper high-concurrency tests, richer room activity, and broader end-to-end coverage | Booking, player profile, teams, notifications | Booking-first and plan-first flows work with backend deadline validation, controlled area options, role-based recruitment, skill/time/open-spot/waitlist discovery filters, transactional join-request creation, duplicate-invitation protection, invitation expiry, immutable request-event history, contiguous waitlist positions, guest participants, SportSpot ID invitations, participant-specific reconfirmation, quiet detail-page refreshes, payment handoff reconciliation, automatic maintenance, and structured least-privilege room access. Public and planning-room payloads omit registered-player account and trust details. |
+| Team challenges | Partially completed | Real challenge models/API, discovery/create/detail UI, proposal decisions, booking handoff, notifications and expiry maintenance | Team module, booking rules, fixture/Game Room integration | Captains can safely discover, create, respond to, counter, accept, withdraw and cancel challenges; accepted fixtures synchronize with confirmed bookings and remaining lifecycle rules are covered |
 
 ### Priority 2 - Operational completeness
 
@@ -374,7 +377,7 @@ Status: Planned. No complete model/API exists yet.
 
 ### Team challenge
 
-Status: Planned. Current pages are placeholders.
+Status: Partially completed. Players can discover teams and open challenges, create direct or open challenges, use booking-first or plan-first proposals, respond through captain-only actions, counter a plan, attach an eligible booking after both teams accept, and receive challenge notifications. Remaining work includes connecting accepted fixtures to the reusable Game Room, material schedule-change reconfirmation/rescheduling, and broader end-to-end coverage.
 
 ### Player settings
 
@@ -899,7 +902,8 @@ Recommended next tests: permissions, email reset edge cases, concurrent reservat
 
 ## 20. Known Issues and Limitations
 
-- Pickup Game and Fill My Squad matchmaking are implemented for booking-first and plan-first journeys, including controlled area data, role-based requests, backend-validated discovery filters, host decisions, waitlist recovery, guest participants, registered-player invitations by SportSpot ID, invitation expiry, duplicate-request protection, guided court-booking handoff after a plan reaches its threshold, automatic booking attachment after verified Khalti payment, participant-specific schedule reconfirmation, explicit host acknowledgement for offline guests, safe public roster payloads, quiet detail-page refreshes, and structured room access. Remaining gaps include pagination, deeper high-concurrency/end-to-end coverage, richer room activity, and post-game permanent-team invitation prompts. Team Challenges, disputes, recommendations, and full rating submission are not active MVP features.
+- Pickup Game and Fill My Squad matchmaking are implemented for booking-first and plan-first journeys, including controlled area data, role-based requests, backend-validated discovery filters, host decisions, waitlist recovery, guest participants, registered-player invitations by SportSpot ID, invitation expiry, immutable request history, duplicate-request protection, guided court-booking handoff after a plan reaches its threshold, idempotent payment initiation, automatic booking attachment after verified Khalti payment, payment reconciliation recovery, participant-specific schedule reconfirmation, explicit host acknowledgement for offline guests, safe public and planning-room roster payloads, quiet detail-page refreshes, automatic maintenance, and structured room access. Remaining gaps include pagination, deeper high-concurrency/end-to-end coverage, and richer room activity. After a completed Fill My Squad game, the captain can send a separate permanent-team invitation through the existing team invitation workflow. Team Challenges have a partially completed lifecycle and still need full fixture/Game Room integration, disputes, recommendations, and full rating submission.
+- The current workspace has valid PostgreSQL test credentials and the full `matchmaking`, `venues`, `teams`, and `team_challenges` regression suite passes. A clean-machine setup still requires matching local database credentials in the ignored `backend/.env` (and `TEST_DB_PASSWORD` when using separate test credentials).
 - Several placeholder pages still exist for future modules.
 - Future-compatible Futsal fields remain in `PlayerProfile`, but current UI must stay Cricksal-only.
 - No production deployment files, Docker config, CI/CD, or monitoring.
@@ -1029,7 +1033,7 @@ Current blockers:
 
 Before implementing a feature, verify its current frontend, backend, database and permission status. Do not assume that a visible page means the feature is complete.
 
-Recommended next task: continue Venue Owner workspace refinement by implementing the remaining owner destination pages (`Bookings`, `Venue & Courts`, `Availability & Pricing`, `Payments & Refunds`, `Reports`, `Settings`) and then complete booking flow QA end-to-end with real local SMTP and Khalti development credentials.
+Recommended next task: continue Venue Owner destination pages (`Bookings`, `Venue & Courts`, `Availability & Pricing`, `Payments & Refunds`, `Reports`, `Settings`) and complete booking flow QA end-to-end with local SMTP and Khalti development credentials, while expanding Team Challenge fixture/Game Room and concurrency coverage.
 
 Commands before new work:
 

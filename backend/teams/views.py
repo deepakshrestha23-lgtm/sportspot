@@ -6,7 +6,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from notifications.services import notify_team_invitation, notify_team_member_removed
+from notifications.services import notify_team_member_removed
 from players.models import PlayerProfile
 from .models import Team, TeamMember
 from .permissions import IsPlayer
@@ -19,7 +19,7 @@ from .serializers import (
     TeamMemberSerializer,
     TeamSerializer,
 )
-from .services import decide_team_invitation
+from .services import decide_team_invitation, invite_registered_player_to_team
 
 
 class TeamAccessMixin:
@@ -222,27 +222,15 @@ class RegisteredPlayerInviteView(TeamAccessMixin, APIView):
         if invited_user.id == request.user.id:
             return Response({"detail": "You cannot invite yourself to your own team."}, status=status.HTTP_400_BAD_REQUEST)
 
-        existing_member = TeamMember.objects.filter(
-            team=team,
-            user=invited_user,
-            status__in=[TeamMember.MemberStatus.ACTIVE, TeamMember.MemberStatus.INVITED],
-        ).first()
-
-        if existing_member and existing_member.status == TeamMember.MemberStatus.ACTIVE:
-            return Response({"detail": "This player is already an active member of the team."}, status=status.HTTP_400_BAD_REQUEST)
-
-        if existing_member and existing_member.status == TeamMember.MemberStatus.INVITED:
-            return Response({"detail": "This player already has a pending invitation."}, status=status.HTTP_400_BAD_REQUEST)
-
-        member = TeamMember.objects.create(
-            team=team,
-            user=invited_user,
-            member_type=TeamMember.MemberType.REGISTERED,
-            role_in_team=TeamMember.TeamRole.PLAYER,
-            cricksal_role=serializer.validated_data["cricksal_role"],
-            status=TeamMember.MemberStatus.INVITED,
-        )
-        notify_team_invitation(member, request.user)
+        try:
+            member = invite_registered_player_to_team(
+                team=team,
+                actor=request.user,
+                player=invited_user,
+                cricksal_role=serializer.validated_data["cricksal_role"],
+            )
+        except ValidationError as error:
+            return Response({"detail": error.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"member": TeamMemberSerializer(member).data}, status=status.HTTP_201_CREATED)
 

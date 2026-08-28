@@ -39,9 +39,16 @@ class Game(models.Model):
         RECRUITING = "RECRUITING", "Open"
         FULL = "FULL", "Full"
         CLOSED = "CLOSED", "Recruitment Closed"
+        BOOKING_PENDING = "BOOKING_PENDING", "Court Payment In Progress"
         IN_PROGRESS = "IN_PROGRESS", "In Progress"
         COMPLETED = "COMPLETED", "Completed"
         CANCELLED = "CANCELLED", "Cancelled"
+
+    class RecruitmentClosureReason(models.TextChoices):
+        HOST_CLOSED = "HOST_CLOSED", "Closed by Host"
+        DEADLINE_PASSED = "DEADLINE_PASSED", "Recruitment Deadline Passed"
+        BOOKING_PAYMENT_PENDING = "BOOKING_PAYMENT_PENDING", "Court Payment In Progress"
+        BOOKING_PAYMENT_EXPIRED = "BOOKING_PAYMENT_EXPIRED", "Court Payment Was Not Completed"
 
     class SkillLevel(models.TextChoices):
         BEGINNER = "BEGINNER", "Beginner"
@@ -81,6 +88,21 @@ class Game(models.Model):
     published_at = models.DateTimeField(default=timezone.now)
     cancelled_at = models.DateTimeField(blank=True, null=True)
     cancellation_reason = models.CharField(max_length=300, blank=True)
+    recruitment_closed_reason = models.CharField(
+        max_length=40,
+        choices=RecruitmentClosureReason.choices,
+        blank=True,
+    )
+    recruitment_closed_at = models.DateTimeField(blank=True, null=True)
+    recruitment_closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="closed_game_recruitment",
+        blank=True,
+        null=True,
+    )
+    booking_handoff_was_public = models.BooleanField(default=False)
+    client_request_id = models.CharField(max_length=64, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -89,9 +111,14 @@ class Game(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["booking"],
-                condition=Q(booking__isnull=False, status__in=["DRAFT", "RECRUITING", "FULL", "CLOSED", "IN_PROGRESS", "COMPLETED"]),
+                condition=Q(booking__isnull=False, status__in=["DRAFT", "RECRUITING", "FULL", "CLOSED", "BOOKING_PENDING", "IN_PROGRESS", "COMPLETED"]),
                 name="unique_active_matchmaking_game_per_booking",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["host", "client_request_id"],
+                condition=~Q(client_request_id=""),
+                name="unique_matchmaking_create_request_per_host",
+            ),
         ]
         indexes = [
             models.Index(fields=["game_type", "status"]),
@@ -158,7 +185,17 @@ class Game(models.Model):
 
     def save(self, *args, **kwargs):
         update_fields = kwargs.get("update_fields")
-        lifecycle_fields = {"status", "is_public", "updated_at", "cancelled_at", "cancellation_reason"}
+        lifecycle_fields = {
+            "status",
+            "is_public",
+            "updated_at",
+            "cancelled_at",
+            "cancellation_reason",
+            "recruitment_closed_reason",
+            "recruitment_closed_at",
+            "recruitment_closed_by",
+            "booking_handoff_was_public",
+        }
         if update_fields is not None and set(update_fields).issubset(lifecycle_fields):
             super().save(*args, **kwargs)
             return
@@ -245,12 +282,30 @@ class Game(models.Model):
         now = now or timezone.now()
         start_at = self.start_at
         end_at = self.end_at
+        has_active_handoff = bool(
+            self.creation_mode == self.CreationMode.PLAN_FIRST
+            and not self.booking_id
+            and self.booking_handoffs.filter(
+                status=Booking.BookingStatus.RESERVED,
+                payment_status=Booking.PaymentStatus.PENDING,
+                reserved_until__gt=now,
+            ).exists()
+        )
         if end_at and end_at <= now:
             next_status = self.Status.COMPLETED
         elif start_at and start_at <= now:
             next_status = self.Status.IN_PROGRESS
+        elif has_active_handoff:
+            next_status = self.Status.BOOKING_PENDING
         elif self.creation_mode == self.CreationMode.PLAN_FIRST and not self.booking_id and self.booking_deadline and self.booking_deadline <= now:
             next_status = self.Status.CANCELLED
+        elif self.status == self.Status.BOOKING_PENDING:
+            next_status = (
+                self.Status.RECRUITING
+                if self.booking_handoff_was_public
+                and (not self.recruitment_deadline or self.recruitment_deadline > now)
+                else self.Status.CLOSED
+            )
         elif self.status == self.Status.CLOSED and not self.is_public:
             # A host can intentionally stop recruitment before the deadline
             # while keeping the private game and its linked booking intact.
@@ -262,6 +317,7 @@ class Game(models.Model):
         else:
             next_status = self.Status.RECRUITING
         if next_status != self.status:
+            previous_status = self.status
             self.status = next_status
             if save:
                 update_fields = ["status", "updated_at"]
@@ -272,6 +328,36 @@ class Game(models.Model):
                     if not self.cancellation_reason:
                         self.cancellation_reason = AUTOMATIC_PLAN_FIRST_CANCELLATION_REASON
                         update_fields.append("cancellation_reason")
+                    if previous_status == self.Status.BOOKING_PENDING:
+                        self.booking_handoff_was_public = False
+                        update_fields.append("booking_handoff_was_public")
+                elif next_status == self.Status.BOOKING_PENDING:
+                    self.is_public = False
+                    self.recruitment_closed_reason = self.RecruitmentClosureReason.BOOKING_PAYMENT_PENDING
+                    self.recruitment_closed_at = now
+                    update_fields.extend(["is_public", "recruitment_closed_reason", "recruitment_closed_at"])
+                elif next_status == self.Status.CLOSED:
+                    self.is_public = False
+                    if previous_status == self.Status.BOOKING_PENDING:
+                        self.recruitment_closed_reason = self.RecruitmentClosureReason.BOOKING_PAYMENT_EXPIRED
+                        self.booking_handoff_was_public = False
+                    elif not self.recruitment_closed_reason:
+                        self.recruitment_closed_reason = self.RecruitmentClosureReason.DEADLINE_PASSED
+                    self.recruitment_closed_at = self.recruitment_closed_at or now
+                    update_fields.extend([
+                        "is_public", "recruitment_closed_reason", "recruitment_closed_at",
+                        "booking_handoff_was_public",
+                    ])
+                elif next_status == self.Status.RECRUITING and previous_status == self.Status.BOOKING_PENDING:
+                    self.is_public = True
+                    self.recruitment_closed_reason = ""
+                    self.recruitment_closed_at = None
+                    self.recruitment_closed_by = None
+                    self.booking_handoff_was_public = False
+                    update_fields.extend([
+                        "is_public", "recruitment_closed_reason", "recruitment_closed_at",
+                        "recruitment_closed_by", "booking_handoff_was_public",
+                    ])
                 self.save(update_fields=update_fields)
         return self.status
 
@@ -325,6 +411,22 @@ class GameParticipant(models.Model):
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.CONFIRMED)
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="added_game_participants", blank=True, null=True)
     joined_at = models.DateTimeField(default=timezone.now)
+    status_changed_at = models.DateTimeField(default=timezone.now)
+    status_changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="changed_game_participant_statuses",
+        blank=True,
+        null=True,
+    )
+    schedule_acknowledged_at = models.DateTimeField(blank=True, null=True)
+    schedule_acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="acknowledged_guest_game_schedules",
+        blank=True,
+        null=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -380,6 +482,7 @@ class JoinRequest(models.Model):
     decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="decided_game_join_requests", blank=True, null=True)
     decided_at = models.DateTimeField(blank=True, null=True)
     waitlist_position = models.PositiveSmallIntegerField(blank=True, null=True)
+    attempt_number = models.PositiveSmallIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -403,6 +506,41 @@ class JoinRequest(models.Model):
 
     def __str__(self):
         return f"{self.player.email} -> {self.game.title}"
+
+
+class JoinRequestEvent(models.Model):
+    class EventType(models.TextChoices):
+        SUBMITTED = "SUBMITTED", "Submitted"
+        INVITED = "INVITED", "Invited"
+        WAITLISTED = "WAITLISTED", "Waitlisted"
+        ACCEPTED = "ACCEPTED", "Accepted"
+        REJECTED = "REJECTED", "Rejected"
+        WITHDRAWN = "WITHDRAWN", "Withdrawn"
+        EXPIRED = "EXPIRED", "Expired"
+        REMOVED = "REMOVED", "Removed"
+
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="join_request_events")
+    join_request = models.ForeignKey(JoinRequest, on_delete=models.CASCADE, related_name="events")
+    player = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="game_request_events")
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="performed_game_request_events",
+        blank=True,
+        null=True,
+    )
+    event_type = models.CharField(max_length=20, choices=EventType.choices)
+    previous_status = models.CharField(max_length=20, blank=True)
+    current_status = models.CharField(max_length=20)
+    attempt_number = models.PositiveSmallIntegerField(default=1)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.join_request_id} - {self.event_type}"
 
 
 

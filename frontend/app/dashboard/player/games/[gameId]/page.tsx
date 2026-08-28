@@ -248,6 +248,19 @@ export default function GameManagePage() {
     }
   }
 
+  async function inviteParticipantToTeam(participant: MatchmakingGame["participants"][number]) {
+    if (!window.confirm(`Send ${participant.full_name} an invitation to join your permanent team? This is separate from their temporary place in this game.`)) return;
+    setActionInProgress(true);
+    try {
+      await api.post(`/api/matchmaking/games/${params.gameId}/participants/${participant.id}/invite-to-team/`);
+      emitToast({ message: "The permanent team invitation has been sent.", type: "success", dedupeKey: `permanent-team-invite-${participant.id}` });
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not send the permanent team invitation."), type: "error", dedupeKey: `permanent-team-invite-error-${participant.id}` });
+    } finally {
+      setActionInProgress(false);
+    }
+  }
+
   async function cancelGame() {
     if (cancelReason.trim().length < 5) {
       emitToast({ message: "Add a short cancellation reason.", type: "warning", dedupeKey: "game-cancel-reason" });
@@ -300,11 +313,12 @@ export default function GameManagePage() {
   const pendingRequests = requests.filter((request) => request.status === "PENDING");
   const waitlistedRequests = requests.filter((request) => request.status === "WAITLISTED");
   const invitedRequests = requests.filter((request) => request.status === "INVITED");
-  const canEditGame = game.user_state.is_host && !["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(game.status);
+  const canEditGame = game.user_state.is_host && !["CANCELLED", "COMPLETED", "IN_PROGRESS", "BOOKING_PENDING"].includes(game.status);
+  const canOpenRoom = game.user_state.room_access && game.user_state.room_access !== "NONE";
 
   return (
     <div className="space-y-5">
-      <DashboardPageHeader eyebrow={game.game_type === "FILL_SQUAD" ? "Fill My Squad Host" : "Pickup Game Host"} title={game.title} description={`${game.venue_name} - ${game.booking_display_time}`} actions={<div className="flex flex-wrap items-center gap-2">{canEditGame ? <button className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:border-green-200 hover:text-sportGreen" onClick={() => setShowEditModal(true)} type="button">Edit game</button> : null}<Link className="inline-flex min-h-11 items-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white" href={`/dashboard/player/games/${game.id}/room`}>{game.game_type === "FILL_SQUAD" ? (game.is_booking_verified ? "Open Squad Room" : "Open Squad Planning") : (game.is_booking_verified ? "Open Game Room" : "Open Planning Room")}</Link></div>} />
+      <DashboardPageHeader eyebrow={game.game_type === "FILL_SQUAD" ? "Fill My Squad Host" : "Pickup Game Host"} title={game.title} description={`${game.venue_name} - ${game.booking_display_time}`} actions={<div className="flex flex-wrap items-center gap-2">{canEditGame ? <button className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:border-green-200 hover:text-sportGreen" onClick={() => setShowEditModal(true)} type="button">Edit game</button> : null}{canOpenRoom ? <Link className="inline-flex min-h-11 items-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white" href={`/dashboard/player/games/${game.id}/room`}>{game.game_type === "FILL_SQUAD" ? (game.is_booking_verified ? "Open Squad Room" : "Open Squad Planning") : (game.is_booking_verified ? "Open Game Room" : "Open Planning Room")}</Link> : null}</div>} />
       {!canEditGame && game.user_state.is_host ? <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">This game is {game.status_label.toLowerCase()} and can no longer be edited.</p> : null}
       {game.requires_reconfirmation ? <section className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4"><h2 className="font-black text-amber-950">Schedule update needs attention</h2><p className="mt-1 text-sm font-semibold leading-6 text-amber-800">The confirmed booking differs from the plan shared with the roster. Registered players must confirm or decline the new details. Offline guests cannot respond in SportSpot, so confirm with each guest and use the action on their roster entry.</p><div className="mt-3 flex flex-wrap gap-3 text-xs font-black text-amber-900"><span>{game.registered_reconfirmation_pending_count} player response{game.registered_reconfirmation_pending_count === 1 ? "" : "s"} pending</span><span>{game.guest_confirmation_pending_count} guest acknowledgement{game.guest_confirmation_pending_count === 1 ? "" : "s"} pending</span></div></section> : null}
       <section className="grid gap-4 md:grid-cols-5"><Metric label="Occupied" value={`${game.occupied_spots_count}/${game.total_capacity}`} /><Metric label="Confirmed" value={game.confirmed_participants_count} /><Metric label="Provisional" value={game.provisional_participants_count} /><Metric label="Open spots" value={game.available_spots} /><Metric label="Waitlist" value={game.waitlist_count} /></section>
@@ -319,7 +333,7 @@ export default function GameManagePage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h2 className="text-xl font-black text-sportNavy">Invited players</h2><Badge tone="blue">{invitedRequests.length} sent</Badge></div><RequestList requests={invitedRequests} empty="No pending invitations." onDecision={decide} disabled={actionInProgress} /></section>
         </div>
         <aside className="space-y-4">
-          <RosterCard actionInProgress={actionInProgress} game={game} onConfirmGuest={confirmGuestSchedule} onEdit={setEditingParticipant} onRemove={setParticipantToRemove} />
+          <RosterCard actionInProgress={actionInProgress} game={game} onConfirmGuest={confirmGuestSchedule} onEdit={setEditingParticipant} onInviteToTeam={inviteParticipantToTeam} onRemove={setParticipantToRemove} />
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-xl font-black text-sportNavy">Invite registered player</h2><p className="mt-1 text-sm font-semibold text-slate-600">Invite a SportSpot player by ID. They must accept before joining the roster.</p><div className="mt-4 flex gap-2"><input className="h-12 min-w-0 flex-1 rounded-xl border border-slate-200 px-4 text-sm font-bold uppercase" placeholder="SSP-1001" value={inviteSportSpotId} onChange={(event) => { setInviteSportSpotId(event.target.value); setLookupPlayer(null); }} /><button className="min-h-12 rounded-xl border border-green-200 px-4 text-sm font-black text-sportGreen disabled:opacity-60" disabled={actionInProgress} onClick={lookupRegisteredPlayer} type="button">Find</button></div>{lookupPlayer ? <div className="mt-3 rounded-xl bg-green-50 p-3"><p className="font-black text-sportNavy">{lookupPlayer.full_name}</p><p className="text-sm font-semibold text-slate-600">{lookupPlayer.sportspot_id} - {lookupPlayer.skill_level || "Skill not set"}</p>{lookupPlayer.reliability_label ? <p className="mt-1 text-xs font-black text-sportGreen">{lookupPlayer.reliability_label}</p> : null}</div> : null}<select className="mt-3 h-12 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as GameRole)}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select><textarea className="mt-3 min-h-20 w-full rounded-xl border border-slate-200 p-3 text-sm font-semibold" placeholder="Optional message" value={inviteMessage} onChange={(event) => setInviteMessage(event.target.value)} /><button className="mt-3 min-h-11 w-full rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={actionInProgress || (game.available_spots <= 0 && !game.waitlist_enabled)} onClick={inviteRegisteredPlayer} type="button">{game.available_spots <= 0 && game.waitlist_enabled ? "Invite to Waitlist" : "Send Invitation"}</button></section>          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-xl font-black text-sportNavy">Add guest player</h2><p className="mt-1 text-sm font-semibold text-slate-600">Guests occupy player spots but do not receive SportSpot notifications or Game Room access.</p><input className="mt-4 h-12 w-full rounded-xl border border-slate-200 px-4 text-sm font-bold" placeholder="Guest display name" value={guestName} onChange={(event) => setGuestName(event.target.value)} /><select className="mt-3 h-12 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold" value={guestRole} onChange={(event) => setGuestRole(event.target.value as GameRole)}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select><button className="mt-3 min-h-11 w-full rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={actionInProgress || game.available_spots <= 0} onClick={addGuest} type="button">Add Guest</button></section>
           {game.user_state.is_host && !["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(game.status) ? (
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -389,7 +403,7 @@ function MiniInfo({ label, value }: { label: string; value: string }) {
   return <div className="rounded-xl bg-white/80 px-4 py-3"><p className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-600">{label}</p><p className="mt-1 text-sm font-black text-blue-950">{value}</p></div>;
 }
 
-function RosterCard({ actionInProgress, game, onConfirmGuest, onEdit, onRemove }: { actionInProgress: boolean; game: MatchmakingGame; onConfirmGuest: (participant: RosterParticipant) => void; onEdit: (participant: RosterParticipant) => void; onRemove: (participant: RosterParticipant) => void }) {
+function RosterCard({ actionInProgress, game, onConfirmGuest, onEdit, onInviteToTeam, onRemove }: { actionInProgress: boolean; game: MatchmakingGame; onConfirmGuest: (participant: RosterParticipant) => void; onEdit: (participant: RosterParticipant) => void; onInviteToTeam: (participant: RosterParticipant) => void; onRemove: (participant: RosterParticipant) => void }) {
   const guestConfirmationCount = game.participants.filter((participant) => participant.status === "GUEST_CONFIRMATION_REQUIRED").length;
   const isHost = game.user_state.is_host;
 
@@ -414,6 +428,12 @@ function RosterCard({ actionInProgress, game, onConfirmGuest, onEdit, onRemove }
         {game.participants.map((participant) => {
           const canEdit = isHost && participant.participant_type !== "HOST" && ["RECRUITING", "FULL", "CLOSED"].includes(game.status);
           const needsGuestConfirmation = isHost && participant.status === "GUEST_CONFIRMATION_REQUIRED";
+          const canInviteToPermanentTeam = isHost
+            && game.game_type === "FILL_SQUAD"
+            && game.status === "COMPLETED"
+            && participant.participant_type === "TEMPORARY"
+            && participant.status === "CONFIRMED"
+            && Boolean(participant.sportspot_id);
 
           return (
             <article className={`rounded-xl border bg-white p-3.5 transition-colors ${needsGuestConfirmation ? "border-amber-200 bg-amber-50/30" : "border-slate-200 hover:border-slate-300"}`} key={participant.id}>
@@ -434,8 +454,9 @@ function RosterCard({ actionInProgress, game, onConfirmGuest, onEdit, onRemove }
                 </div>
               </div>
 
-              {needsGuestConfirmation || canEdit ? <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
+              {needsGuestConfirmation || canEdit || canInviteToPermanentTeam ? <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
                 {needsGuestConfirmation ? <button aria-label={`Confirm ${participant.full_name}'s schedule`} className="sport-primary-button min-h-9 px-3 py-2 text-xs" disabled={actionInProgress} onClick={() => onConfirmGuest(participant)} title="Confirm guest schedule" type="button">Confirm schedule</button> : null}
+                {canInviteToPermanentTeam ? <button aria-label={`Invite ${participant.full_name} to the permanent team`} className="sport-secondary-button min-h-9 px-3 py-2 text-xs" disabled={actionInProgress} onClick={() => onInviteToTeam(participant)} type="button">Invite to permanent team</button> : null}
                 {canEdit ? <button aria-label={`Edit ${participant.full_name}`} className="sport-secondary-button min-h-9 px-3 py-2 text-xs" onClick={() => onEdit(participant)} type="button">Edit</button> : null}
                 {canEdit ? <button aria-label={`Remove ${participant.full_name}`} className="inline-flex min-h-9 items-center justify-center rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2" onClick={() => onRemove(participant)} type="button">Remove</button> : null}
               </div> : null}

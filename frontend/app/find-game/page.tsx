@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
@@ -80,7 +80,10 @@ function FindGameContent() {
   const [waitlistOnly, setWaitlistOnly] = useState(searchParams.get("waitlist") === "true");
   const [sort, setSort] = useState(searchParams.get("sort") || "soonest");
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const requestRef = useRef<AbortController | null>(null);
+  const isFirstQueryRef = useRef(true);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -101,14 +104,16 @@ function FindGameContent() {
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      loadGames(query);
+      isFirstQueryRef.current = false;
+      void loadGames(query);
       const nextUrl = query.toString() ? `/find-game?${query.toString()}` : "/find-game";
       window.history.replaceState(null, "", nextUrl);
-    }, 350);
-    const refreshInterval = window.setInterval(() => loadGames(query), 60000);
+    }, isFirstQueryRef.current ? 0 : 250);
+    const refreshInterval = window.setInterval(() => void loadGames(query, true), 60000);
     return () => {
       window.clearTimeout(timeout);
       window.clearInterval(refreshInterval);
+      requestRef.current?.abort();
     };
   }, [query]);
 
@@ -121,20 +126,31 @@ function FindGameContent() {
     if (deadlineTimes.length === 0) return;
 
     const nextDeadline = Math.min(...deadlineTimes);
-    const timeout = window.setTimeout(() => loadGames(query), Math.max(nextDeadline - Date.now() + 250, 250));
+    const timeout = window.setTimeout(() => void loadGames(query, true), Math.max(nextDeadline - Date.now() + 250, 250));
     return () => window.clearTimeout(timeout);
   }, [games, query]);
 
-  async function loadGames(params: URLSearchParams) {
-    setIsLoading(true);
+  async function loadGames(params: URLSearchParams, background = false) {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const hasExistingResults = games.length > 0;
+    setIsLoading(!background && !hasExistingResults);
+    setIsRefreshing(!background && hasExistingResults);
     setError("");
     try {
-      const response = await api.get<GameListResponse>(`/api/matchmaking/games/?${params.toString()}`);
+      const response = await api.get<GameListResponse>(`/api/matchmaking/games/?${params.toString()}`, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setGames(response.data.games);
     } catch (requestError) {
+      if (controller.signal.aborted) return;
       setError(getApiErrorMessage(requestError, "We could not load open games right now. Please try again."));
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted && requestRef.current === controller) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        requestRef.current = null;
+      }
     }
   }
 
@@ -189,17 +205,23 @@ function FindGameContent() {
         </section>
 
         <div className="mt-5 flex items-center justify-between">
-          <p className="text-sm font-black text-slate-700">{isLoading ? "Loading games..." : `${games.length} game${games.length === 1 ? "" : "s"} found`}</p>
+          <p aria-live="polite" className="text-sm font-black text-slate-700">
+            {isLoading ? "Loading games..." : `${games.length} game${games.length === 1 ? "" : "s"} found`}
+            {isRefreshing ? <span className="ml-2 font-semibold text-slate-400">Updating...</span> : null}
+          </p>
         </div>
 
-        {isLoading ? (
+        {isLoading && games.length === 0 ? (
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div className="h-80 animate-pulse rounded-2xl bg-white shadow-sm" key={item} />)}</div>
-        ) : error ? (
+        ) : error && games.length === 0 ? (
           <StateCard title="Games unavailable" description={error} actionLabel="Retry" onAction={() => loadGames(query)} />
         ) : games.length === 0 ? (
           <StateCard title="No games match your filters." description="Try another date, role or area. You can also create your own game from a confirmed booking or start with a plan." actionLabel="Clear filters" onAction={clearFilters} />
         ) : (
-          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{games.map((game) => <GameCard game={game} key={game.id} />)}</div>
+          <>
+            {error ? <p className="mt-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}
+            <div className={`mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3 transition-opacity ${isRefreshing ? "opacity-70" : "opacity-100"}`}>{games.map((game) => <GameCard game={game} key={game.id} />)}</div>
+          </>
         )}
       </section>
     </main>
