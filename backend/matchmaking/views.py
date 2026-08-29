@@ -12,9 +12,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from players.models import PlayerProfile
+from teams.models import TeamMember
 from teams.serializers import TeamMemberSerializer
 from venues.models import Booking
 from venues.permissions import IsPlayer
+from sportspot_api.throttling import MutationThrottleMixin
 
 from .models import ACTIVE_PARTICIPANT_STATUSES, Game, JoinRequest, JoinRequestEvent
 from .serializers import (
@@ -48,6 +50,7 @@ from .services import (
     notify_game_cancelled,
     reconfirm_game,
     respond_game_invitation,
+    synchronize_and_require_game_host,
     synchronize_game_lifecycle,
     remove_game_participant,
     update_game_host_settings,
@@ -55,7 +58,7 @@ from .services import (
 )
 
 
-class GameListCreateView(APIView):
+class GameListCreateView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -105,7 +108,7 @@ class GameDetailView(APIView):
         return Response({"game": serializer_class(game, context={"request": request}).data})
 
 
-class GameJoinRequestCreateView(APIView):
+class GameJoinRequestCreateView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id):
@@ -124,7 +127,7 @@ class GameJoinRequestCreateView(APIView):
         return Response({"request": JoinRequestSerializer(join_request).data}, status=status.HTTP_201_CREATED)
 
 
-class JoinRequestDecisionView(APIView):
+class JoinRequestDecisionView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, request_id):
@@ -138,7 +141,7 @@ class JoinRequestDecisionView(APIView):
         return Response({"request": JoinRequestSerializer(updated_request).data})
 
 
-class JoinRequestWithdrawView(APIView):
+class JoinRequestWithdrawView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     @transaction.atomic
@@ -184,7 +187,16 @@ class MyGamesView(APIView):
 
     def get(self, request):
         user = request.user
-        hosted = base_game_queryset().filter(host=user)
+        hosted = base_game_queryset().filter(
+            Q(host=user)
+            | Q(
+                game_type=Game.GameType.FILL_SQUAD,
+                team__captain=user,
+                team__members__user=user,
+                team__members__member_type=TeamMember.MemberType.REGISTERED,
+                team__members__status=TeamMember.MemberStatus.ACTIVE,
+            )
+        ).distinct()
         participating = base_game_queryset().filter(
             participants__user=user,
             participants__status__in=ACTIVE_PARTICIPANT_STATUSES,
@@ -218,7 +230,7 @@ class MyGamesView(APIView):
         )
 
 
-class GameManageView(APIView):
+class GameManageView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def get(self, request, game_id):
@@ -249,7 +261,7 @@ class GameManageView(APIView):
         return Response({"game": GameSerializer(updated_game, context={"request": request}).data})
 
 
-class GameParticipantManageView(APIView):
+class GameParticipantManageView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def patch(self, request, game_id, participant_id):
@@ -275,7 +287,7 @@ class GameParticipantManageView(APIView):
         return Response({"participant": GameParticipantSerializer(participant).data})
 
 
-class GameGuestParticipantView(APIView):
+class GameGuestParticipantView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id):
@@ -323,7 +335,7 @@ class GamePlayerLookupView(APIView):
         })
 
 
-class GameRegisteredPlayerInviteView(APIView):
+class GameRegisteredPlayerInviteView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id):
@@ -342,7 +354,7 @@ class GameRegisteredPlayerInviteView(APIView):
         return Response({"request": JoinRequestSerializer(invitation).data}, status=status.HTTP_201_CREATED)
 
 
-class GameTemporaryPlayerTeamInviteView(APIView):
+class GameTemporaryPlayerTeamInviteView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id, participant_id):
@@ -361,7 +373,7 @@ class GameTemporaryPlayerTeamInviteView(APIView):
         )
 
 
-class GameInvitationResponseView(APIView):
+class GameInvitationResponseView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, request_id):
@@ -375,7 +387,7 @@ class GameInvitationResponseView(APIView):
         return Response({"request": JoinRequestSerializer(updated).data})
 
 
-class GameAttachBookingView(APIView):
+class GameAttachBookingView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id):
@@ -392,7 +404,7 @@ class GameAttachBookingView(APIView):
         return Response({"game": GameSerializer(updated_game, context={"request": request}).data})
 
 
-class GameReconfirmView(APIView):
+class GameReconfirmView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id):
@@ -406,7 +418,7 @@ class GameReconfirmView(APIView):
         return Response({"game": GameSerializer(get_game_or_none(game_id), context={"request": request}).data})
 
 
-class GuestScheduleConfirmationView(APIView):
+class GuestScheduleConfirmationView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id, participant_id):
@@ -419,7 +431,7 @@ class GuestScheduleConfirmationView(APIView):
         return Response({"participant": GameParticipantSerializer(participant).data})
 
 
-class GameLeaveView(APIView):
+class GameLeaveView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id):
@@ -433,7 +445,7 @@ class GameLeaveView(APIView):
         return Response({"participant": GameParticipantSerializer(participant).data})
 
 
-class GameCancelView(APIView):
+class GameCancelView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     @transaction.atomic
@@ -448,8 +460,10 @@ class GameCancelView(APIView):
             status=Booking.BookingStatus.RESERVED,
             payment_status=Booking.PaymentStatus.PENDING,
         ).first()
-        if game.host_id != request.user.id:
-            return Response({"detail": "Only the host can cancel this game."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            synchronize_and_require_game_host(game, request.user, "Only the host can cancel this game.")
+        except DjangoValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_403_FORBIDDEN)
         synchronize_game_lifecycle(game, expire_requests=True)
         if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED]:
             return Response({"detail": "This game can no longer be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
@@ -477,7 +491,7 @@ class GameCancelView(APIView):
         return Response({"game": GameSerializer(game, context={"request": request}).data})
 
 
-class GameCloseRecruitmentView(APIView):
+class GameCloseRecruitmentView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id):
@@ -491,7 +505,7 @@ class GameCloseRecruitmentView(APIView):
         return Response({"game": GameSerializer(game, context={"request": request}).data})
 
 
-class GameReopenRecruitmentView(APIView):
+class GameReopenRecruitmentView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def post(self, request, game_id):
@@ -505,7 +519,7 @@ class GameReopenRecruitmentView(APIView):
         return Response({"game": GameSerializer(game, context={"request": request}).data})
 
 
-class GameRoomView(APIView):
+class GameRoomView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def get(self, request, game_id):
@@ -525,9 +539,11 @@ class GameRoomView(APIView):
         game = get_game_or_none(game_id)
         if not game:
             return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            synchronize_and_require_game_host(game, request.user, "Only the host can update game room instructions.")
+        except DjangoValidationError as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_403_FORBIDDEN)
         synchronize_game_lifecycle(game, expire_requests=True)
-        if game.host_id != request.user.id:
-            return Response({"detail": "Only the host can update game room instructions."}, status=status.HTTP_403_FORBIDDEN)
         if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED]:
             return Response({"detail": "Instructions cannot be changed after this game has ended."}, status=status.HTTP_400_BAD_REQUEST)
         game.game_room_note = str(request.data.get("game_room_note", "")).strip()[:500]
@@ -644,6 +660,18 @@ def get_public_games_queryset(request):
 
 def can_view_game_private(user, game):
     if game.host_id == user.id:
+        return True
+    if (
+        game.game_type == Game.GameType.FILL_SQUAD
+        and game.team_id
+        and game.team.captain_id == user.id
+        and TeamMember.objects.filter(
+            team_id=game.team_id,
+            user_id=user.id,
+            member_type=TeamMember.MemberType.REGISTERED,
+            status=TeamMember.MemberStatus.ACTIVE,
+        ).exists()
+    ):
         return True
     return game.participants.filter(user=user, status__in=ACTIVE_PARTICIPANT_STATUSES).exists()
 

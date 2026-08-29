@@ -1,9 +1,90 @@
 from rest_framework import serializers
+from django.utils import timezone
 
 from teams.models import Team, TeamMember
 from venues.models import Booking
+from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
 
-from .models import ChallengeProposal, OpenChallengeResponse, TeamChallenge, TeamFixture
+from .models import (
+    ChallengeProposal,
+    OpenChallengeResponse,
+    TeamChallenge,
+    TeamFixture,
+    TeamFixtureParticipant,
+)
+
+
+CHALLENGE_INTENSITY_CHOICES = (
+    ("CASUAL", "Casual"),
+    ("COMPETITIVE", "Competitive"),
+    ("PRACTICE", "Practice"),
+)
+
+
+CHALLENGE_SORT_CHOICES = (
+    ("recommended", "Recommended"),
+    ("date_asc", "Earliest match"),
+    ("deadline_asc", "Response deadline"),
+    ("updated_desc", "Recently updated"),
+    ("name_asc", "Team name"),
+)
+
+class TeamChallengeFilterSerializer(serializers.Serializer):
+    search = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    district = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    area = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    skill_level = serializers.ChoiceField(required=False, choices=Team.SkillLevel.choices)
+    intensity = serializers.ChoiceField(required=False, choices=CHALLENGE_INTENSITY_CHOICES)
+    court_mode = serializers.ChoiceField(required=False, choices=TeamChallenge.CourtMode.choices)
+    players_per_side = serializers.IntegerField(required=False, min_value=2, max_value=30)
+    date_from = serializers.DateField(required=False)
+    date_to = serializers.DateField(required=False)
+    scope = serializers.ChoiceField(
+        required=False,
+        choices=(
+            ("all", "All"),
+            ("sent", "Sent"),
+            ("received", "Received"),
+            ("open", "Open"),
+            ("closed", "Closed"),
+        ),
+    )
+    status = serializers.ChoiceField(required=False, choices=TeamChallenge.Status.choices)
+    sort = serializers.ChoiceField(required=False, choices=CHALLENGE_SORT_CHOICES)
+
+    def validate(self, attrs):
+        district = attrs.get("district", "").strip()
+        area = attrs.get("area", "").strip()
+        if district and district.casefold() not in {item.casefold() for item in SPORTSPOT_DISTRICTS}:
+            raise serializers.ValidationError({"district": "Choose a supported district."})
+        if area:
+            if not district:
+                raise serializers.ValidationError({"area": "Choose a district before choosing an area."})
+            canonical_district = next(item for item in SPORTSPOT_DISTRICTS if item.casefold() == district.casefold())
+            if area.casefold() not in {item.casefold() for item in SPORTSPOT_AREAS_BY_DISTRICT.get(canonical_district, [])}:
+                raise serializers.ValidationError({"area": "Choose an area within the selected district."})
+            attrs["district"] = canonical_district
+            attrs["area"] = next(item for item in SPORTSPOT_AREAS_BY_DISTRICT[canonical_district] if item.casefold() == area.casefold())
+        elif district:
+            attrs["district"] = next(item for item in SPORTSPOT_DISTRICTS if item.casefold() == district.casefold())
+        if attrs.get("date_from") and attrs.get("date_to") and attrs["date_from"] > attrs["date_to"]:
+            raise serializers.ValidationError({"date_to": "The end date must be on or after the start date."})
+        return attrs
+
+
+def is_active_registered_captain(team, user):
+    return bool(
+        team
+        and team.captain_id == getattr(user, "id", None)
+        and getattr(user, "role", None) == "PLAYER"
+        and getattr(user, "is_active", False)
+        and TeamMember.objects.filter(
+            team=team,
+            user=user,
+            member_type=TeamMember.MemberType.REGISTERED,
+            status=TeamMember.MemberStatus.ACTIVE,
+        ).exists()
+    )
 
 
 class ChallengeTeamSummarySerializer(serializers.ModelSerializer):
@@ -147,16 +228,175 @@ class OpenChallengeResponseSerializer(serializers.ModelSerializer):
 
 class TeamFixtureSerializer(serializers.ModelSerializer):
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+    room_state = serializers.SerializerMethodField()
+    room_access = serializers.SerializerMethodField()
     booking_summary = serializers.SerializerMethodField()
+    participants = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = TeamFixture
-        fields = ("id", "status", "status_label", "booking_summary", "result", "created_at", "updated_at")
+        fields = (
+            "id", "status", "status_label", "room_state", "room_access", "booking_summary", "result",
+            "result_submitted_at", "result_confirmed_at", "participants",
+            "permissions", "created_at", "updated_at",
+        )
+
+    def _actor_access(self, fixture):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return False, False
+        challenge = fixture.challenge
+        is_captain = any(
+            team and is_active_registered_captain(team, user)
+            for team in [challenge.challenger_team, challenge.challenged_team]
+        )
+        is_participant = TeamFixtureParticipant.objects.filter(
+            fixture=fixture,
+            player=user,
+            status__in=[
+                TeamFixtureParticipant.Status.SELECTED,
+                TeamFixtureParticipant.Status.ATTENDED,
+                TeamFixtureParticipant.Status.ABSENT,
+            ],
+        ).exists()
+        return is_captain, is_participant
+
+    def get_room_state(self, fixture):
+        if fixture.status == TeamFixture.Status.AWAITING_COURT:
+            return "PLANNING"
+        if fixture.status == TeamFixture.Status.RECONFIRMATION_REQUIRED:
+            return "RECONFIRMATION"
+        if fixture.status == TeamFixture.Status.SCHEDULED:
+            return "CONFIRMED"
+        if fixture.status == TeamFixture.Status.IN_PROGRESS:
+            return "IN_PROGRESS"
+        return "READ_ONLY"
+
+    def get_room_access(self, fixture):
+        is_captain, is_participant = self._actor_access(fixture)
+        if not is_captain and not is_participant:
+            return "NONE"
+        return self.get_room_state(fixture)
 
     def get_booking_summary(self, fixture):
-        if not fixture.booking_id:
+        if not fixture.booking_id or self.get_room_access(fixture) == "NONE":
             return None
         return ChallengeBookingSummarySerializer(fixture.booking, context=self.context).data
+
+    def get_participants(self, fixture):
+        if self.get_room_access(fixture) == "NONE":
+            return []
+        return TeamFixtureParticipantSerializer(
+            fixture.participants.select_related("player", "team").all(),
+            many=True,
+            context=self.context,
+        ).data
+
+    def get_permissions(self, fixture):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return {
+                "is_captain": False,
+                "team_id": None,
+                "can_manage_lineup": False,
+                "can_record_attendance": False,
+                "can_submit_result": False,
+                "can_confirm_result": False,
+            }
+        challenge = fixture.challenge
+        managed_team = next(
+            (
+                team
+                for team in [challenge.challenger_team, challenge.challenged_team]
+                if team and is_active_registered_captain(team, user)
+            ),
+            None,
+        )
+        if not managed_team:
+            return {
+                "is_captain": False,
+                "team_id": None,
+                "can_manage_lineup": False,
+                "can_record_attendance": False,
+                "can_submit_result": False,
+                "can_confirm_result": False,
+            }
+        start_at = None
+        if fixture.booking_id:
+            booking = fixture.booking
+            slots = list(booking.booked_slots)
+            if slots:
+                from datetime import datetime
+
+                start_at = timezone.make_aware(
+                    datetime.combine(slots[0].date, slots[0].start_time),
+                    timezone.get_current_timezone(),
+                )
+        is_scheduled_before_start = fixture.status == TeamFixture.Status.SCHEDULED and (
+            start_at is None or start_at > timezone.now()
+        )
+        is_completed = fixture.status == TeamFixture.Status.COMPLETED
+        return {
+            "is_captain": True,
+            "team_id": managed_team.id,
+            "can_manage_lineup": is_scheduled_before_start,
+            "can_record_attendance": is_completed,
+            "can_submit_result": bool(
+                is_completed
+                and not fixture.result_confirmed_at
+                and (
+                    not fixture.result
+                    or fixture.result_submitted_by_id == user.id
+                )
+            ),
+            "can_confirm_result": bool(
+                is_completed
+                and fixture.result
+                and fixture.result_submitted_by_id
+                and fixture.result_submitted_by_id != user.id
+                and not fixture.result_confirmed_at
+            ),
+        }
+
+
+class FixtureEligiblePlayerSerializer(serializers.ModelSerializer):
+    player_id = serializers.IntegerField(source="user_id", read_only=True)
+    player_name = serializers.CharField(source="user.full_name", read_only=True)
+    sportspot_id = serializers.SerializerMethodField()
+    skill_level = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamMember
+        fields = ("player_id", "player_name", "sportspot_id", "skill_level", "cricksal_role")
+
+    def get_sportspot_id(self, member):
+        profile = getattr(member.user, "player_profile", None)
+        return profile.sportspot_id if profile else ""
+
+    def get_skill_level(self, member):
+        profile = getattr(member.user, "player_profile", None)
+        return profile.skill_level if profile else ""
+
+
+class TeamFixtureParticipantSerializer(serializers.ModelSerializer):
+    player_name = serializers.CharField(source="player.full_name", read_only=True)
+    team_name = serializers.CharField(source="team.name", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    sportspot_id = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamFixtureParticipant
+        fields = (
+            "id", "team", "team_name", "player", "player_name", "sportspot_id",
+            "status", "status_label", "attendance_recorded_at", "created_at",
+        )
+
+    def get_sportspot_id(self, participant):
+        profile = getattr(participant.player, "player_profile", None)
+        return profile.sportspot_id if profile else ""
 
 
 class TeamChallengeSerializer(serializers.ModelSerializer):
@@ -186,6 +426,8 @@ class TeamChallengeSerializer(serializers.ModelSerializer):
             "is_open_for_opponent_response",
             "response_deadline",
             "booking_deadline",
+            "reconfirmation_requested_at",
+            "reconfirmation_deadline",
             "challenger_team",
             "challenged_team",
             "current_proposal",
@@ -217,7 +459,7 @@ class TeamChallengeSerializer(serializers.ModelSerializer):
             return []
         if not challenge.challenger_team_id:
             return []
-        if challenge.challenger_team.captain_id != user.id:
+        if not is_active_registered_captain(challenge.challenger_team, user):
             return []
         return OpenChallengeResponseSerializer(
             challenge.open_responses.all(),
@@ -251,9 +493,19 @@ class TeamChallengeSerializer(serializers.ModelSerializer):
                 "can_cancel": False,
                 "can_select_opponent": False,
                 "can_attach_booking": False,
+                "can_withdraw_response": False,
+                "can_reconfirm": False,
+                "can_reschedule": False,
+                "can_view_room": False,
             }
-        is_challenger = challenge.challenger_team_id and challenge.challenger_team.captain_id == user.id
-        is_challenged = challenge.challenged_team_id and challenge.challenged_team.captain_id == user.id
+        is_challenger = bool(
+            challenge.challenger_team_id
+            and is_active_registered_captain(challenge.challenger_team, user)
+        )
+        is_challenged = bool(
+            challenge.challenged_team_id
+            and is_active_registered_captain(challenge.challenged_team, user)
+        )
         is_captain = bool(is_challenger or is_challenged)
         proposal = challenge.current_proposal
         has_pending_decision = bool(
@@ -270,9 +522,68 @@ class TeamChallengeSerializer(serializers.ModelSerializer):
             and Team.objects.filter(
                 captain=user,
                 accepts_team_challenges=True,
+                captain__role="PLAYER",
+                captain__is_active=True,
                 members__user=user,
+                members__member_type=TeamMember.MemberType.REGISTERED,
                 members__status=TeamMember.MemberStatus.ACTIVE,
             ).exists()
+        )
+        my_response = challenge.open_responses.filter(responding_by=user).first()
+        can_withdraw_response = bool(
+            my_response
+            and my_response.status == OpenChallengeResponse.Status.PENDING
+            and challenge.is_open_for_opponent_response
+            and is_active_registered_captain(my_response.responding_team, user)
+        )
+        can_reconfirm = bool(
+            is_captain
+            and challenge.status == TeamChallenge.Status.RECONFIRMATION_REQUIRED
+            and challenge.reconfirmation_deadline
+            and challenge.reconfirmation_deadline > timezone.now()
+            and proposal
+            and (
+                (is_challenger and proposal.challenger_decision == ChallengeProposal.Decision.PENDING)
+                or (is_challenged and proposal.challenged_decision == ChallengeProposal.Decision.PENDING)
+            )
+        )
+        can_counter = bool(
+            is_captain
+            and challenge.court_mode == TeamChallenge.CourtMode.PLAN_FIRST
+            and challenge.status in [
+                TeamChallenge.Status.OPEN,
+                TeamChallenge.Status.COUNTERED,
+                TeamChallenge.Status.ACCEPTED_AWAITING_BOOKING,
+            ]
+        )
+        can_reschedule = bool(
+            is_captain
+            and challenge.status == TeamChallenge.Status.CONFIRMED
+            and challenge.booking_id
+        )
+        fixture = getattr(challenge, "fixture", None)
+        can_view_room = bool(
+            fixture
+            and fixture.status in [
+                TeamFixture.Status.AWAITING_COURT,
+                TeamFixture.Status.SCHEDULED,
+                TeamFixture.Status.IN_PROGRESS,
+                TeamFixture.Status.COMPLETED,
+                TeamFixture.Status.CANCELLED,
+                TeamFixture.Status.RECONFIRMATION_REQUIRED,
+            ]
+            and (
+                is_captain
+                or TeamFixtureParticipant.objects.filter(
+                    fixture=fixture,
+                    player=user,
+                    status__in=[
+                        TeamFixtureParticipant.Status.SELECTED,
+                        TeamFixtureParticipant.Status.ATTENDED,
+                        TeamFixtureParticipant.Status.ABSENT,
+                    ],
+                ).exists()
+            )
         )
         return {
             "is_captain": is_captain,
@@ -280,7 +591,7 @@ class TeamChallengeSerializer(serializers.ModelSerializer):
             "is_challenged": bool(is_challenged),
             "can_respond": can_respond,
             "can_accept": can_decide,
-            "can_counter": can_decide and challenge.court_mode == TeamChallenge.CourtMode.PLAN_FIRST,
+            "can_counter": can_counter,
             "can_withdraw": bool(is_challenger and challenge.is_open_for_response),
             "can_cancel": bool(is_captain and challenge.status in [
                 TeamChallenge.Status.ACCEPTED_AWAITING_BOOKING,
@@ -288,7 +599,11 @@ class TeamChallengeSerializer(serializers.ModelSerializer):
                 TeamChallenge.Status.CONFIRMED,
             ]),
             "can_select_opponent": bool(is_challenger and challenge.is_open_for_opponent_response),
-            "can_attach_booking": bool(is_challenger and challenge.status == TeamChallenge.Status.ACCEPTED_AWAITING_BOOKING and not challenge.booking_id),
+            "can_attach_booking": bool(is_captain and challenge.status == TeamChallenge.Status.ACCEPTED_AWAITING_BOOKING and not challenge.booking_id),
+            "can_withdraw_response": can_withdraw_response,
+            "can_reconfirm": can_reconfirm,
+            "can_reschedule": can_reschedule,
+            "can_view_room": can_view_room,
         }
 
 
@@ -370,3 +685,34 @@ class OpenOpponentSelectionSerializer(serializers.Serializer):
 
 class ChallengeBookingAttachSerializer(serializers.Serializer):
     booking_id = serializers.PrimaryKeyRelatedField(source="booking", queryset=Booking.objects.all())
+
+
+class ChallengeReconfirmationSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=[("ACCEPT", "Accept"), ("DECLINE", "Decline")])
+
+
+class ChallengeRescheduleSerializer(serializers.Serializer):
+    booking_id = serializers.PrimaryKeyRelatedField(source="booking", queryset=Booking.objects.all())
+    response_deadline = serializers.DateTimeField()
+    players_per_side = serializers.IntegerField(min_value=2, max_value=30, required=False)
+    intensity = serializers.ChoiceField(
+        choices=[("CASUAL", "Casual"), ("COMPETITIVE", "Competitive"), ("PRACTICE", "Practice")],
+        required=False,
+    )
+    message = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
+
+class OpenChallengeResponseWithdrawSerializer(serializers.Serializer):
+    response_id = serializers.IntegerField(min_value=1)
+
+
+class FixtureParticipantCreateSerializer(serializers.Serializer):
+    player_id = serializers.IntegerField(min_value=1)
+
+
+class FixtureAttendanceSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=[("ATTENDED", "Attended"), ("ABSENT", "Absent")])
+
+
+class FixtureResultSerializer(serializers.Serializer):
+    result = serializers.CharField(min_length=2, max_length=200)

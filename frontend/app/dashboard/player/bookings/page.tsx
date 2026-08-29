@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import CancelBookingModal, { type CancelBookingPayload } from "@/components/CancelBookingModal";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
-import { formatDateOnly } from "@/lib/dates";
+import { formatDateOnly, localDateTimeToIso } from "@/lib/dates";
+import { buildVenueDirectionsHref } from "@/lib/maps";
 import { emitToast } from "@/lib/toast";
 import type { Booking, BookingStatus, RefundStatus } from "@/types/venue";
 
@@ -115,7 +116,11 @@ export default function PlayerBookingsPage() {
         dedupeKey: `booking-cancelled-${response.data.booking.id}`,
       });
     } catch (requestError) {
-      getApiErrorMessage(requestError, "This booking is no longer eligible for cancellation.");
+      emitToast({
+        message: getApiErrorMessage(requestError, "This booking is no longer eligible for cancellation."),
+        type: "error",
+        dedupeKey: `booking-cancel-error-${bookingToCancel.id}`,
+      });
     } finally {
       setIsCancelling(false);
     }
@@ -152,7 +157,7 @@ export default function PlayerBookingsPage() {
 
       {isLoading ? <TrackerSkeleton /> : nearestBooking && now ? <NextBookingTracker booking={nearestBooking} now={now} /> : null}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="sport-surface overflow-hidden">
         <div className="flex flex-col gap-4 border-b border-slate-200 px-4 pt-4 sm:px-5 sm:pt-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Booking sections">
             {tabLabels.map((tab) => (
@@ -204,10 +209,10 @@ export default function PlayerBookingsPage() {
 function DateFilter({ filters, onChange }: { filters: Filters; onChange: (filters: Filters) => void }) {
   return (
     <details className="group relative">
-      <summary className="inline-flex min-h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-sportNavy shadow-sm transition hover:border-green-200 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200">
+      <summary className="sport-secondary-button inline-flex min-h-11 cursor-pointer list-none">
         <CalendarIcon /> {getDateFilterLabel(filters)}
       </summary>
-      <div className="absolute right-0 z-20 mt-2 w-[min(90vw,360px)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+      <div className="sport-surface absolute right-0 z-20 mt-2 w-[min(90vw,360px)] p-4 shadow-xl">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">From</span>
@@ -229,12 +234,12 @@ function DateFilter({ filters, onChange }: { filters: Filters; onChange: (filter
 function NextBookingTracker({ booking, now }: { booking: Booking; now: Date }) {
   const phase = getBookingPhase(booking, now);
   const countdown = getCountdownParts(booking, now);
-  const directionHref = booking.venue_map_location || "";
+  const directionHref = buildVenueDirectionsHref(booking.venue_latitude, booking.venue_longitude, booking.venue_map_location);
 
   if (phase === "ended") return null;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 text-white shadow-lg">
+    <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950 text-white shadow-lg">
       <div className="grid lg:grid-cols-[1.15fr_1fr_auto]">
         <div className="p-5 sm:p-6">
           <div className="flex items-center gap-2 text-sm font-black text-green-300"><span className="h-2.5 w-2.5 rounded-full bg-green-400" /> Live Tracking</div>
@@ -284,7 +289,7 @@ function BookingCard({ booking, onCancel }: { booking: Booking; onCancel: () => 
   const isCancelled = booking.status === "CANCELLED" || booking.status === "EXPIRED";
 
   return (
-    <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md">
+    <article className="sport-surface group flex h-full flex-col overflow-hidden transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md">
       <div className="relative h-40 overflow-hidden bg-slate-100">
         {imageSrc ? (
           <img alt={`${booking.venue_name} court`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" src={imageSrc} />
@@ -332,8 +337,8 @@ function BookingCard({ booking, onCancel }: { booking: Booking; onCancel: () => 
                 Book Again
               </Link>
             ) : null}
-            {booking.venue_map_location ? (
-              <a className="inline-flex min-h-11 items-center justify-center rounded-xl border border-green-200 px-4 text-sm font-black text-sportGreen hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200" href={booking.venue_map_location} rel="noreferrer" target="_blank">
+            {buildVenueDirectionsHref(booking.venue_latitude, booking.venue_longitude, booking.venue_map_location) ? (
+              <a className="inline-flex min-h-11 items-center justify-center rounded-xl border border-green-200 px-4 text-sm font-black text-sportGreen hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200" href={buildVenueDirectionsHref(booking.venue_latitude, booking.venue_longitude, booking.venue_map_location)} rel="noreferrer" target="_blank">
                 Get Directions
               </a>
             ) : null}
@@ -372,15 +377,15 @@ function EmptyState({ activeTab, hasFilters, onClear }: { activeTab: BookingTab;
   }[activeTab];
 
   return (
-    <section className="m-4 rounded-2xl border border-dashed border-green-300 bg-green-50 p-8 text-center sm:m-5">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-sportGreen shadow-sm"><CalendarIcon /></div>
+    <section className="sport-empty-state m-4 border-green-200 bg-green-50 sm:m-5">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-white text-sportGreen shadow-sm"><CalendarIcon /></div>
       <h2 className="mt-4 text-xl font-black text-sportNavy">{hasFilters ? "No bookings match your filters." : copy.title}</h2>
       <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-600">{hasFilters ? "Try changing the date range or status filter." : copy.description}</p>
       <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
         {hasFilters ? (
-          <button className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700" onClick={onClear} type="button">Clear Filters</button>
+          <button className="sport-primary-button min-h-11" onClick={onClear} type="button">Clear Filters</button>
         ) : copy.href ? (
-          <Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700" href={copy.href}>{copy.action}</Link>
+          <Link className="sport-primary-button min-h-11" href={copy.href}>{copy.action}</Link>
         ) : null}
       </div>
     </section>
@@ -390,22 +395,22 @@ function EmptyState({ activeTab, hasFilters, onClear }: { activeTab: BookingTab;
 function BookingsSkeleton() {
   return (
     <div className="grid gap-4 p-4 sm:p-5 md:grid-cols-2 2xl:grid-cols-3">
-      {[0, 1, 2].map((item) => <div className="h-[420px] animate-pulse rounded-2xl bg-slate-100" key={item} />)}
+      {[0, 1, 2].map((item) => <div className="sport-surface h-[420px] animate-pulse bg-slate-100" key={item} />)}
     </div>
   );
 }
 
 function TrackerSkeleton() {
-  return <div className="h-44 animate-pulse rounded-2xl bg-slate-100" />;
+  return <div className="sport-surface h-44 animate-pulse bg-slate-100" />;
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <section className="m-4 rounded-2xl border border-red-100 bg-red-50 p-6 sm:m-5">
+    <section className="sport-error-state m-4 sm:m-5">
       <p className="text-sm font-black uppercase tracking-wide text-red-600">Bookings unavailable</p>
       <h2 className="mt-2 text-2xl font-black text-red-950">We could not load your bookings.</h2>
       <p className="mt-2 max-w-xl text-sm font-semibold leading-6 text-red-700">{message}</p>
-      <button className="mt-5 min-h-11 rounded-xl bg-red-600 px-5 text-sm font-black text-white hover:bg-red-700" onClick={onRetry} type="button">Retry</button>
+      <button className="sport-primary-button mt-5 bg-red-600 hover:bg-red-700" onClick={onRetry} type="button">Retry</button>
     </section>
   );
 }
@@ -568,7 +573,8 @@ function getCountdownParts(booking: Booking, now: Date) {
 
 function getBookingStartMs(booking: Booking) {
   if (booking.slot_start_at) return new Date(booking.slot_start_at).getTime();
-  return new Date(`${booking.slot_date}T${booking.booking_start_time || booking.slot_start_time}`).getTime();
+  const localStart = localDateTimeToIso(booking.slot_date, booking.booking_start_time || booking.slot_start_time || "");
+  return localStart ? new Date(localStart).getTime() : Number.NaN;
 }
 
 function getBookingEndMs(booking: Booking) {
@@ -652,7 +658,7 @@ function getMediaSrc(value: string | null | undefined) {
   return `${apiBaseUrl}${value}`;
 }
 
-const inputClassName = "mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100";
+const inputClassName = "sport-input mt-2";
 const selectClassName = "min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100";
 
 function PlusIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" /></svg>; }

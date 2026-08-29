@@ -59,16 +59,19 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur">
-        <nav className="mx-auto flex min-h-[68px] max-w-7xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white">
+        <nav aria-label="Primary navigation" className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-4 px-4 py-2 sm:px-6 lg:px-8">
           <Logo markClassName="h-8 max-w-[140px]" textClassName="text-[1.15rem]" />
 
           <div className="hidden items-center gap-7 text-[13px] font-semibold text-slate-600 lg:flex">
-            {getNavLinks(user, ownerVenueStatus).map((link) => (
-              <Link className="hover:text-sportGreen" href={link.href} key={link.href}>
+            {getNavLinks(user, ownerVenueStatus).map((link) => {
+              const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+              return (
+              <Link aria-current={isActive ? "page" : undefined} className={`relative py-2 transition-colors hover:text-sportGreen ${isActive ? "text-sportGreen after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-sportGreen" : ""}`} href={link.href} key={link.href}>
                 {link.label}
               </Link>
-            ))}
+              );
+            })}
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
@@ -90,7 +93,7 @@ export default function Navbar() {
                   aria-controls="sportspot-notification-centre"
                   aria-expanded={isNotificationsOpen}
                   aria-label={`Open Notification Centre${unseenNotificationsCount ? `, ${unseenNotificationsCount} unseen` : ""}`}
-                  className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen ${hasNewNotification ? "scale-110 border-green-300 text-sportGreen" : ""}`}
+                  className={`relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition-colors hover:border-green-200 hover:bg-green-50 hover:text-sportGreen ${hasNewNotification ? "border-green-300 text-sportGreen" : ""}`}
                   onClick={() => {
                     setIsNotificationsOpen(true);
                     setHasNewNotification(false);
@@ -109,7 +112,9 @@ export default function Navbar() {
 
                 <div className="relative">
                   <button
-                    className="flex max-w-[150px] items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:max-w-none"
+                    aria-expanded={isProfileOpen}
+                    aria-haspopup="menu"
+                    className="flex min-h-10 max-w-[150px] items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 transition-colors hover:border-green-200 hover:bg-slate-50 sm:max-w-none"
                     onClick={() => setIsProfileOpen((value) => !value)}
                     type="button"
                   >
@@ -120,14 +125,14 @@ export default function Navbar() {
                     <ChevronDownIcon />
                   </button>
                   {isProfileOpen ? (
-                    <div className="absolute right-0 mt-3 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                    <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl" role="menu">
                       {getProfileLinks(user).map((link) => (
-                        <Link className="block rounded px-3 py-2 text-sm hover:bg-slate-100" href={link.href} key={link.label}>
+                        <Link className="block rounded-md px-3 py-2.5 text-sm transition-colors hover:bg-slate-50 hover:text-sportGreen" href={link.href} key={link.label} role="menuitem">
                           {link.label}
                         </Link>
                       ))}
                       <button
-                        className="w-full rounded px-3 py-2 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
+                        className="w-full rounded-md px-3 py-2.5 text-left text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
                         onClick={handleLogout}
                         type="button"
                       >
@@ -153,7 +158,7 @@ export default function Navbar() {
         />
       ) : null}
       {notificationToast ? (
-        <div aria-live="polite" className="fixed right-4 top-20 z-40 max-w-sm rounded-md border border-green-200 bg-white px-4 py-3 shadow-xl">
+        <div aria-live="polite" className="fixed right-4 top-20 z-40 max-w-sm rounded-xl border border-green-200 bg-white px-4 py-3 shadow-xl">
           <p className="text-xs font-black uppercase text-sportGreen">New notification</p>
           <p className="mt-1 text-sm font-bold text-sportNavy">{notificationToast}</p>
         </div>

@@ -70,7 +70,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         return timezone.localtime(notification.created_at).strftime("%b %d, %Y")
 
     def get_full_time(self, notification):
-        return timezone.localtime(notification.created_at).strftime("%b %d, %Y at %I:%M %p")
+        return timezone.localtime(notification.created_at).strftime("%b %d, %Y at %I:%M %p").replace(" at 0", " at ")
 
     def get_actions(self, notification):
         actions = []

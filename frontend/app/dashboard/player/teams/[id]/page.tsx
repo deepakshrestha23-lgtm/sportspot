@@ -8,6 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { formatDateOnly, formatDateTimeInNepal, localDateTimeToIso } from "@/lib/dates";
 import { emitToast } from "@/lib/toast";
 import type { CricksalRole, GuestMemberPayload, PlayerLookup, PlayerLookupResponse, Team, TeamMember, TeamPayload, TeamResponse, TeamSkillLevel } from "@/types/team";
 import type { TeamChallenge, TeamChallengeListResponse } from "@/types/teamChallenge";
@@ -222,10 +223,10 @@ export default function TeamDetailPage() {
 
   if (!team || !editForm) {
     return (
-      <section className="rounded-2xl border border-red-100 bg-white p-6 shadow-sm">
+      <section className="sport-error-state">
         <h1 className="text-xl font-black text-sportNavy">Team not available</h1>
         <p className="mt-2 text-sm font-semibold leading-6 text-red-700">{pageError || "This team could not be found or you do not have access."}</p>
-        <Link className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700" href="/dashboard/player/teams">Back to My Teams</Link>
+        <Link className="sport-primary-button mt-5" href="/dashboard/player/teams">Back to My Teams</Link>
       </section>
     );
   }
@@ -238,7 +239,7 @@ export default function TeamDetailPage() {
         <span className="truncate text-sportNavy">{team.name}</span>
       </nav>
 
-      <section className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <section className="sport-surface p-5 sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
             <TeamLogo image={teamPhotoSrc} name={team.name} size="lg" />
@@ -258,9 +259,9 @@ export default function TeamDetailPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row lg:shrink-0">
-            <button className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-sportNavy hover:border-sportGreen hover:text-sportGreen" onClick={() => emitToast({ message: "Public team profile is not available yet.", type: "info", dedupeKey: "team-public-profile" })} type="button">View Public Profile</button>
-            {team.is_captain ? <button className="min-h-11 rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700" onClick={() => setIsRecruiting(true)} type="button">Invite Player</button> : null}
-            {team.is_captain ? <button className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-black text-slate-700 hover:bg-slate-50" onClick={() => setActiveTab("settings")} type="button">Manage Team</button> : <MemberMoreMenu onLeave={() => setConfirmAction({ title: "Leave team?", message: `You will lose access to ${team.name} private team details after leaving.`, confirmLabel: "Leave Team", tone: "danger", onConfirm: leaveTeam })} />}
+            <button className="sport-secondary-button min-h-11" onClick={() => emitToast({ message: "Public team profile is not available yet.", type: "info", dedupeKey: "team-public-profile" })} type="button">View Public Profile</button>
+            {team.is_captain ? <button className="sport-primary-button min-h-11" onClick={() => setIsRecruiting(true)} type="button">Invite Player</button> : null}
+            {team.is_captain ? <button className="sport-secondary-button min-h-11" onClick={() => setActiveTab("settings")} type="button">Manage Team</button> : <MemberMoreMenu onLeave={() => setConfirmAction({ title: "Leave team?", message: `You will lose access to ${team.name} private team details after leaving.`, confirmLabel: "Leave Team", tone: "danger", onConfirm: leaveTeam })} />}
           </div>
         </div>
 
@@ -293,7 +294,7 @@ function OverviewTab({ captain, onOpenProfile, recentActivity, team }: { captain
           <SummaryCard label="Active Challenges" value="0" helper="No challenge records yet" />
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="sport-card">
           <SectionHeading title="Team Information" description="Core team identity and playing preferences." />
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <InfoTile label="Home Location" value={team.location} />
@@ -305,18 +306,18 @@ function OverviewTab({ captain, onOpenProfile, recentActivity, team }: { captain
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="sport-card">
           <SectionHeading title="Next Game" description="Confirmed team matches will appear here." />
           <EmptyPanel title="No confirmed team games yet." description="Once this team has a confirmed Cricksal game, the date, venue, court and Game Room action will appear here." />
         </section>
       </main>
 
       <aside className="space-y-5">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="sport-card">
           <SectionHeading title="Team Captain" description="Captain profile visible to team members." />
           {captain ? <CaptainCard captain={captain} onOpenProfile={() => onOpenProfile(captain)} /> : <EmptyPanel title="Captain details unavailable." description="Captain information could not be loaded." compact />}
         </section>
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="sport-card">
           <div className="flex items-start justify-between gap-3"><SectionHeading title="Recent Team Activity" description="Latest meaningful roster activity." /><span className="rounded-full bg-green-50 px-3 py-1 text-xs font-black text-sportGreen">Live</span></div>
           {recentActivity.length ? <ActivityList items={recentActivity} /> : <EmptyPanel title="No team activity yet." description="Roster and invitation activity will appear here." compact />}
         </section>
@@ -327,14 +328,14 @@ function OverviewTab({ captain, onOpenProfile, recentActivity, team }: { captain
 
 function MembersTab({ activeTab, canManage, guests, invitations, onAddGuest, onCancelInvitation, onOpenProfile, onRemove, onTabChange, registered }: { activeTab: MemberTab; canManage: boolean; guests: TeamMember[]; invitations: TeamMember[]; onAddGuest: () => void; onCancelInvitation: (member: TeamMember) => void; onOpenProfile: (member: TeamMember) => void; onRemove: (member: TeamMember) => void; onTabChange: (tab: MemberTab) => void; registered: TeamMember[] }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="sport-surface overflow-hidden">
       <div className="flex flex-col gap-4 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Member sections">
           <TeamTabButton active={activeTab === "registered"} label={`Registered Members (${registered.length})`} onClick={() => onTabChange("registered")} />
           <TeamTabButton active={activeTab === "guests"} label={`Guest Players (${guests.length})`} onClick={() => onTabChange("guests")} />
           <TeamTabButton active={activeTab === "invitations"} label={`Invitations (${invitations.length})`} onClick={() => onTabChange("invitations")} />
         </div>
-        {canManage ? <button className="min-h-11 rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700" onClick={onAddGuest} type="button">Add Guest Player</button> : null}
+        {canManage ? <button className="sport-primary-button min-h-11" onClick={onAddGuest} type="button">Add Guest Player</button> : null}
       </div>
       <div className="p-4 sm:p-5">
         {activeTab === "registered" ? <MemberGrid canManage={canManage} emptyText="No active registered members yet." members={registered} onOpenProfile={onOpenProfile} onRemove={onRemove} /> : null}
@@ -444,7 +445,7 @@ function TeamChallengeCard({ challenge, teamId }: { challenge: TeamChallenge; te
   const proposal = challenge.current_proposal;
   const isSender = challenge.challenger_team.id === teamId;
   const opponent = isSender ? challenge.challenged_team?.name || "Open opponent search" : challenge.challenger_team.name;
-  const date = proposal.booking_summary?.start_at || (proposal.proposed_date ? `${proposal.proposed_date}T${proposal.proposed_start_time || "00:00:00"}` : null);
+  const date = proposal.booking_summary?.start_at || (proposal.proposed_date && proposal.proposed_start_time ? localDateTimeToIso(proposal.proposed_date, proposal.proposed_start_time) : null);
   const location = proposal.booking_summary ? `${proposal.booking_summary.venue_name} · ${proposal.booking_summary.court_name}` : [proposal.preferred_venue_name, proposal.preferred_area, proposal.preferred_district].filter(Boolean).join(" · ") || "Court details to be agreed";
   return <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-sportGreen">{isSender ? "Sent challenge" : "Received challenge"}</p><h3 className="mt-1 text-lg font-black text-sportNavy">{opponent}</h3></div><Badge tone={isClosedChallenge(challenge) ? "slate" : challenge.status === "CONFIRMED" ? "green" : "soft"}>{challenge.status_label}</Badge></div><div className="mt-4 grid gap-2 text-sm text-slate-600"><p><span className="font-bold text-slate-800">When:</span> {formatDate(date)}</p><p><span className="font-bold text-slate-800">Where:</span> {location}</p><p><span className="font-bold text-slate-800">Format:</span> {proposal.players_per_side} a side · {formatChoice(proposal.intensity)}</p></div><div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-200 pt-4"><p className="text-xs font-semibold text-slate-500">{challenge.is_open_for_response ? `Response ${relativeDeadline(challenge.response_deadline)}` : "No longer accepting responses"}</p><Link className="min-h-10 rounded-xl bg-sportGreen px-4 py-2.5 text-center text-sm font-black text-white hover:bg-green-700" href={`/challenge-teams/${challenge.id}`}>View Details</Link></div></article>;
 }
@@ -616,8 +617,8 @@ function normalize(value: string) { return value.trim().toLowerCase(); }
 function initials(name: string) { return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("") || "SS"; }
 function formatChoice(value?: string) { if (!value) return "Not set"; return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" "); }
 function formatRating(value?: string) { const numberValue = Number(value || 0); return Number.isFinite(numberValue) ? numberValue.toFixed(1) : "0.0"; }
-function formatDate(value?: string | null) { if (!value) return "Not set"; const date = new Date(value); if (Number.isNaN(date.getTime())) return "Not set"; return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(date); }
-function formatDateTime(value?: string) { if (!value) return "Recently"; const date = new Date(value); if (Number.isNaN(date.getTime())) return "Recently"; return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date); }
+function formatDate(value?: string | null) { if (!value) return "Not set"; return formatDateOnly(value, { day: "numeric", month: "short", year: "numeric" }); }
+function formatDateTime(value?: string) { if (!value) return "Recently"; return formatDateTimeInNepal(value, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
 function getMediaSrc(value: string) { if (!value) return ""; if (value.startsWith("blob:") || value.startsWith("http")) return value; const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"; return `${apiBaseUrl}${value}`; }
 
 const inputClassName = "mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-2 focus:ring-green-100";

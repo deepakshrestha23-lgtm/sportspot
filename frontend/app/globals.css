@@ -4,13 +4,15 @@
 
 :root {
   color-scheme: light;
-  --sport-ink: #102016;
-  --sport-muted: #66736b;
-  --sport-line: #dfe7e1;
+  --sport-ink: #142019;
+  --sport-navy: #0b1220;
+  --sport-muted: #647168;
+  --sport-line: #d9e3dc;
   --sport-surface: #ffffff;
-  --sport-canvas: #f5f8f6;
+  --sport-canvas: #f6f8f7;
   --sport-green: #087a3e;
-  --sport-green-soft: #eaf6ef;
+  --sport-green-soft: #e9f5ee;
+  --sport-focus: rgba(22, 163, 74, 0.2);
 }
 
 * {
@@ -19,6 +21,7 @@
 
 body {
   margin: 0;
+  overflow-x: hidden;
   background: var(--sport-canvas);
   color: var(--sport-ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -27,16 +30,29 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+html {
+  min-width: 320px;
+  background: var(--sport-canvas);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid var(--sport-focus);
+  outline-offset: 2px;
+}
+
 button,
 input,
 select,
 textarea {
   font: inherit;
-}
-
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
 }
 
 ::selection {
@@ -80,11 +96,15 @@ a {
 
 @layer components {
   .sport-page-content {
-    @apply mx-auto w-full space-y-5;
+    @apply mx-auto w-full max-w-7xl space-y-6;
   }
 
   .sport-surface {
     @apply rounded-xl border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(16,32,22,0.03)];
+  }
+
+  .sport-card {
+    @apply sport-surface p-5 sm:p-6;
   }
 
   .sport-page-header {
@@ -96,7 +116,7 @@ a {
   }
 
   .sport-page-title {
-    @apply mt-1 text-[clamp(1.75rem,3vw,2.35rem)] font-bold tracking-[-0.025em] text-sportNavy;
+    @apply mt-1 text-[clamp(1.65rem,2.3vw,2.15rem)] font-bold tracking-tight text-sportNavy;
   }
 
   .sport-page-description {
@@ -125,6 +145,13 @@ a {
     @apply min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
   }
 
+  /* Some older forms apply the field class directly to the control. Keep those controls styled while the wrapper API is migrated. */
+  input.sport-field,
+  select.sport-field,
+  textarea.sport-field {
+    @apply min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
+  }
+
   .sport-tab-list {
     @apply flex min-w-max items-center gap-1 border-b border-slate-200;
   }
@@ -144,6 +171,34 @@ a {
 
   .sport-status {
     @apply inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide;
+  }
+
+  .sport-back-link {
+    @apply mb-3 inline-flex min-h-9 items-center gap-2 rounded-md text-sm font-semibold text-slate-600 transition-colors hover:text-sportGreen focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2;
+  }
+
+  .sport-input {
+    @apply min-h-11 w-full rounded-md border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-sportNavy outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-sportGreen focus:ring-4 focus:ring-green-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500;
+  }
+
+  .sport-field-label {
+    @apply text-sm font-semibold text-sportNavy;
+  }
+
+  .sport-error-text {
+    @apply mt-1.5 block text-xs font-semibold text-red-700;
+  }
+
+  .sport-empty-state {
+    @apply sport-surface border-dashed p-8 text-center sm:p-10;
+  }
+
+  .sport-error-state {
+    @apply rounded-xl border border-red-200 bg-red-50 p-5 text-red-950 sm:p-6;
+  }
+
+  .sport-page-shell {
+    @apply min-h-[calc(100vh-68px)] bg-[var(--sport-canvas)];
   }
 
   .owner-primary-button {
@@ -167,4 +222,41 @@ a {
   .calendar-field textarea {
     @apply min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.sportspot-map-pin-wrap {
+  background: transparent;
+  border: 0;
+}
+
+.sportspot-map-pin {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border: 4px solid #ffffff;
+  border-radius: 50% 50% 50% 0;
+  background: var(--sport-green);
+  box-shadow: 0 3px 10px rgba(16, 32, 22, 0.28);
+  transform: rotate(-45deg);
+}
+
+.sportspot-map-pin::after {
+  content: "";
+  display: block;
+  width: 7px;
+  height: 7px;
+  margin: 7px auto;
+  border-radius: 50%;
+  background: #ffffff;
 }

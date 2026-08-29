@@ -4,7 +4,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
-from teams.models import Team
+from teams.models import Team, TeamMember
 from venues.models import Booking
 from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
 
@@ -88,6 +88,8 @@ class TeamChallenge(models.Model):
     )
     response_deadline = models.DateTimeField()
     booking_deadline = models.DateTimeField(blank=True, null=True)
+    reconfirmation_requested_at = models.DateTimeField(blank=True, null=True)
+    reconfirmation_deadline = models.DateTimeField(blank=True, null=True)
     is_public = models.BooleanField(default=False)
     client_request_id = models.CharField(max_length=64, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -139,6 +141,8 @@ class TeamChallenge(models.Model):
             "status",
             "response_deadline",
             "booking_deadline",
+            "reconfirmation_requested_at",
+            "reconfirmation_deadline",
             "is_public",
             "updated_at",
         }
@@ -284,10 +288,81 @@ class TeamFixture(models.Model):
     challenge = models.OneToOneField(TeamChallenge, on_delete=models.PROTECT, related_name="fixture")
     booking = models.OneToOneField(Booking, on_delete=models.PROTECT, related_name="team_fixture", blank=True, null=True)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.AWAITING_COURT)
-    result = models.CharField(max_length=20, blank=True)
+    result = models.CharField(max_length=200, blank=True)
+    result_submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="submitted_team_fixture_results",
+        blank=True,
+        null=True,
+    )
+    result_submitted_at = models.DateTimeField(blank=True, null=True)
+    result_confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="confirmed_team_fixture_results",
+        blank=True,
+        null=True,
+    )
     result_confirmed_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Fixture for challenge {self.challenge_id}"
+
+
+class TeamFixtureParticipant(models.Model):
+    class Status(models.TextChoices):
+        SELECTED = "SELECTED", "Selected"
+        ATTENDED = "ATTENDED", "Attended"
+        ABSENT = "ABSENT", "Absent"
+        WITHDRAWN = "WITHDRAWN", "Withdrawn"
+
+    fixture = models.ForeignKey(TeamFixture, on_delete=models.CASCADE, related_name="participants")
+    team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="fixture_participants")
+    player = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="team_fixture_participations",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.SELECTED)
+    selected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="selected_team_fixture_players",
+    )
+    attendance_recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="recorded_team_fixture_attendance",
+        blank=True,
+        null=True,
+    )
+    attendance_recorded_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["team_id", "created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["fixture", "player"], name="unique_fixture_player"),
+        ]
+
+    def clean(self):
+        if self.player_id and self.player.role != "PLAYER":
+            raise ValidationError("Only player accounts can be selected for a team fixture.")
+        challenge = self.fixture.challenge if self.fixture_id else None
+        if not challenge or self.team_id not in {challenge.challenger_team_id, challenge.challenged_team_id}:
+            raise ValidationError("Select a player from one of the teams in this match.")
+        if not TeamMember.objects.filter(
+            team_id=self.team_id,
+            user_id=self.player_id,
+            member_type=TeamMember.MemberType.REGISTERED,
+            status=TeamMember.MemberStatus.ACTIVE,
+        ).exists():
+            raise ValidationError("The selected player is not an active member of that team.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)

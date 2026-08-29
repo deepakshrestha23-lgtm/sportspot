@@ -18,7 +18,209 @@ from notifications.services import (
     notify_owner_venue_review,
 )
 from venues.policies import build_cancellation_policy_snapshot, get_cancellation_quote
+from venues.location import search_locations
 from venues.models import Booking, BookingSlot, Court, CourtSlot, Venue
+
+
+class VenueLocationApiTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            email="location-owner@example.com",
+            password="test-password",
+            full_name="Location Owner",
+            phone="9800000001",
+            role="COURT_OWNER",
+        )
+        self.player = user_model.objects.create_user(
+            email="location-player@example.com",
+            password="test-password",
+            full_name="Location Player",
+            phone="9800000002",
+            role="PLAYER",
+        )
+
+    def test_owner_can_save_a_confirmed_coordinate_pair(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(
+            reverse("owner-venue"),
+            {
+                "name": "Location Cricksal Arena",
+                "latitude": "27.717200",
+                "longitude": "85.324000",
+                "location_source": "MANUAL_PIN",
+                "location_confirmed": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        venue = Venue.objects.get(owner=self.owner)
+        self.assertEqual(str(venue.latitude), "27.717200")
+        self.assertEqual(str(venue.longitude), "85.324000")
+        self.assertTrue(venue.location_confirmed)
+        self.assertIsNotNone(venue.location_updated_at)
+
+    def test_coordinate_timestamp_is_saved_with_targeted_model_updates(self):
+        venue = Venue.objects.create(owner=self.owner, name="Targeted Update Arena")
+        venue.latitude = "27.717200"
+        venue.longitude = "85.324000"
+        venue.save(update_fields=["latitude", "longitude"])
+
+        venue.refresh_from_db()
+        self.assertIsNotNone(venue.location_updated_at)
+
+    def test_incomplete_coordinate_pair_is_rejected(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(
+            reverse("owner-venue"),
+            {"name": "Incomplete Location", "latitude": "27.717200"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("latitude", response.data)
+
+    def test_coordinates_outside_nepal_are_rejected(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(
+            reverse("owner-venue"),
+            {
+                "name": "Outside Location",
+                "latitude": "40.712800",
+                "longitude": "-74.006000",
+                "location_source": "MANUAL_PIN",
+                "location_confirmed": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("within Nepal", str(response.data))
+
+    def test_location_lookup_is_owner_only_and_provider_data_is_sanitised(self):
+        with patch(
+            "venues.views.search_locations",
+            return_value=[
+                {
+                    "latitude": 27.7172,
+                    "longitude": 85.324,
+                    "display_name": "Kathmandu, Nepal",
+                    "place_type": "city",
+                    "secret": "must-not-leak",
+                }
+            ],
+        ):
+            self.client.force_authenticate(self.owner)
+            response = self.client.get(reverse("owner-location-search"), {"q": "Kathmandu"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"][0]["display_name"], "Kathmandu, Nepal")
+        self.assertNotIn("secret", response.data["results"][0])
+
+        self.client.force_authenticate(self.player)
+        denied_response = self.client.get(reverse("owner-location-search"), {"q": "Kathmandu"})
+        self.assertEqual(denied_response.status_code, 403)
+
+    def test_location_lookup_tries_a_nepal_scoped_query_when_needed(self):
+        search_locations.cache_clear()
+
+    def test_location_lookup_falls_back_to_a_recognised_area_for_a_specific_poi(self):
+        search_locations.cache_clear()
+        provider_result = {
+            "lat": "27.7051196",
+            "lon": "85.3335568",
+            "display_name": "Maitidevi, Kathmandu, Nepal",
+            "type": "neighbourhood",
+        }
+        with patch("venues.location._request_json", side_effect=[[], [], [provider_result]]) as request_json:
+            results = search_locations("Maitidevi petrol pump")
+
+        self.assertEqual(results[0]["area"], "Maitidevi")
+        self.assertEqual(results[0]["district"], "Kathmandu")
+        self.assertEqual(request_json.call_args_list[2].args[1]["q"], "Maitidevi, Kathmandu, Nepal")
+        search_locations.cache_clear()
+
+    def test_owner_venue_uses_canonical_district_and_area_values(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(
+            reverse("owner-venue"),
+            {"name": "Maitidevi Cricksal Arena", "city": "kathmandu", "area": "maitidevi"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        venue = Venue.objects.get(owner=self.owner)
+        self.assertEqual(venue.city, "Kathmandu")
+        self.assertEqual(venue.area, "Maitidevi")
+
+        invalid_response = self.client.post(
+            reverse("owner-venue"),
+            {"city": "Kathmandu", "area": "Jawalakhel"},
+            format="json",
+        )
+        self.assertEqual(invalid_response.status_code, 400)
+        self.assertIn("selected district", str(invalid_response.data).lower())
+        provider_result = {
+            "lat": "27.7051196",
+            "lon": "85.3335568",
+            "display_name": "Maitidevi, Kathmandu, Nepal",
+            "type": "neighbourhood",
+        }
+        with patch("venues.location._request_json", side_effect=[[], [provider_result]]) as request_json:
+            results = search_locations("Maitidevi")
+
+        self.assertEqual(results[0]["display_name"], "Maitidevi, Kathmandu, Nepal")
+        self.assertEqual(request_json.call_count, 2)
+        self.assertEqual(request_json.call_args_list[1].args[1]["q"], "Maitidevi, Nepal")
+        search_locations.cache_clear()
+
+    def test_reverse_lookup_rejects_locations_outside_supported_country_boundary(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(
+            reverse("owner-location-reverse"),
+            {"lat": "40.7128", "lng": "-74.0060"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("within Nepal", response.data["detail"])
+
+    def test_public_venue_returns_coordinates_without_owner_location_metadata(self):
+        venue = Venue.objects.create(
+            owner=self.owner,
+            name="Public Location Arena",
+            city="Kathmandu",
+            area="Baneshwor",
+            latitude="27.717200",
+            longitude="85.324000",
+            location_source=Venue.LocationSource.MANUAL_PIN,
+            location_confirmed=True,
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        Court.objects.create(
+            venue=venue,
+            name="Public Court",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+            is_active=True,
+        )
+        response = self.client.get(reverse("public-venue-detail", args=[venue.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["venue"]["latitude"], "27.717200")
+        self.assertEqual(response.data["venue"]["longitude"], "85.324000")
+        self.assertNotIn("location_source", response.data["venue"])
+        self.assertNotIn("location_confirmed", response.data["venue"])
+
+        venue.location_confirmed = False
+        venue.save(update_fields=["location_confirmed"])
+        unconfirmed_response = self.client.get(reverse("public-venue-detail", args=[venue.id]))
+        self.assertIsNone(unconfirmed_response.data["venue"]["latitude"])
+        self.assertIsNone(unconfirmed_response.data["venue"]["longitude"])
+        court_response = self.client.get(reverse("public-court-detail", args=[venue.courts.first().id]))
+        self.assertIsNone(court_response.data["court"]["venue"]["latitude"])
+        self.assertIsNone(court_response.data["court"]["venue"]["longitude"])
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")

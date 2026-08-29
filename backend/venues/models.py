@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 from uuid import uuid4
 
 from django.conf import settings
@@ -6,6 +7,15 @@ from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
+
+
+# SportSpot currently operates in Nepal. Keep the boundary intentionally broad
+# enough to cover all supported districts while rejecting accidental map pins
+# from another country.
+NEPAL_MIN_LATITUDE = Decimal("26.3")
+NEPAL_MAX_LATITUDE = Decimal("30.5")
+NEPAL_MIN_LONGITUDE = Decimal("80.0")
+NEPAL_MAX_LONGITUDE = Decimal("88.3")
 
 
 def booking_code_default():
@@ -30,12 +40,34 @@ class Venue(models.Model):
         UTILITY_BILL = "UTILITY_BILL", "Utility Bill"
         PERMISSION_LETTER = "PERMISSION_LETTER", "Permission Letter"
 
+    class LocationSource(models.TextChoices):
+        MANUAL_PIN = "MANUAL_PIN", "Confirmed map pin"
+        GEOCODED = "GEOCODED", "Address search"
+        LEGACY_LINK = "LEGACY_LINK", "Legacy map link"
+
     owner = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="venue")
     name = models.CharField(max_length=150, blank=True)
     description = models.TextField(blank=True)
     address = models.CharField(max_length=255, blank=True)
     city = models.CharField(max_length=80, blank=True)
     area = models.CharField(max_length=100, blank=True)
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(Decimal("-90")), MaxValueValidator(Decimal("90"))],
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(Decimal("-180")), MaxValueValidator(Decimal("180"))],
+    )
+    location_source = models.CharField(max_length=20, choices=LocationSource.choices, blank=True)
+    location_confirmed = models.BooleanField(default=False)
+    location_updated_at = models.DateTimeField(blank=True, null=True)
     map_location = models.URLField(blank=True)
     contact_phone = models.CharField(max_length=20, blank=True)
     opening_time = models.TimeField(blank=True, null=True)
@@ -107,6 +139,18 @@ class Venue(models.Model):
             raise ValidationError("Only court owner accounts can own venues.")
         if self.opening_time and self.closing_time and self.opening_time >= self.closing_time:
             raise ValidationError("Opening time must be before closing time.")
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValidationError("Latitude and longitude must be provided together.")
+        if self.latitude is not None:
+            latitude = Decimal(str(self.latitude))
+            longitude = Decimal(str(self.longitude))
+            if not (
+                NEPAL_MIN_LATITUDE <= latitude <= NEPAL_MAX_LATITUDE
+                and NEPAL_MIN_LONGITUDE <= longitude <= NEPAL_MAX_LONGITUDE
+            ):
+                raise ValidationError("Venue coordinates must be within Nepal.")
+        if self.location_confirmed and (self.latitude is None or self.longitude is None):
+            raise ValidationError("Confirm a map pin before marking the venue location as confirmed.")
         if (
             self.cancellation_partial_refund_enabled
             and self.cancellation_partial_refund_hours >= self.cancellation_full_refund_hours
@@ -114,6 +158,11 @@ class Venue(models.Model):
             raise ValidationError("Partial-refund cutoff must be earlier than the full-refund cutoff.")
 
     def save(self, *args, **kwargs):
+        if self.latitude is not None and self.longitude is not None and self.location_updated_at is None:
+            self.location_updated_at = timezone.now()
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "location_updated_at" not in update_fields:
+                kwargs["update_fields"] = [*update_fields, "location_updated_at"]
         self.clean()
         super().save(*args, **kwargs)
 
@@ -251,7 +300,7 @@ class CourtSlot(models.Model):
 
     @property
     def display_time(self):
-        return f"{self.start_time.strftime('%I:%M %p')} - {self.end_time.strftime('%I:%M %p')}"
+        return f"{self.start_time.strftime('%I:%M %p').lstrip('0')} - {self.end_time.strftime('%I:%M %p').lstrip('0')}"
 
     def release_if_expired(self):
         if self.status == self.Status.RESERVED and self.reserved_until and self.reserved_until <= timezone.now():

@@ -1,12 +1,17 @@
+from asgiref.sync import async_to_sync
+from channels.db import database_sync_to_async
+from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.core import mail
-from django.test import override_settings
+from django.test import TransactionTestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import AccountSettings
 from notifications.models import EmailDelivery, Notification
 from notifications.services import create_notification, notify_team_invitation
+from sportspot_api.asgi import application
 from teams.models import Team, TeamMember
 
 
@@ -100,6 +105,7 @@ class NotificationApiTests(APITestCase):
             ).count(),
             1,
         )
+
 
     def test_user_cannot_access_or_modify_another_users_notification(self):
         self.client.force_authenticate(self.other_player)
@@ -225,3 +231,54 @@ class NotificationApiTests(APITestCase):
         self.assertIsNone(notification)
         self.assertFalse(Notification.objects.filter(recipient=opted_out).exists())
         self.assertFalse(EmailDelivery.objects.filter(recipient=opted_out).exists())
+
+
+class NotificationRealtimeTests(TransactionTestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            email="realtime@example.com",
+            password="test-password",
+            full_name="Realtime Player",
+            phone="9800000099",
+            role="PLAYER",
+            email_verified=True,
+        )
+
+    def test_authenticated_user_receives_only_new_notification_events(self):
+        async_to_sync(self._assert_notification_event)()
+
+    async def _assert_notification_event(self):
+        communicator = WebsocketCommunicator(
+            application,
+            "/ws/notifications/",
+            headers=[(b"origin", b"http://localhost:3000")],
+        )
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        self.assertEqual((await communicator.receive_json_from())["type"], "authenticate")
+
+        refresh = RefreshToken.for_user(self.user)
+        refresh["auth_version"] = self.user.auth_version
+        await communicator.send_json_to(
+            {"type": "authenticate", "access_token": str(refresh.access_token)}
+        )
+        self.assertEqual((await communicator.receive_json_from())["type"], "ready")
+
+        @database_sync_to_async
+        def create_event():
+            return create_notification(
+                recipient=self.user,
+                notification_type=Notification.NotificationType.SYSTEM_ANNOUNCEMENT,
+                title="Realtime update",
+                message="This update should arrive once.",
+                deduplication_key="realtime:test-event",
+            )
+
+        notification = await create_event()
+        event = await communicator.receive_json_from()
+        self.assertEqual(
+            event,
+            {"type": "notification.created", "notification_id": notification.id},
+        )
+
+        await communicator.disconnect()

@@ -7,9 +7,14 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getCurrentUser } from "@/lib/auth";
-import { addCalendarDays, formatDateOnly, getLocalDateString } from "@/lib/dates";
+import { addCalendarDays, formatDateOnly, formatTimeValue, getLocalDateString } from "@/lib/dates";
+import { buildVenueDirectionsHref } from "@/lib/maps";
 import { emitToast } from "@/lib/toast";
+import BackButton from "@/components/BackButton";
+import VenueMap from "@/components/venue/VenueMap";
 import type { Booking, CourtSlot, PublicVenue } from "@/types/venue";
+
+const formatTime = formatTimeValue;
 
 export default function VenueDetailPage() {
   const params = useParams<{ id: string }>();
@@ -130,6 +135,7 @@ export default function VenueDetailPage() {
   const selectedCourt = useMemo(() => venue?.courts.find((court) => court.id === selectedCourtId) || null, [selectedCourtId, venue]);
   const selectedSlotRange = useMemo(() => getConsecutiveSlotRange(slots, selectedSlotId, durationHours), [durationHours, selectedSlotId, slots]);
   const dateOptions = getDateOptions();
+  const directionsHref = venue ? buildVenueDirectionsHref(venue.latitude, venue.longitude, venue.map_location) : "";
 
   if (isLoading) {
     return (
@@ -149,6 +155,7 @@ export default function VenueDetailPage() {
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <BackButton href={backToCourtsHref} label="Back to courts" />
       <PhotoGallery venue={venue} />
 
       {matchmakingGameId ? (
@@ -352,14 +359,14 @@ export default function VenueDetailPage() {
                 <h2 className="text-xl font-black text-sportNavy">Location</h2>
                 <p className="mt-2 text-sm text-slate-600">{venue.address || "Address not added"}, {venue.area}, {venue.city}</p>
               </div>
-              {venue.map_location ? (
-                <a className="rounded-md border border-green-200 px-4 py-2 text-sm font-black text-sportGreen hover:bg-green-50" href={venue.map_location} rel="noreferrer" target="_blank">
+              {directionsHref ? (
+                <a className="rounded-md border border-green-200 px-4 py-2 text-sm font-black text-sportGreen hover:bg-green-50" href={directionsHref} rel="noreferrer" target="_blank">
                   Get Directions
                 </a>
               ) : null}
             </div>
-            <div className="mt-5 flex h-56 items-center justify-center rounded-lg bg-gradient-to-br from-green-50 via-slate-100 to-amber-50 text-sm font-black text-slate-500">
-              Map location preview
+            <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+              <VenueMap latitude={venue.latitude} longitude={venue.longitude} />
             </div>
           </section>
         </div>
@@ -527,15 +534,6 @@ function formatDate(value: string) {
     day: "numeric",
     year: "numeric",
   });
-}
-
-function formatTime(value: string) {
-  const [hourValue, minuteValue] = value.split(":");
-  const hour = Number(hourValue);
-  const minute = Number(minuteValue);
-  const suffix = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
 function formatChoice(value: string) {

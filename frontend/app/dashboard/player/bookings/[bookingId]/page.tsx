@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import CancelBookingModal, { type CancelBookingPayload } from "@/components/CancelBookingModal";
+import BackButton from "@/components/BackButton";
 import FeedbackToast from "@/components/FeedbackToast";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
@@ -67,6 +68,7 @@ export default function BookingPassPage() {
 
   return (
     <div className="space-y-6">
+      <BackButton href="/dashboard/player/bookings" label="Back to bookings" />
       <FeedbackToast message={error || notice} onClose={() => { setError(""); setNotice(""); }} type={error ? "error" : "success"} />
 
       <section className="overflow-hidden rounded-xl border border-green-200 bg-white shadow-sm">

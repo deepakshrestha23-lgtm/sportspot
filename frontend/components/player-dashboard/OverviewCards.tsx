@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { formatDateTimeInNepal } from "@/lib/dates";
 import type {
   PlayerNextActivity,
   PlayerPendingAction,
@@ -220,7 +221,7 @@ function formatStatus(value: string) {
 
 function formatDate(value: string | null) {
   if (!value) return "Date pending";
-  return new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric" }).format(new Date(value));
+  return formatDateTimeInNepal(value, { weekday: "short", month: "short", day: "numeric" });
 }
 
 function relativeTime(value: string) {

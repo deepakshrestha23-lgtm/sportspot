@@ -11,6 +11,7 @@ import GameParticipantEditModal from "@/components/player-dashboard/GameParticip
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { emitToast } from "@/lib/toast";
+import { toNepalTime } from "@/lib/dates";
 import type { EligibleGameBooking, GamePlayerLookup, GamePlayerLookupResponse, GameResponse, GameRole, JoinRequest, MatchmakingGame } from "@/types/matchmaking";
 
 const roles: Array<{ label: string; value: GameRole }> = [
@@ -307,8 +308,8 @@ export default function GameManagePage() {
     }
   }
 
-  if (isLoading) return <div className="h-[560px] animate-pulse rounded-2xl bg-white" />;
-  if (error || !game) return <section className="rounded-2xl border border-red-100 bg-red-50 p-6"><h1 className="text-xl font-black text-red-950">Game unavailable</h1><p className="mt-2 text-sm font-semibold text-red-700">{error}</p><button className="mt-5 rounded-xl bg-red-600 px-5 py-3 text-sm font-black text-white" onClick={() => loadGame()} type="button">Retry</button></section>;
+  if (isLoading) return <div className="sport-surface h-[560px] animate-pulse" />;
+  if (error || !game) return <section className="sport-error-state"><h1 className="text-xl font-bold text-red-950">Game unavailable</h1><p className="mt-2 text-sm font-semibold text-red-700">{error}</p><button className="sport-primary-button mt-5 bg-red-600 hover:bg-red-700" onClick={() => loadGame()} type="button">Retry</button></section>;
 
   const pendingRequests = requests.filter((request) => request.status === "PENDING");
   const waitlistedRequests = requests.filter((request) => request.status === "WAITLISTED");
@@ -318,7 +319,7 @@ export default function GameManagePage() {
 
   return (
     <div className="space-y-5">
-      <DashboardPageHeader eyebrow={game.game_type === "FILL_SQUAD" ? "Fill My Squad Host" : "Pickup Game Host"} title={game.title} description={`${game.venue_name} - ${game.booking_display_time}`} actions={<div className="flex flex-wrap items-center gap-2">{canEditGame ? <button className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:border-green-200 hover:text-sportGreen" onClick={() => setShowEditModal(true)} type="button">Edit game</button> : null}{canOpenRoom ? <Link className="inline-flex min-h-11 items-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white" href={`/dashboard/player/games/${game.id}/room`}>{game.game_type === "FILL_SQUAD" ? (game.is_booking_verified ? "Open Squad Room" : "Open Squad Planning") : (game.is_booking_verified ? "Open Game Room" : "Open Planning Room")}</Link> : null}</div>} />
+      <DashboardPageHeader eyebrow={game.game_type === "FILL_SQUAD" ? "Fill My Squad Host" : "Pickup Game Host"} title={game.title} description={`${game.venue_name} - ${game.booking_display_time}`} actions={<div className="flex flex-wrap items-center gap-2">{canEditGame ? <button className="sport-secondary-button min-h-11" onClick={() => setShowEditModal(true)} type="button">Edit game</button> : null}{canOpenRoom ? <Link className="sport-primary-button min-h-11" href={`/dashboard/player/games/${game.id}/room`}>{roomLinkLabel(game)}</Link> : null}</div>} />
       {!canEditGame && game.user_state.is_host ? <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">This game is {game.status_label.toLowerCase()} and can no longer be edited.</p> : null}
       {game.requires_reconfirmation ? <section className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4"><h2 className="font-black text-amber-950">Schedule update needs attention</h2><p className="mt-1 text-sm font-semibold leading-6 text-amber-800">The confirmed booking differs from the plan shared with the roster. Registered players must confirm or decline the new details. Offline guests cannot respond in SportSpot, so confirm with each guest and use the action on their roster entry.</p><div className="mt-3 flex flex-wrap gap-3 text-xs font-black text-amber-900"><span>{game.registered_reconfirmation_pending_count} player response{game.registered_reconfirmation_pending_count === 1 ? "" : "s"} pending</span><span>{game.guest_confirmation_pending_count} guest acknowledgement{game.guest_confirmation_pending_count === 1 ? "" : "s"} pending</span></div></section> : null}
       <section className="grid gap-4 md:grid-cols-5"><Metric label="Occupied" value={`${game.occupied_spots_count}/${game.total_capacity}`} /><Metric label="Confirmed" value={game.confirmed_participants_count} /><Metric label="Provisional" value={game.provisional_participants_count} /><Metric label="Open spots" value={game.available_spots} /><Metric label="Waitlist" value={game.waitlist_count} /></section>
@@ -468,6 +469,8 @@ function RosterCard({ actionInProgress, game, onConfirmGuest, onEdit, onInviteTo
   );
 }
 
+function roomLinkLabel(game: MatchmakingGame) { if (game.user_state.room_access === "READ_ONLY") return "View Game Record"; if (game.user_state.room_access === "RECONFIRMATION") return "Review Schedule Change"; if (game.game_type === "FILL_SQUAD") return game.is_booking_verified ? "Open Squad Room" : "Open Squad Planning"; return game.is_booking_verified ? "Open Game Room" : "Open Planning Room"; }
+
 function ParticipantStatusBadge({ participant }: { participant: RosterParticipant }) {
   const tone = participant.status === "CONFIRMED" ? "green" : participant.status === "GUEST_CONFIRMATION_REQUIRED" ? "amber" : participant.status === "RECONFIRM_REQUIRED" ? "blue" : "slate";
   const label = participant.status === "GUEST_CONFIRMATION_REQUIRED" ? "Host confirmation needed" : participant.status_label;
@@ -485,7 +488,7 @@ function buildGuidedBookingHref(game: MatchmakingGame) {
   query.set("game_title", game.title);
   if (game.proposed_date) query.set("date", game.proposed_date);
   if (game.preferred_area) query.set("area", game.preferred_area);
-  const startTime = (game.proposed_start_time || game.start_at?.slice(11, 16) || "").slice(0, 5);
+  const startTime = (game.proposed_start_time?.slice(0, 5) || (game.start_at ? toNepalTime(game.start_at) : ""));
   if (startTime) query.set("start_time", startTime);
   const duration = getGameDurationMinutes(game);
   if (duration) query.set("duration", String(duration));

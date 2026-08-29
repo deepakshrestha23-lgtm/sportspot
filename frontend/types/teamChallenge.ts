@@ -79,10 +79,47 @@ export type TeamFixture = {
   id: number;
   status: string;
   status_label: string;
+  room_state: "PLANNING" | "RECONFIRMATION" | "CONFIRMED" | "IN_PROGRESS" | "READ_ONLY";
+  room_access: "NONE" | "PLANNING" | "RECONFIRMATION" | "CONFIRMED" | "IN_PROGRESS" | "READ_ONLY";
   booking_summary: ChallengeBookingSummary | null;
   result: string;
+  result_submitted_at: string | null;
+  result_confirmed_at: string | null;
+  participants: TeamFixtureParticipant[];
+  permissions: TeamFixturePermissions;
   created_at: string;
   updated_at: string;
+};
+
+export type TeamFixturePermissions = {
+  is_captain: boolean;
+  team_id: number | null;
+  can_manage_lineup: boolean;
+  can_record_attendance: boolean;
+  can_submit_result: boolean;
+  can_confirm_result: boolean;
+  can_view_room?: boolean;
+};
+
+export type FixtureEligiblePlayer = {
+  player_id: number;
+  player_name: string;
+  sportspot_id: string;
+  skill_level: string;
+  cricksal_role: string;
+};
+
+export type TeamFixtureParticipant = {
+  id: number;
+  team: number;
+  team_name: string;
+  player: number;
+  player_name: string;
+  sportspot_id: string;
+  status: string;
+  status_label: string;
+  attendance_recorded_at: string | null;
+  created_at: string;
 };
 
 export type TeamChallengePermissions = {
@@ -96,6 +133,10 @@ export type TeamChallengePermissions = {
   can_cancel: boolean;
   can_select_opponent: boolean;
   can_attach_booking: boolean;
+  can_withdraw_response: boolean;
+  can_reconfirm: boolean;
+  can_reschedule: boolean;
+  can_view_room: boolean;
 };
 
 export type TeamChallenge = {
@@ -109,6 +150,8 @@ export type TeamChallenge = {
   is_open_for_opponent_response: boolean;
   response_deadline: string;
   booking_deadline: string | null;
+  reconfirmation_requested_at: string | null;
+  reconfirmation_deadline: string | null;
   challenger_team: ChallengeTeamSummary;
   challenged_team: ChallengeTeamSummary | null;
   current_proposal: ChallengeProposal;
@@ -122,6 +165,21 @@ export type TeamChallenge = {
   updated_at: string;
 };
 
-export type TeamChallengeListResponse = { challenges: TeamChallenge[] };
+export type ChallengeFilterOption = { value: string; label: string };
+
+export type ChallengeTabKey = "teams" | "open" | "mine";
+export type ChallengeReferenceResponse = {
+  filters: {
+    districts: ChallengeFilterOption[];
+    areas_by_district: Record<string, ChallengeFilterOption[]>;
+    skill_levels: ChallengeFilterOption[];
+    intensities: ChallengeFilterOption[];
+    court_modes: ChallengeFilterOption[];
+    statuses: ChallengeFilterOption[];
+    sort_options: Record<ChallengeTabKey, ChallengeFilterOption[]>;
+  };
+};
+
+export type TeamChallengeListResponse = { count: number; challenges: TeamChallenge[] };
 export type TeamChallengeResponse = { challenge: TeamChallenge };
-export type ChallengeTeamListResponse = { teams: ChallengeTeamSummary[] };
+export type ChallengeTeamListResponse = { count: number; teams: ChallengeTeamSummary[] };

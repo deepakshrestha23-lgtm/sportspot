@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import FeedbackToast from "@/components/FeedbackToast";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { formatDateTimeInNepal, formatTimeValue } from "@/lib/dates";
 import type { Venue } from "@/types/venue";
 
 export default function AdminVenueApprovalsPage() {
@@ -93,7 +94,7 @@ export default function AdminVenueApprovalsPage() {
                     <Info label="Hours" value={`${toTime(venue.opening_time)} - ${toTime(venue.closing_time)}`} />
                     <Info label="Courts" value={`${venue.courts?.length || 0} court(s)`} />
                     <Info label="Document Type" value={venue.verification_document_type ? formatChoice(venue.verification_document_type) : "Not selected"} />
-                    <Info label="Submitted" value={venue.submitted_at ? new Date(venue.submitted_at).toLocaleString() : "Not submitted"} />
+                    <Info label="Submitted" value={venue.submitted_at ? formatDateTimeInNepal(venue.submitted_at, { dateStyle: "medium", timeStyle: "short" }) : "Not submitted"} />
                   </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <LongInfo label="Venue Rules" value={venue.rules || "Not added"} />
@@ -315,9 +316,7 @@ function getMediaUrl(path: string) {
   return `${baseUrl}${path}`;
 }
 
-function toTime(value: string | null) {
-  return value ? value.slice(0, 5) : "Not set";
-}
+const toTime = formatTimeValue;
 
 function formatChoice(value: string) {
   return value

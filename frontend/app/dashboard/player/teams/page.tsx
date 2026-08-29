@@ -8,6 +8,7 @@ import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPage
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { emitToast } from "@/lib/toast";
+import { formatDateTimeInNepal } from "@/lib/dates";
 import type { MyTeamsResponse, Team, TeamInvitation, TeamInvitationsResponse } from "@/types/team";
 
 type Tab = "teams" | "invitations";
@@ -60,7 +61,7 @@ export default function PlayerTeamsPage() {
         emitToast({ message: "The team invitation has been declined.", type: "success", dedupeKey: `team-invitation-declined-${invitation.id}` });
       }
     } catch (requestError) {
-      getApiErrorMessage(requestError, "We could not update this invitation. Please try again.");
+      emitToast({ message: getApiErrorMessage(requestError, "We could not update this invitation. Please try again."), type: "error", dedupeKey: `team-invitation-${invitation.id}-error` });
     } finally {
       setProcessingInvitationId(null);
       setDeclineTarget(null);
@@ -81,7 +82,7 @@ export default function PlayerTeamsPage() {
     <div className="space-y-5">
       <DashboardPageHeader
         actions={
-          <Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-5 text-sm font-black text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" href="/dashboard/player/teams/create">
+          <Link className="sport-primary-button" href="/dashboard/player/teams/create">
             Create Team
           </Link>
         }
@@ -90,7 +91,7 @@ export default function PlayerTeamsPage() {
         description="View your teams, manage captain responsibilities, and respond to invitations from one place."
       />
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="sport-surface overflow-hidden">
         <div className="flex flex-col gap-4 border-b border-slate-200 px-4 pt-4 sm:px-5 sm:pt-5">
           <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Team sections">
             <TabButton active={activeTab === "teams"} count={teams.length} label="My Teams" onClick={() => setActiveTab("teams")} />
@@ -104,16 +105,16 @@ export default function PlayerTeamsPage() {
           <ErrorState message={error} onRetry={loadData} />
         ) : activeTab === "teams" ? (
           <div className="space-y-5 p-4 sm:p-5">
-            <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
               {showSearch ? (
                 <label className="min-w-0 flex-1">
                   <span className="sr-only">Search teams</span>
-                  <input className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-2 focus:ring-green-100" onChange={(event) => setSearch(event.target.value)} placeholder="Search your teams" value={search} />
+                  <input className="sport-input" onChange={(event) => setSearch(event.target.value)} placeholder="Search your teams" value={search} />
                 </label>
               ) : (
                 <p className="text-sm font-semibold text-slate-600">Filter by your role in each team.</p>
               )}
-              <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+              <div className="flex rounded-md border border-slate-200 bg-white p-1">
                 <RoleButton active={roleFilter === "ALL"} label="All" onClick={() => setRoleFilter("ALL")} />
                 <RoleButton active={roleFilter === "CAPTAIN"} label="Captain" onClick={() => setRoleFilter("CAPTAIN")} />
                 <RoleButton active={roleFilter === "MEMBER"} label="Member" onClick={() => setRoleFilter("MEMBER")} />
@@ -167,7 +168,7 @@ export default function PlayerTeamsPage() {
 function TeamCard({ openMenuId, setOpenMenuId, team }: { openMenuId: number | null; setOpenMenuId: (id: number | null) => void; team: Team }) {
   const menuOpen = openMenuId === team.id;
   return (
-    <article className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md">
+    <article className="sport-card group transition hover:border-green-200 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <TeamAvatar image={team.team_photo} name={team.name} size="md" />
@@ -222,7 +223,7 @@ function TeamActionMenu({ isCaptain, teamId }: { isCaptain: boolean; teamId: num
 
 function InvitationCard({ invitation, isProcessing, onAccept, onDecline }: { invitation: TeamInvitation; isProcessing: boolean; onAccept: () => void; onDecline: () => void }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-green-200 hover:shadow-md">
+    <article className="sport-card transition hover:border-green-200 hover:shadow-md">
       <div className="flex items-start gap-3">
         <TeamAvatar image={invitation.team_photo} name={invitation.team_name} size="md" />
         <div className="min-w-0 flex-1">
@@ -273,15 +274,15 @@ function TeamAvatar({ image, name, size }: { image: string; name: string; size: 
 }
 
 function EmptyState({ description, onPrimary, primaryHref, primaryLabel, secondaryHref, secondaryLabel, title }: { description: string; onPrimary?: () => void; primaryHref?: string; primaryLabel: string; secondaryHref?: string; secondaryLabel?: string; title: string }) {
-  const primaryClass = "inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200";
+  const primaryClass = "sport-primary-button";
   return (
-    <section className="rounded-2xl border border-dashed border-green-300 bg-green-50 p-8 text-center">
+    <section className="sport-empty-state border-green-200 bg-green-50">
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-xl font-black text-sportGreen shadow-sm">SS</div>
       <h2 className="mt-4 text-xl font-black text-sportNavy">{title}</h2>
       <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-600">{description}</p>
       <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
         {primaryHref ? <Link className={primaryClass} href={primaryHref}>{primaryLabel}</Link> : <button className={primaryClass} onClick={onPrimary} type="button">{primaryLabel}</button>}
-        {secondaryHref && secondaryLabel ? <Link className="inline-flex min-h-11 items-center justify-center rounded-xl border border-green-200 bg-white px-5 text-sm font-black text-sportGreen hover:bg-green-50" href={secondaryHref}>{secondaryLabel}</Link> : null}
+        {secondaryHref && secondaryLabel ? <Link className="sport-secondary-button border-green-200 text-sportGreen hover:bg-green-50" href={secondaryHref}>{secondaryLabel}</Link> : null}
       </div>
     </section>
   );
@@ -300,10 +301,10 @@ function TeamsSkeleton() {
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <section className="m-4 rounded-2xl border border-red-100 bg-red-50 p-6 sm:m-5">
+    <section className="sport-error-state m-4 sm:m-5">
       <h2 className="text-lg font-black text-red-950">Teams could not be loaded</h2>
       <p className="mt-2 text-sm font-semibold leading-6 text-red-700">{message}</p>
-      <button className="mt-4 min-h-11 rounded-xl bg-red-600 px-5 text-sm font-black text-white hover:bg-red-700" onClick={onRetry} type="button">Retry</button>
+      <button className="sport-primary-button mt-4 bg-red-600 hover:bg-red-700" onClick={onRetry} type="button">Retry</button>
     </section>
   );
 }
@@ -338,7 +339,7 @@ function formatDate(value?: string) {
   if (!value) return "Recently";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Recently";
-  return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(date);
+  return formatDateTimeInNepal(value, { day: "numeric", month: "short", year: "numeric" });
 }
 
 function getTeamPhotoSrc(value: string) {

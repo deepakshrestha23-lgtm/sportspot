@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { formatDateTimeInNepal } from "@/lib/dates";
 import type { GameIntensity, GameListResponse, GameRole, GameType, MatchmakingGame } from "@/types/matchmaking";
 
 const roles: Array<{ label: string; value: GameRole | "" }> = [
@@ -58,7 +59,7 @@ const spotOptions = [
 
 export default function FindGamePage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-slate-50 px-4 py-8"><div className="mx-auto h-72 max-w-7xl animate-pulse rounded-3xl bg-white" /></main>}>
+    <Suspense fallback={<main className="min-h-screen bg-[var(--sport-canvas)] px-4 py-8"><div className="sport-surface mx-auto h-72 max-w-7xl animate-pulse" /></main>}>
       <FindGameContent />
     </Suspense>
   );
@@ -175,16 +176,16 @@ function FindGameContent() {
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-sportGreen">Find Games</p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-sportNavy sm:text-4xl">Find Cricksal games near you</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+          <p className="sport-eyebrow">Find Games</p>
+            <h1 className="sport-page-title">Find Cricksal games near you</h1>
+            <p className="sport-page-description">
               Join individual Pickup Games or help a permanent team Fill My Squad. Verified games already have a SportSpot booking; planning games recruit first and confirm the court later.
             </p>
           </div>
-          <Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-5 text-sm font-black text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" href="/dashboard/player/games/create">Create Game</Link>
+          <Link className="sport-primary-button" href="/dashboard/player/games/create">Create Game</Link>
         </div>
 
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <section className="sport-surface mt-6 p-4">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_150px_160px_160px_170px_170px_150px]">
             <Field label="Search"><input className={inputClass} onChange={(event) => setSearch(event.target.value)} placeholder="Search game, host, venue or area" value={search} /></Field>
             <Field label="Area"><input className={inputClass} onChange={(event) => setArea(event.target.value)} placeholder="Any area" value={area} /></Field>
@@ -199,8 +200,8 @@ function FindGameContent() {
           <div className="mt-3 grid gap-3 sm:grid-cols-[220px_220px_220px_auto] sm:items-end">
             <Field label="Date"><input className={inputClass} min={today()} onChange={(event) => setDate(event.target.value)} type="date" value={date} /></Field>
             <Select label="Open spots" onChange={setMinimumSpots} options={spotOptions} value={minimumSpots} />
-            <label className="flex min-h-12 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700"><input checked={waitlistOnly} className="h-4 w-4 accent-green-700" onChange={(event) => setWaitlistOnly(event.target.checked)} type="checkbox" /> Waitlist available</label>
-            {hasFilters ? <button className="min-h-12 rounded-xl border border-slate-200 px-4 text-sm font-black text-sportGreen hover:bg-green-50" onClick={clearFilters} type="button">Clear filters</button> : null}
+            <label className="flex min-h-12 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-bold text-slate-700"><input checked={waitlistOnly} className="h-4 w-4 accent-green-700" onChange={(event) => setWaitlistOnly(event.target.checked)} type="checkbox" /> Waitlist available</label>
+            {hasFilters ? <button className="sport-secondary-button min-h-12 border-green-200 text-sportGreen hover:bg-green-50" onClick={clearFilters} type="button">Clear filters</button> : null}
           </div>
         </section>
 
@@ -212,7 +213,7 @@ function FindGameContent() {
         </div>
 
         {isLoading && games.length === 0 ? (
-          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div className="h-80 animate-pulse rounded-2xl bg-white shadow-sm" key={item} />)}</div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div className="sport-surface h-80 animate-pulse" key={item} />)}</div>
         ) : error && games.length === 0 ? (
           <StateCard title="Games unavailable" description={error} actionLabel="Retry" onAction={() => loadGames(query)} />
         ) : games.length === 0 ? (
@@ -234,7 +235,7 @@ function GameCard({ game }: { game: MatchmakingGame }) {
   const canJoin = !game.user_state.is_host && !game.user_state.is_participant && !game.user_state.request_status && game.status === "RECRUITING";
   const canWaitlist = !game.user_state.is_host && !game.user_state.is_participant && !game.user_state.request_status && game.status === "FULL" && game.waitlist_enabled;
   return (
-    <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md">
+    <article className="sport-surface flex h-full flex-col overflow-hidden transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md">
       <div className="border-b border-slate-100 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-white">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -243,7 +244,7 @@ function GameCard({ game }: { game: MatchmakingGame }) {
           </div>
           <StatusBadge game={game} />
         </div>
-        <p className="mt-3 text-sm font-semibold text-white/75">{formatDateTime(game.start_at)} - {game.booking_display_time}</p>
+        <p className="mt-3 text-sm font-semibold text-white/75">{formatDateTimeInNepal(game.start_at)} - {game.booking_display_time}</p>
       </div>
       <div className="flex flex-1 flex-col p-4">
         <div className="flex flex-wrap gap-2">
@@ -273,7 +274,7 @@ function GameCard({ game }: { game: MatchmakingGame }) {
         </div>
         <div className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
           <p className="text-xs font-bold text-slate-500">{formatSkill(game.min_skill_level)}</p>
-          <Link className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" href={`/find-game/${game.id}`}>{canJoin ? "Request to Join" : canWaitlist ? "Join Waitlist" : "View Details"}</Link>
+          <Link className="sport-primary-button min-h-10 shrink-0" href={`/find-game/${game.id}`}>{canJoin ? "Request to Join" : canWaitlist ? "Join Waitlist" : "View Details"}</Link>
         </div>
       </div>
     </article>
@@ -303,7 +304,7 @@ function StatusBadge({ game }: { game: MatchmakingGame }) {
 }
 
 function StateCard({ actionLabel, description, onAction, title }: { actionLabel: string; description: string; onAction: () => void; title: string }) {
-  return <section className="mt-4 rounded-2xl border border-dashed border-green-300 bg-white p-8 text-center shadow-sm"><h2 className="text-xl font-black text-sportNavy">{title}</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">{description}</p><button className="mt-5 rounded-xl bg-sportGreen px-5 py-3 text-sm font-black text-white" onClick={onAction} type="button">{actionLabel}</button></section>;
+  return <section className="sport-empty-state mt-4 border-green-200 bg-green-50"><h2 className="text-xl font-bold text-sportNavy">{title}</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">{description}</p><button className="sport-primary-button mt-5" onClick={onAction} type="button">{actionLabel}</button></section>;
 }
 
 function useCountdown(target: string | null) {
@@ -324,11 +325,6 @@ function useCountdown(target: string | null) {
   return `Closes in ${hours}h ${minutes % 60}m`;
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) return "Date to be confirmed";
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
-
 function formatSkill(value: string) {
   if (value === "OPEN") return "Open to all skill levels";
   return `${value.charAt(0)}${value.slice(1).toLowerCase()}+`;
@@ -340,4 +336,4 @@ function today() {
   return date.toISOString().slice(0, 10);
 }
 
-const inputClass = "h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100";
+const inputClass = "sport-input";

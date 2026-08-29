@@ -423,7 +423,7 @@ def serialize_booking_activity(booking):
         "date": slots[0].date.isoformat() if slots else "",
         "start_at": start_at.isoformat() if start_at else None,
         "end_at": end_at.isoformat() if end_at else None,
-        "display_time": f"{slots[0].start_time.strftime('%I:%M %p')} - {slots[-1].end_time.strftime('%I:%M %p')}" if slots else "",
+        "display_time": f"{slots[0].start_time.strftime('%I:%M %p').lstrip('0')} - {slots[-1].end_time.strftime('%I:%M %p').lstrip('0')}" if slots else "",
         "amount": str(booking.amount),
         "action_url": f"/dashboard/player/bookings/{booking.id}",
     }

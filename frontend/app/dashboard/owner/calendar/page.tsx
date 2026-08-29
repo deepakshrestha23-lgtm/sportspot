@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import TimeSelect from "@/components/TimeSelect";
 import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
-import { getLocalDateString } from "@/lib/dates";
+import { addCalendarDays, buildTimeOptions, formatDateOnly, formatTimeRange, formatTimeValue, getLocalDateString } from "@/lib/dates";
 import { emitToast } from "@/lib/toast";
 import type { Booking, CourtSlot, OwnerCalendarBlockConflict, OwnerCalendarResponse, OwnerCalendarViewMode, SlotBlockType } from "@/types/venue";
 
@@ -308,8 +309,8 @@ function BlockCourtModal({ calendar, isOpen, onBlocked, onClose, selectedDate }:
           <label className="calendar-field sm:col-span-2">Court<select value={courtId} onChange={(event) => setCourtId(event.target.value)}>{calendar.courts.map((court) => <option key={court.id} value={court.id}>{court.name}</option>)}</select></label>
           <label className="calendar-field">Date<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
           <label className="calendar-field">Block type<select value={blockType} onChange={(event) => setBlockType(event.target.value as SlotBlockType)}>{BLOCK_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
-          <label className="calendar-field">Start time<input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
-          <label className="calendar-field">End time<input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} /></label>
+          <label className="calendar-field">Start time<TimeSelect ariaLabel="Block start time" className="mt-1 w-full" options={buildTimeOptions()} value={startTime} onChange={setStartTime} /></label>
+          <label className="calendar-field">End time<TimeSelect ariaLabel="Block end time" className="mt-1 w-full" options={buildTimeOptions()} value={endTime} onChange={setEndTime} /></label>
           <label className="calendar-field sm:col-span-2">Reason<input placeholder="Example: Surface cleaning" value={reason} onChange={(event) => setReason(event.target.value)} /></label>
           <label className="calendar-field sm:col-span-2">Internal note optional<textarea rows={3} placeholder="Add details for your staff if needed." value={note} onChange={(event) => setNote(event.target.value)} /></label>
         </div>
@@ -397,17 +398,7 @@ function parseMinutes(value?: string | null) {
 function formatMinuteLabel(minute: number) {
   const hours = Math.floor(minute / 60);
   const minutes = minute % 60;
-  return new Date(2020, 0, 1, hours, minutes).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-}
-
-function formatTimeRange(start?: string | null, end?: string | null) {
-  return `${formatTime(start)} - ${formatTime(end)}`;
-}
-
-function formatTime(value?: string | null) {
-  if (!value) return "TBD";
-  const [hours = "0", minutes = "0"] = value.split(":");
-  return new Date(2020, 0, 1, Number(hours), Number(minutes)).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return formatTimeValue(`${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`);
 }
 
 function getWeekDays(weekStart: string) {
@@ -415,9 +406,7 @@ function getWeekDays(weekStart: string) {
 }
 
 function shiftDate(value: string, days: number) {
-  const date = new Date(`${value}T12:00:00`);
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return addCalendarDays(value, days);
 }
 
 function getCalendarTitle(calendar: OwnerCalendarResponse) {
@@ -426,15 +415,15 @@ function getCalendarTitle(calendar: OwnerCalendarResponse) {
 }
 
 function formatDateLabel(value: string) {
-  return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" });
+  return formatDateOnly(value, { weekday: "long", month: "short", day: "numeric", year: "numeric" });
 }
 
 function formatShortDate(value: string) {
-  return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatDateOnly(value, { month: "short", day: "numeric" });
 }
 
 function formatWeekday(value: string) {
-  return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { weekday: "short" });
+  return formatDateOnly(value, { weekday: "short" });
 }
 
 function formatMoney(value: string) {

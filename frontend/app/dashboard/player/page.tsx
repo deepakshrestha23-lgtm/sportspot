@@ -172,7 +172,7 @@ export default function PlayerDashboardPage() {
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,0.72fr)_minmax(270px,0.28fr)]">
         <RecentActivityList activities={overview.recent_activity} />
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section className="sport-card p-4">
           <h2 className="text-lg font-black text-sportNavy">Quick Actions</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             {quickActions.map((action) => (

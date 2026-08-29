@@ -28,6 +28,25 @@ function refreshAccessToken(refreshToken: string) {
   return refreshPromise;
 }
 
+export async function refreshAccessTokenForRealtime() {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+
+  try {
+    const accessToken = await refreshAccessToken(refreshToken);
+    saveAccessToken(accessToken);
+    return accessToken;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      clearAuthSession();
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        window.location.assign("/login");
+      }
+    }
+    return null;
+  }
+}
+
 api.interceptors.request.use((config) => {
   const token = getAccessToken();
 

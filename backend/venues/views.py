@@ -33,6 +33,7 @@ from .khalti import (
     npr_to_paisa,
 )
 from .models import Booking, BookingMessage, BookingSlot, Court, CourtSlot, Venue, VenuePhoto
+from .location import LocationProviderError, reverse_location, search_locations
 from .policies import build_cancellation_policy_snapshot, get_booking_start_at, get_cancellation_quote
 from .reference_data import (
     SPORTSPOT_AREAS_BY_DISTRICT,
@@ -114,6 +115,53 @@ class OwnerVenueView(APIView):
 
         venue.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class OwnerLocationSearchView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+
+    def get(self, request):
+        query = " ".join(str(request.query_params.get("q") or "").split())
+        if len(query) < 3:
+            return Response({"results": []})
+        try:
+            return Response({"results": [serialize_location_result(item) for item in search_locations(query)]})
+        except LocationProviderError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+
+class OwnerLocationReverseView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+
+    def get(self, request):
+        try:
+            result = reverse_location(
+                request.query_params.get("lat"),
+                request.query_params.get("lng"),
+            )
+        except LocationProviderError as exc:
+            message = str(exc)
+            response_status = (
+                status.HTTP_400_BAD_REQUEST
+                if "valid" in message or "within Nepal" in message
+                else status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+            return Response({"detail": message}, status=response_status)
+        return Response(serialize_location_result(result))
+
+
+def serialize_location_result(result):
+    return {
+        "latitude": result.get("latitude"),
+        "longitude": result.get("longitude"),
+        "display_name": str(result.get("display_name") or "Venue location").strip(),
+        "place_type": str(result.get("place_type") or "place").strip(),
+        "district": str(result.get("district") or "").strip(),
+        "area": str(result.get("area") or "").strip(),
+    }
 
 
 
@@ -2878,6 +2926,13 @@ def normalize_request_data(data):
         normalized["declaration_accepted"] = True
     if normalized.get("declaration_accepted") in ["false", "False", "0", "off", ""]:
         normalized["declaration_accepted"] = False
+    for field in ["latitude", "longitude"]:
+        if normalized.get(field) in ["", "null", "None"]:
+            normalized[field] = None
+    if normalized.get("location_confirmed") in ["true", "True", "1", "on"]:
+        normalized["location_confirmed"] = True
+    if normalized.get("location_confirmed") in ["false", "False", "0", "off", ""]:
+        normalized["location_confirmed"] = False
     return normalized
 
 
@@ -3026,6 +3081,14 @@ def has_critical_venue_changes(venue, data):
     critical_fields = ["name", "address", "city", "area", "map_location", "verification_document_type"]
     for field in critical_fields:
         if field in data and normalize_compare_value(getattr(venue, field)) != normalize_compare_value(data.get(field)):
+            return True
+    if "latitude" in data or "longitude" in data:
+        try:
+            incoming_latitude = Decimal(str(data.get("latitude"))) if data.get("latitude") not in [None, ""] else None
+            incoming_longitude = Decimal(str(data.get("longitude"))) if data.get("longitude") not in [None, ""] else None
+        except (InvalidOperation, TypeError, ValueError):
+            return True
+        if incoming_latitude != venue.latitude or incoming_longitude != venue.longitude:
             return True
     return bool(data.get("verification_document"))
 

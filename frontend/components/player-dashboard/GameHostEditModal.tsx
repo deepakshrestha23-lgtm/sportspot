@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import TimeSelect from "@/components/TimeSelect";
+import { buildTimeOptions, formatDateTimeInNepal, joinDateTimeInput, parseDateTimeInput, splitDateTimeInput, toDateTimeInput, toNepalDate } from "@/lib/dates";
 import type { GameRole, GameRoleRequirement, GameSkillLevel, MatchmakingGame } from "@/types/matchmaking";
 
 const roles: Array<{ label: string; value: GameRole }> = [
@@ -42,24 +44,6 @@ type GameHostEditModalProps = {
   onSave: (values: GameHostEditValues) => void;
 };
 
-function toLocalDateTime(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (number: number) => String(number).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function parseLocalDateTime(value: string) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatLocalTime(value: Date) {
-  return value.toLocaleTimeString("en-NP", { hour: "numeric", minute: "2-digit" });
-}
-
 function initialValues(game: MatchmakingGame): GameHostEditValues {
   const counts = Object.fromEntries(roles.map((role) => [role.value, 0])) as Record<GameRole, number>;
   game.role_requirements.forEach((requirement: GameRoleRequirement) => {
@@ -76,7 +60,7 @@ function initialValues(game: MatchmakingGame): GameHostEditValues {
     total_capacity: game.total_capacity,
     minimum_players_to_proceed: game.minimum_players_to_proceed,
     waitlist_enabled: game.waitlist_enabled,
-    recruitment_deadline: toLocalDateTime(game.recruitment_deadline),
+    recruitment_deadline: toDateTimeInput(game.recruitment_deadline),
     proposed_date: game.proposed_date || "",
     proposed_start_time: game.proposed_start_time?.slice(0, 5) || "",
     proposed_end_time: game.proposed_end_time?.slice(0, 5) || "",
@@ -84,7 +68,7 @@ function initialValues(game: MatchmakingGame): GameHostEditValues {
     preferred_area: game.preferred_area || "",
     preferred_venue_name: game.preferred_venue_name || "",
     alternative_details: game.alternative_details || "",
-    booking_deadline: toLocalDateTime(game.booking_deadline),
+    booking_deadline: toDateTimeInput(game.booking_deadline),
     role_requirements: roles.map((role) => ({ role: role.value, required_count: counts[role.value] })),
   };
 }
@@ -104,10 +88,10 @@ export default function GameHostEditModal({ game, isSaving, onClose, onSave }: G
     role_requirements: current.role_requirements.map((item) => item.role === role ? { ...item, required_count: Math.max(0, Math.min(30, value)) } : item),
   }));
   const inputClass = "mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100";
-  const recruitmentDeadline = parseLocalDateTime(values.recruitment_deadline);
-  const bookingDeadline = parseLocalDateTime(values.booking_deadline);
+  const recruitmentDeadline = parseDateTimeInput(values.recruitment_deadline);
+  const bookingDeadline = parseDateTimeInput(values.booking_deadline);
   const scheduleError = isPlanFirst && recruitmentDeadline && bookingDeadline && bookingDeadline.getTime() - recruitmentDeadline.getTime() < 30 * 60 * 1000
-    ? `Recruitment must close by ${formatLocalTime(new Date(bookingDeadline.getTime() - 30 * 60 * 1000))}, at least 30 minutes before the ${formatLocalTime(bookingDeadline)} court-booking deadline.`
+    ? `Recruitment must close by ${formatDateTimeInNepal(new Date(bookingDeadline.getTime() - 30 * 60 * 1000).toISOString(), { dateStyle: "medium", timeStyle: "short" })}, at least 30 minutes before the ${formatDateTimeInNepal(bookingDeadline.toISOString(), { dateStyle: "medium", timeStyle: "short" })} court-booking deadline.`
     : "";
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -158,14 +142,14 @@ export default function GameHostEditModal({ game, isSaving, onClose, onSave }: G
 
           {activeSection === "schedule" ? (
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-black text-slate-700">Recruitment closes<input className={inputClass} required type="datetime-local" value={values.recruitment_deadline} onChange={(event) => setValue("recruitment_deadline", event.target.value)} /><span className="mt-1 block text-xs font-semibold text-slate-500">Players can request to join until this time. This must come first.</span></label>
-              {isPlanFirst ? <label className="text-sm font-black text-slate-700">Court booking deadline<input className={inputClass} required type="datetime-local" value={values.booking_deadline} onChange={(event) => setValue("booking_deadline", event.target.value)} /><span className="mt-1 block text-xs font-semibold text-slate-500">Secure and pay for the court by this time, at least 1 hour before the game.</span></label> : null}
+              <DateTimeField helper="Players can request to join until this time. This must come first." inputClass={inputClass} label="Recruitment closes" onChange={(value) => setValue("recruitment_deadline", value)} value={values.recruitment_deadline} />
+              {isPlanFirst ? <DateTimeField helper="Secure and pay for the court by this time, at least 1 hour before the game." inputClass={inputClass} label="Court booking deadline" onChange={(value) => setValue("booking_deadline", value)} value={values.booking_deadline} /> : null}
               {scheduleError ? <p className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-900">{scheduleError}</p> : null}
               {isPlanFirst ? <>
                 <label className="text-sm font-black text-slate-700">Proposed date<input className={inputClass} required type="date" value={values.proposed_date} onChange={(event) => setValue("proposed_date", event.target.value)} /></label>
                 <label className="text-sm font-black text-slate-700">Preferred district<input className={inputClass} value={values.preferred_district} onChange={(event) => setValue("preferred_district", event.target.value)} /></label>
-                <label className="text-sm font-black text-slate-700">Start time<input className={inputClass} required type="time" value={values.proposed_start_time} onChange={(event) => setValue("proposed_start_time", event.target.value)} /></label>
-                <label className="text-sm font-black text-slate-700">End time<input className={inputClass} required type="time" value={values.proposed_end_time} onChange={(event) => setValue("proposed_end_time", event.target.value)} /></label>
+                <label className="text-sm font-black text-slate-700">Start time<TimeSelect ariaLabel="Proposed start time" className={inputClass} options={buildTimeOptions()} required value={values.proposed_start_time} onChange={(value) => setValue("proposed_start_time", value)} /></label>
+                <label className="text-sm font-black text-slate-700">End time<TimeSelect ariaLabel="Proposed end time" className={inputClass} options={buildTimeOptions()} required value={values.proposed_end_time} onChange={(value) => setValue("proposed_end_time", value)} /></label>
                 <label className="text-sm font-black text-slate-700">Preferred area<input className={inputClass} required value={values.preferred_area} onChange={(event) => setValue("preferred_area", event.target.value)} /></label>
                 <label className="text-sm font-black text-slate-700">Preferred venue <span className="font-semibold text-slate-400">optional</span><input className={inputClass} value={values.preferred_venue_name} onChange={(event) => setValue("preferred_venue_name", event.target.value)} /></label>
                 <label className="sm:col-span-2 text-sm font-black text-slate-700">Alternative area or time <span className="font-semibold text-slate-400">optional</span><input className={inputClass} value={values.alternative_details} onChange={(event) => setValue("alternative_details", event.target.value)} /></label>
@@ -193,5 +177,22 @@ export default function GameHostEditModal({ game, isSaving, onClose, onSave }: G
         </form>
       </section>
     </div>
+  );
+}
+
+function DateTimeField({ helper, inputClass, label, onChange, value }: { helper: string; inputClass: string; label: string; onChange: (value: string) => void; value: string }) {
+  const [date, time] = splitDateTimeInput(value);
+  const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return (
+    <fieldset className="min-w-0">
+      <legend className="text-sm font-black text-slate-700">{label}</legend>
+      <div className="mt-2 grid gap-2 sm:grid-cols-[1.15fr_1fr]">
+        <label className="sr-only" htmlFor={`${id}-date`}>{label} date</label>
+        <input aria-label={`${label} date`} className={inputClass} id={`${id}-date`} min={toNepalDate(new Date())} required type="date" value={date} onChange={(event) => onChange(joinDateTimeInput(event.target.value, time))} />
+        <label className="sr-only" htmlFor={`${id}-time`}>{label} time</label>
+        <TimeSelect ariaLabel={`${label} time`} className={inputClass} id={`${id}-time`} options={buildTimeOptions()} required value={time} onChange={(nextTime) => onChange(joinDateTimeInput(date, nextTime))} />
+      </div>
+      <span className="mt-1 block text-xs font-semibold text-slate-500">{helper}</span>
+    </fieldset>
   );
 }

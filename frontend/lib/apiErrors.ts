@@ -33,7 +33,9 @@ export function getApiErrorField(requestError: unknown, field: string) {
 }
 
 export function getApiErrorMessage(requestError: unknown, fallbackMessage: string, options: ApiErrorMessageOptions = {}) {
-  const notify = options.notify !== false;
+  // Page loading failures belong in the page state. Action handlers can opt in
+  // when they need an immediate toast, which prevents duplicate feedback.
+  const notify = options.notify === true;
   const returnMessage = (message: string) => {
     if (notify) emitToast({ message, type: "error" });
     return message;

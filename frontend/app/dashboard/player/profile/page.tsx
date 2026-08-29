@@ -156,9 +156,9 @@ export default function PlayerProfilePage() {
   if (pageError) return (
     <div className="space-y-5">
       <DashboardPageHeader eyebrow="My Profile" title="Player Profile" description="Manage your public sports identity and playing preferences." />
-      <section className="rounded-2xl border border-red-100 bg-white p-6 shadow-sm">
+      <section className="sport-error-state">
         <p className="text-sm font-semibold text-red-700">{pageError}</p>
-        <button className="mt-4 rounded-xl bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" onClick={loadProfile} type="button">Retry</button>
+        <button className="sport-primary-button mt-4" onClick={loadProfile} type="button">Retry</button>
       </section>
     </div>
   );
@@ -168,8 +168,8 @@ export default function PlayerProfilePage() {
       <DashboardPageHeader
         actions={
           <>
-            <button className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200" onClick={() => emitToast({ message: "Public profile preview is not available yet.", type: "info", dedupeKey: "public-profile-preview" })} type="button">View Public Profile</button>
-            <button className="min-h-11 rounded-xl bg-sportGreen px-5 text-sm font-black text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" onClick={openEditor} type="button">Edit Profile</button>
+            <button className="sport-secondary-button min-h-11" onClick={() => emitToast({ message: "Public profile preview is not available yet.", type: "info", dedupeKey: "public-profile-preview" })} type="button">View Public Profile</button>
+            <button className="sport-primary-button min-h-11" onClick={openEditor} type="button">Edit Profile</button>
           </>
         }
         eyebrow="Public sports identity"
@@ -178,15 +178,15 @@ export default function PlayerProfilePage() {
       />
 
       {!profile?.is_profile_complete ? (
-        <section className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-4">
+        <section className="sport-surface border-green-200 bg-green-50 p-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
           <div><p className="text-sm font-black text-green-950">Complete your sports identity</p><p className="mt-1 text-sm text-green-800">Add your role, availability, playing style, and bio so teams can judge fit faster.</p></div>
-          <button className="mt-3 min-h-11 rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700 sm:mt-0" onClick={openEditor} type="button">Complete Profile</button>
+          <button className="sport-primary-button mt-3 min-h-11 sm:mt-0" onClick={openEditor} type="button">Complete Profile</button>
         </section>
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
         <aside className="space-y-5">
-          <section className="rounded-[1.35rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="sport-card">
             <div className="flex flex-col items-center text-center">
               <div className="relative">
                 <div className="absolute -inset-2 rounded-full" style={{ background: `conic-gradient(#16A34A ${completion}%, #E2E8F0 0)` }} />
@@ -203,14 +203,14 @@ export default function PlayerProfilePage() {
             <div className="grid grid-cols-2 gap-3"><Metric label="Reliability" value={profile && profile.completed_matches_count >= 3 ? `${profile.reliability_score}%` : "New Player"} /><Metric label="Avg rating" value={`${rating}/5`} /><Metric label="Matches" value={profile?.completed_matches_count ?? 0} /><Metric label="No-shows" value={profile?.no_show_count ?? 0} /></div>
             {profile && profile.completed_matches_count < 3 ? <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-600">Reliability becomes meaningful after a few completed matches.</p> : null}
           </section>
-          <section className="rounded-[1.35rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="sport-card">
             <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Trust summary</p><h3 className="mt-1 text-lg font-black text-sportNavy">Match behaviour</h3></div><span className="rounded-full bg-green-50 px-3 py-1 text-xs font-black text-sportGreen">Read only</span></div>
             <div className="mt-4 space-y-3"><TrustRow label="Reliability score" value={profile ? `${profile.reliability_score}/100` : "Not available"} /><TrustRow label="Average rating" value={`${rating}/5`} /><TrustRow label="Completed matches" value={profile?.completed_matches_count ?? 0} /><TrustRow label="Late cancellations" value={profile?.late_cancellation_count ?? 0} /></div>
           </section>
         </aside>
 
         <main className="space-y-5">
-          <section className="rounded-[1.35rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <section className="sport-card sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Public visibility</p><h2 className="mt-1 text-xl font-black text-sportNavy">Player information</h2></div>
               <button aria-label="Edit player information" className="min-h-10 rounded-xl border border-green-200 px-4 text-sm font-black text-sportGreen hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200" onClick={openEditor} type="button">Edit</button>
@@ -229,8 +229,8 @@ export default function PlayerProfilePage() {
           </section>
 
           <div className="grid gap-5 lg:grid-cols-2">
-            <section className="rounded-[1.35rem] border border-l-4 border-sportGreen border-slate-200 bg-white p-5 shadow-sm"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Primary team</p><h3 className="mt-2 text-lg font-black text-sportNavy">Team details live in My Teams</h3><p className="mt-2 text-sm leading-6 text-slate-600">Manage memberships, invitations, guests, and captain actions from the dedicated teams section.</p><Link className="mt-4 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/player/teams">Open My Teams</Link></section>
-            <section className="rounded-[1.35rem] border border-l-4 border-slate-500 border-slate-200 bg-white p-5 shadow-sm"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Ratings & reliability</p><h3 className="mt-2 text-lg font-black text-sportNavy">Detailed trust history</h3><p className="mt-2 text-sm leading-6 text-slate-600">Match ratings, attendance, and reliability history belong in the ratings section.</p><Link className="mt-4 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/player/ratings">View Ratings</Link></section>
+            <section className="sport-card border-l-4 border-sportGreen"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Primary team</p><h3 className="mt-2 text-lg font-black text-sportNavy">Team details live in My Teams</h3><p className="mt-2 text-sm leading-6 text-slate-600">Manage memberships, invitations, guests, and captain actions from the dedicated teams section.</p><Link className="mt-4 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/player/teams">Open My Teams</Link></section>
+            <section className="sport-card border-l-4 border-slate-500"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Ratings & reliability</p><h3 className="mt-2 text-lg font-black text-sportNavy">Detailed trust history</h3><p className="mt-2 text-sm leading-6 text-slate-600">Match ratings, attendance, and reliability history belong in the ratings section.</p><Link className="mt-4 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/player/ratings">View Ratings</Link></section>
           </div>
         </main>
       </div>
@@ -289,4 +289,4 @@ function formatPeriod(value: AvailabilityTimePeriod) { return periods.find((item
 function formatRating(value?: string) { const numberValue = Number(value || 0); return Number.isFinite(numberValue) ? numberValue.toFixed(1) : "0.0"; }
 function getProfilePhotoSrc(value: string) { if (!value) return ""; if (value.startsWith("blob:") || value.startsWith("http")) return value; const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"; return `${apiBaseUrl}${value}`; }
 
-const inputClassName = "mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-2 focus:ring-green-100";
+const inputClassName = "sport-input mt-2";

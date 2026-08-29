@@ -221,7 +221,7 @@ def schedule_password_changed(user, reset_token):
 def booking_details(booking):
     slots = booking.booked_slots
     booking_time = (
-        f"{slots[0].start_time.strftime('%I:%M %p')} - {slots[-1].end_time.strftime('%I:%M %p')}"
+        f"{slots[0].start_time.strftime('%I:%M %p').lstrip('0')} - {slots[-1].end_time.strftime('%I:%M %p').lstrip('0')}"
         if slots
         else ""
     )

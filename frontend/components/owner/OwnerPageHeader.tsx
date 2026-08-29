@@ -1,16 +1,22 @@
 import type { ReactNode } from "react";
 
+import BackButton from "@/components/BackButton";
+
 export function OwnerDashboardContent({ children }: { children: ReactNode }) {
   return <div className="sport-page-content">{children}</div>;
 }
 
 export function OwnerPageHeader({
   actions,
+  backHref,
+  backLabel,
   description,
   eyebrow = "Dashboard",
   title,
 }: {
   actions?: ReactNode;
+  backHref?: string;
+  backLabel?: string;
   description: string;
   eyebrow?: string;
   title: string;
@@ -18,6 +24,7 @@ export function OwnerPageHeader({
   return (
     <header className="sport-page-header">
       <div className="min-w-0">
+        {backHref ? <BackButton href={backHref} label={backLabel} /> : null}
         <p className="sport-eyebrow">{eyebrow}</p>
         <h1 className="sport-page-title">{title}</h1>
         <p className="sport-page-description max-w-3xl">{description}</p>

@@ -14,6 +14,7 @@ from .email_service import (
     schedule_venue_submitted,
 )
 from .models import Notification
+from .realtime import publish_notification_created
 
 
 TYPE_CATEGORY = {
@@ -138,12 +139,24 @@ def create_notification(
     }
 
     if not deduplication_key:
-        return Notification.objects.create(**values)
+        notification = Notification.objects.create(**values)
+        transaction.on_commit(
+            lambda created_notification=notification: publish_notification_created(
+                created_notification
+            )
+        )
+        return notification
 
-    notification, _ = Notification.objects.get_or_create(
+    notification, created = Notification.objects.get_or_create(
         deduplication_key=deduplication_key,
         defaults=values,
     )
+    if created:
+        transaction.on_commit(
+            lambda created_notification=notification: publish_notification_created(
+                created_notification
+            )
+        )
     return notification
 
 

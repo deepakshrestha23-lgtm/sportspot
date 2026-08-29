@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { formatDateTimeInNepal } from "@/lib/dates";
 import { emitToast } from "@/lib/toast";
 import type {
   PendingRatingItem,
@@ -69,7 +70,7 @@ export default function PlayerRatingsPage() {
           title="Ratings & Reliability"
           description="Understand the trust signals teams and players use when choosing who to play with."
         />
-        <section className="rounded-2xl border border-red-100 bg-white p-6 shadow-sm">
+        <section className="sport-error-state">
           <p className="text-sm font-semibold text-red-700">{error || "We could not load your trust summary."}</p>
           <button className="mt-4 rounded-xl bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" onClick={loadSummary} type="button">
             Retry
@@ -88,7 +89,7 @@ export default function PlayerRatingsPage() {
       />
 
       {!summary.profile_exists ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-black text-amber-900">Complete your profile to start building trust.</p>
@@ -140,7 +141,7 @@ function ReliabilityCard({ lastUpdated, reliability }: { lastUpdated: string | n
   const display = isProvisional ? "New" : reliability.display_score ?? "--";
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="sport-card">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
         <ProgressRing label={isProvisional ? "Provisional" : "Index"} progress={progress} value={display} />
         <div className="min-w-0 flex-1">
@@ -167,11 +168,11 @@ function ReliabilityCard({ lastUpdated, reliability }: { lastUpdated: string | n
 
 function RatingCard({ rating }: { rating: RatingSummary }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="sport-card">
       <div className="flex h-full flex-col justify-between gap-5 sm:flex-row sm:items-center">
         <div className="min-w-0">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Athlete Rating</p>
-          <p className="mt-4 text-4xl font-black tracking-tight text-sportNavy">{rating.has_rating ? formatRatingValue(rating.average) : "Not rated yet"}</p>
+          <p className="mt-4 text-3xl font-black tracking-tight text-sportNavy">{rating.has_rating ? formatRatingValue(rating.average) : "Not rated yet"}</p>
           <div className="mt-3 flex items-center gap-1" aria-label={rating.has_rating ? `${rating.average} out of 5 rating` : "No rating yet"}>
             {Array.from({ length: 5 }).map((_, index) => <StarIcon active={rating.has_rating && index < Math.round(Number(rating.average || 0))} key={index} />)}
           </div>
@@ -202,12 +203,12 @@ function MetricGrid({ metrics }: { metrics: ReliabilityMetrics }) {
   return (
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => (
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" key={card.label}>
+        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" key={card.label}>
           <div className="flex items-start justify-between gap-3">
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{card.label}</p>
             <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${card.tone === "red" ? "bg-red-50 text-red-600" : card.tone === "green" ? "bg-green-50 text-sportGreen" : "bg-slate-100 text-slate-500"}`}>{card.icon}</span>
           </div>
-          <p className="mt-5 text-3xl font-black tracking-tight text-sportNavy">{card.value}</p>
+          <p className="mt-4 text-2xl font-black tracking-tight text-sportNavy">{card.value}</p>
           <p className="mt-1 text-sm text-slate-600">{card.helper}</p>
         </article>
       ))}
@@ -216,7 +217,7 @@ function MetricGrid({ metrics }: { metrics: ReliabilityMetrics }) {
 }
 function ReliabilityBreakdown({ items }: { items: ReliabilityBreakdownItem[] }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    <section className="sport-card">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-black text-sportNavy">Reliability Breakdown</h2>
@@ -251,7 +252,7 @@ function ReliabilityBreakdown({ items }: { items: ReliabilityBreakdownItem[] }) 
 
 function ReliabilityActivity({ items }: { items: ReliabilityActivityItem[] }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section className="sport-surface overflow-hidden">
       <div className="border-b border-slate-100 p-4 sm:p-5">
         <h2 className="text-lg font-black text-sportNavy">Reliability Activity</h2>
         <p className="mt-1 text-sm text-slate-600">Recent records that confirmed or affected your reliability.</p>
@@ -283,7 +284,7 @@ function RatingSummaryCard({ rating }: { rating: RatingSummary }) {
   const total = rating.distribution.reduce((sum, item) => sum + item.count, 0);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    <section className="sport-card">
       <h2 className="text-lg font-black text-sportNavy">Rating Summary</h2>
       <p className="mt-1 text-sm text-slate-600">Feedback from verified participants after completed games.</p>
       {rating.has_rating && rating.distribution.length ? (
@@ -469,7 +470,7 @@ function RatingSubmissionModal({
 
 function GuidanceCard({ message }: { message: string }) {
   return (
-    <section className="rounded-2xl border border-green-100 bg-green-50 p-4 shadow-sm sm:p-5">
+    <section className="rounded-xl border border-green-100 bg-green-50 p-4 shadow-sm sm:p-5">
       <p className="text-sm font-black uppercase tracking-[0.16em] text-sportGreen">Next best step</p>
       <p className="mt-2 text-sm font-bold leading-6 text-green-950">{message}</p>
     </section>
@@ -478,7 +479,7 @@ function GuidanceCard({ message }: { message: string }) {
 
 function RecentRatings({ items }: { items: PlayerRatingsReliabilityResponse["recent_ratings"] }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section className="sport-surface overflow-hidden">
       <div className="border-b border-slate-100 p-4 sm:p-5">
         <h2 className="text-lg font-black text-sportNavy">Recent Ratings Received</h2>
         <p className="mt-1 text-sm text-slate-600">Only verified participant feedback is shown here. Rater identity stays private.</p>
@@ -592,7 +593,7 @@ function impactIcon(impact: ReliabilityImpact) {
 
 function formatDate(value: string | null) {
   if (!value) return "Not available";
-  return new Date(value).toLocaleDateString("en-NP", { day: "numeric", month: "short", year: "numeric" });
+  return formatDateTimeInNepal(value, { day: "numeric", month: "short", year: "numeric" });
 }
 
 function formatRatingValue(value: string | null) {

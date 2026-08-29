@@ -144,6 +144,46 @@ def notify_challenge_expired(challenge, *, recipient, actor=None):
     )
 
 
+def notify_challenge_reconfirmation_required(challenge, *, recipient, actor=None):
+    return create_notification(
+        recipient=recipient,
+        actor=actor,
+        notification_type=Notification.NotificationType.MATCH_UPDATED,
+        title="Team match schedule changed",
+        message="The proposed team match details changed. Please confirm whether your team can still play.",
+        priority=Notification.Priority.IMPORTANT,
+        action_url=_challenge_url(challenge.id),
+        related_entity_type="team_challenge",
+        related_entity_id=challenge.id,
+        action_required=True,
+        action_status=Notification.ActionStatus.PENDING,
+        metadata={
+            "challenge_id": challenge.id,
+            "reconfirmation_deadline": challenge.reconfirmation_deadline.isoformat() if challenge.reconfirmation_deadline else None,
+        },
+        deduplication_key=(
+            f"team-challenge:{challenge.id}:reconfirmation:{challenge.current_proposal_id}:{recipient.id}"
+        ),
+    )
+
+
+def notify_challenge_reconfirmation_expired(challenge, *, recipient, actor=None):
+    return create_notification(
+        recipient=recipient,
+        actor=actor,
+        notification_type=Notification.NotificationType.MATCH_CANCELLED,
+        title="Team match cancelled",
+        message="The updated team match schedule was not confirmed by both teams in time.",
+        priority=Notification.Priority.IMPORTANT,
+        action_url=_challenge_url(challenge.id),
+        related_entity_type="team_challenge",
+        related_entity_id=challenge.id,
+        action_status=Notification.ActionStatus.EXPIRED,
+        metadata={"challenge_id": challenge.id, "reason": "reconfirmation_deadline"},
+        deduplication_key=f"team-challenge:{challenge.id}:reconfirmation-expired:{recipient.id}",
+    )
+
+
 def notify_challenge_status(
     challenge,
     *,

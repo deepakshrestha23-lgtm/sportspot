@@ -89,12 +89,12 @@ export default function VenueOwnerTopBar() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur">
-        <nav className="mx-auto flex min-h-[68px] max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white">
+        <nav aria-label="Venue manager navigation" className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <button
               aria-label="Open venue menu"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-sportNavy transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 lg:hidden"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-sportNavy transition-colors hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 lg:hidden"
               onClick={() => window.dispatchEvent(new CustomEvent("sportspot-owner-menu-toggle"))}
               type="button"
             >
@@ -108,7 +108,7 @@ export default function VenueOwnerTopBar() {
 
           <button
             aria-expanded={isWorkspaceOpen}
-            className="hidden min-w-0 max-w-md flex-1 items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-green-200 hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200 md:flex lg:max-w-lg"
+            className="hidden min-w-0 max-w-md flex-1 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-left transition-colors hover:border-green-200 hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200 md:flex lg:max-w-lg"
             onClick={() => setIsWorkspaceOpen((current) => !current)}
             type="button"
           >
@@ -130,7 +130,7 @@ export default function VenueOwnerTopBar() {
               aria-controls="sportspot-notification-centre"
               aria-expanded={isNotificationsOpen}
               aria-label={`Open Notification Centre${unseenNotificationsCount ? `, ${unseenNotificationsCount} unseen` : ""}`}
-              className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 ${hasNewNotification ? "scale-110 border-green-300 text-sportGreen" : ""}`}
+              className={`relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition-colors hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 ${hasNewNotification ? "border-green-300 text-sportGreen" : ""}`}
               onClick={() => {
                 setIsNotificationsOpen(true);
                 setHasNewNotification(false);
@@ -150,7 +150,8 @@ export default function VenueOwnerTopBar() {
             <div className="relative">
               <button
                 aria-expanded={isProfileOpen}
-                className="flex max-w-[140px] items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-200 sm:max-w-none sm:px-3"
+                aria-haspopup="menu"
+                className="flex min-h-10 max-w-[140px] items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 transition-colors hover:border-green-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-200 sm:max-w-none sm:px-3"
                 onClick={() => setIsProfileOpen((value) => !value)}
                 type="button"
               >
@@ -167,7 +168,7 @@ export default function VenueOwnerTopBar() {
       </header>
 
       {isWorkspaceOpen ? (
-        <div className="fixed inset-x-3 top-20 z-40 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl md:left-1/2 md:right-auto md:w-[420px] md:-translate-x-1/2" role="dialog" aria-label="Venue workspace">
+        <div className="fixed inset-x-3 top-20 z-40 rounded-xl border border-slate-200 bg-white p-4 shadow-2xl md:left-1/2 md:right-auto md:w-[420px] md:-translate-x-1/2" role="dialog" aria-label="Venue workspace">
           <VenueIdentity isLoading={isVenueLoading} venue={venue} state={venueState} expanded />
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <Link className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-black text-sportNavy transition hover:border-green-200 hover:text-sportGreen" href="/dashboard/owner/venue" onClick={() => setIsWorkspaceOpen(false)}>
@@ -233,7 +234,7 @@ function VenueContextAction({ action }: { action: NonNullable<ContextAction> }) 
       : "hidden min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 sm:inline-flex";
 
   return (
-    <Link className={className} href={action.href}>
+      <Link className={className} href={action.href}>
       {action.label}
     </Link>
   );
@@ -241,11 +242,11 @@ function VenueContextAction({ action }: { action: NonNullable<ContextAction> }) 
 
 function OwnerProfileMenu({ onLogout }: { onLogout: () => void }) {
   return (
-    <div className="absolute right-0 mt-3 w-60 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+    <div className="absolute right-0 mt-2 w-60 rounded-xl border border-slate-200 bg-white p-2 shadow-xl" role="menu">
       <MenuLink href="/dashboard/owner" label="Owner Profile" />
       <MenuLink href="/dashboard/owner" label="Account Settings" />
       <MenuLink href="/support" label="Help & Support" />
-      <button className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm font-black text-red-600 transition hover:bg-red-50" onClick={onLogout} type="button">
+      <button className="mt-1 w-full rounded-md px-3 py-2.5 text-left text-sm font-black text-red-600 transition hover:bg-red-50" onClick={onLogout} role="menuitem" type="button">
         Log Out
       </button>
     </div>
@@ -254,7 +255,7 @@ function OwnerProfileMenu({ onLogout }: { onLogout: () => void }) {
 
 function MenuLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link className="block rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-sportGreen" href={href}>
+    <Link className="block rounded-md px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-sportGreen" href={href} role="menuitem">
       {label}
     </Link>
   );

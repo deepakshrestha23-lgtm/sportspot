@@ -22,8 +22,8 @@ export default function AuthShell({
   const placementClassName = contentPlacement === "start" ? "items-start" : "items-center";
 
   return (
-    <main className="min-h-screen bg-[#f4f7fb] lg:h-screen lg:overflow-hidden">
-      <div className="grid min-h-screen lg:h-full lg:min-h-0 lg:grid-cols-[1.05fr_0.95fr]">
+    <main className="min-h-screen bg-[var(--sport-canvas)] lg:h-screen lg:overflow-hidden">
+      <div className="grid min-h-screen lg:h-full lg:min-h-0 lg:grid-cols-[1.04fr_0.96fr]">
         <section className="relative hidden h-full overflow-hidden bg-sportNavy text-white lg:block">
           <img
             alt="Cricksal player in a SportSpot match atmosphere"
@@ -38,12 +38,12 @@ export default function AuthShell({
 
             <div className="max-w-xl pb-3">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-green-300">{eyebrow}</p>
-              <h1 className="mt-4 text-5xl font-black leading-[0.98] tracking-tight xl:text-6xl">
+              <h1 className="mt-4 text-4xl font-black leading-[1.02] tracking-tight xl:text-5xl">
                 The future of Nepali <span className="text-green-300">Cricksal.</span>
               </h1>
               <p className="mt-5 max-w-lg text-base leading-7 text-slate-200">{subtitle}</p>
 
-              <div className="mt-8 grid grid-cols-2 gap-3">
+              <div className="mt-7 grid grid-cols-2 gap-3">
                 <AuthFeature label="Find open games" />
                 <AuthFeature label="Build teams" />
                 <AuthFeature label="Book verified courts" />
@@ -60,7 +60,7 @@ export default function AuthShell({
             {!hideHeader ? (
               <div className="mb-7">
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-sportGreen">{eyebrow}</p>
-                <h2 className="mt-3 text-4xl font-black tracking-tight text-sportNavy">{title}</h2>
+                <h2 className="mt-3 text-3xl font-black tracking-tight text-sportNavy">{title}</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-600">{subtitle}</p>
               </div>
             ) : null}

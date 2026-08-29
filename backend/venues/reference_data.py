@@ -5,10 +5,12 @@ SPORTSPOT_AREAS_BY_DISTRICT = {
         "Baneshwor",
         "Boudha",
         "Chabahil",
+        "Kageshwori",
         "Kalanki",
         "Kirtipur",
         "Koteshwor",
         "Maharajgunj",
+        "Maitidevi",
         "New Road",
         "Thamel",
         "Tripureshwor",
@@ -69,4 +71,9 @@ SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG = {
     "recommended_recruitment_lead_minutes": 24 * 60,
     "recommended_booked_game_recruitment_lead_minutes": 2 * 60,
     "recommended_booking_lead_minutes": 12 * 60,
+    # A changed schedule needs a finite response window. The deadline is also
+    # capped before the game starts so an unresolved participant cannot block
+    # a valid roster at the last minute.
+    "minimum_reconfirmation_notice_minutes": 30,
+    "maximum_reconfirmation_response_hours": 24,
 }

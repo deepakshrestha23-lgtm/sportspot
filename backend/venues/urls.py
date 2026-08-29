@@ -25,6 +25,8 @@ from .views import (
     OwnerVenuePhotoDeleteView,
     OwnerVenuePhotoListCreateView,
     OwnerVenueView,
+    OwnerLocationReverseView,
+    OwnerLocationSearchView,
     OwnerRefundListView,
     OwnerRefundReviewView,
     PlayerBookingsView,
@@ -39,6 +41,8 @@ from .views import (
 urlpatterns = [
     path("owner/overview/", OwnerOverviewView.as_view(), name="owner-overview"),
     path("owner/venue/", OwnerVenueView.as_view(), name="owner-venue"),
+    path("owner/location/search/", OwnerLocationSearchView.as_view(), name="owner-location-search"),
+    path("owner/location/reverse/", OwnerLocationReverseView.as_view(), name="owner-location-reverse"),
     path("owner/venue/deactivate/", OwnerVenueDeactivateView.as_view(), name="owner-venue-deactivate"),
     path("owner/venue/submit/", OwnerVenueSubmitView.as_view(), name="owner-venue-submit"),
     path("owner/venue/photos/", OwnerVenuePhotoListCreateView.as_view(), name="owner-venue-photos"),

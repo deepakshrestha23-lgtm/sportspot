@@ -479,7 +479,7 @@ export default function RegisterPage() {
           </label>
 
           <button
-            className="mt-7 w-full rounded-md bg-green-700 px-5 py-4 text-lg font-black text-white shadow-lg shadow-green-900/15 transition hover:-translate-y-0.5 hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:hover:translate-y-0"
+            className="sport-primary-button mt-7 w-full py-3.5 text-base"
             disabled={isSubmitting}
             type="submit"
           >
@@ -497,8 +497,7 @@ export default function RegisterPage() {
   );
 }
 
-const baseInputClassName =
-  "mt-2 h-12 w-full rounded-lg border bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-4";
+const baseInputClassName = "sport-input mt-2";
 
 function getInputClassName(hasError = false) {
   return `${baseInputClassName} ${

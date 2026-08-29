@@ -47,7 +47,7 @@ export default function ForgotPasswordPage() {
         </label>
         <input
           autoComplete="email"
-          className="mt-2 h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-4 focus:ring-green-100"
+          className="sport-input mt-2"
           id="recovery-email"
           onChange={(event) => setEmail(event.target.value)}
           placeholder="you@example.com"
@@ -57,7 +57,7 @@ export default function ForgotPasswordPage() {
         />
 
         <button
-          className="mt-7 inline-flex h-12 w-full items-center justify-center rounded-lg bg-green-700 px-5 text-sm font-black uppercase tracking-wide text-white shadow-lg shadow-green-900/15 transition hover:-translate-y-0.5 hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:hover:translate-y-0"
+          className="sport-primary-button mt-7 w-full uppercase tracking-wide"
           disabled={isSubmitting}
           type="submit"
         >

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import FeedbackToast from "@/components/FeedbackToast";
+import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateOnly } from "@/lib/dates";
@@ -62,7 +63,7 @@ export default function OwnerRefundsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="space-y-6">
       <FeedbackToast
         message={error || notice}
         onClose={() => {
@@ -72,33 +73,27 @@ export default function OwnerRefundsPage() {
         type={error ? "error" : notice ? "success" : "info"}
       />
 
-      <section className="rounded-lg bg-sportNavy p-6 text-white shadow-sm">
-        <p className="text-sm font-black uppercase tracking-wide text-green-300">Owner Refunds</p>
-        <h1 className="mt-2 text-3xl font-black">Refund processing center</h1>
-        <p className="mt-3 max-w-3xl text-slate-300">
-          Review eligible refunds for your Cricksal venue bookings. SportSpot calculates eligibility; you mark the refund as handled with the player.
-        </p>
-      </section>
+      <OwnerPageHeader description="Review eligible refunds for your venue. SportSpot calculates the entitlement; record the outcome for the player." eyebrow="Venue Manager" title="Payments & Refunds" />
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="sport-tab-list overflow-x-auto">
         {filters.map((item) => (
-          <button className={`rounded-full px-4 py-2 text-sm font-black ${filter === item ? "bg-sportGreen text-white" : "bg-white text-slate-700"}`} key={item} onClick={() => setFilter(item)} type="button">
+          <button aria-selected={filter === item} className="sport-tab" key={item} onClick={() => setFilter(item)} type="button">
             {formatStatus(item)}
           </button>
         ))}
       </div>
 
       {isLoading ? (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">Loading refund requests...</div>
+        <div className="sport-surface mt-6 p-6">Loading refund requests...</div>
       ) : refunds.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="sport-empty-state mt-6">
           <h2 className="text-xl font-black text-sportNavy">No refund requests found</h2>
           <p className="mt-2 text-sm text-slate-600">Eligible booking cancellations for your venue will appear here.</p>
         </div>
       ) : (
         <section className="mt-6 grid gap-5">
           {refunds.map((booking) => (
-            <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" key={booking.id}>
+            <article className="sport-card" key={booking.id}>
               <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr_1fr]">
                 <div>
                   <p className="text-xs font-black uppercase tracking-wide text-sportGreen">{booking.booking_code}</p>
@@ -131,7 +126,7 @@ export default function OwnerRefundsPage() {
                   <label className="block">
                     <span className="text-sm font-black text-sportNavy">Owner note</span>
                     <textarea
-                      className="mt-2 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sportGreen focus:ring-2 focus:ring-green-100"
+                      className="sport-input mt-2 min-h-20"
                       onChange={(event) => setOwnerNotes((current) => ({ ...current, [booking.id]: event.target.value }))}
                       placeholder="Required: refund reference or processing note."
                       value={ownerNotes[booking.id] || ""}
@@ -139,7 +134,7 @@ export default function OwnerRefundsPage() {
                   </label>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <button
-                      className="rounded-md bg-sportGreen px-4 py-3 text-sm font-black text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      className="sport-primary-button"
                       disabled={(isWorking && activeBookingId === booking.id) || (ownerNotes[booking.id] || "").trim().length < 3}
                       onClick={() => reviewRefund(booking)}
                       type="button"
@@ -158,7 +153,7 @@ export default function OwnerRefundsPage() {
           ))}
         </section>
       )}
-    </main>
+    </div>
   );
 }
 

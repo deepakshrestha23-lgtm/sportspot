@@ -5,9 +5,11 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import FeedbackToast from "@/components/FeedbackToast";
+import TimeSelect from "@/components/TimeSelect";
+import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
-import { addCalendarDays, formatDateOnly, getLocalDateString } from "@/lib/dates";
+import { addCalendarDays, buildTimeOptions, formatDateOnly, getLocalDateString } from "@/lib/dates";
 import { estimateGeneratedSlots } from "@/lib/slotSchedule";
 import type { CourtSlot } from "@/types/venue";
 
@@ -174,19 +176,13 @@ export default function OwnerCourtSlotsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="space-y-6">
       <FeedbackToast message={feedbackMessage} onClose={() => { setMessage(""); setError(""); }} type={feedbackType} />
 
-      <section className="rounded-lg bg-sportNavy p-6 text-white shadow-sm">
-        <p className="text-sm font-black uppercase tracking-wide text-green-300">Slot Calendar</p>
-        <h1 className="mt-2 text-3xl font-black">Generate and manage slots</h1>
-        <p className="mt-3 max-w-3xl text-slate-300">
-          Slots are the actual bookable times players see on the court detail page. Available slots can be reserved, paid, and then locked as booked.
-        </p>
-      </section>
+      <OwnerPageHeader backHref="/dashboard/owner/courts" backLabel="Back to courts" description="Create a dated publishing window for this court, set its rate, and manage future availability." eyebrow="Venue Manager" title="Court Slots" />
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="sport-card">
           <h2 className="text-xl font-black text-sportNavy">Generate Slots</h2>
           <p className="mt-2 text-sm text-slate-600">
             Set one weekly schedule and choose exactly how far ahead players should be able to book. Existing slots are kept, so generating again is safe.
@@ -206,8 +202,8 @@ export default function OwnerCourtSlotsPage() {
             <p className="mt-3 text-xs font-semibold text-slate-600">Estimated: up to <strong className="text-sportNavy">{estimatedSlots.toLocaleString()}</strong> slots for this court.</p>
           </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <Input label="Opening time" type="time" value={form.opening_time} onChange={(value) => setForm({ ...form, opening_time: value })} />
-            <Input label="Closing time" type="time" value={form.closing_time} onChange={(value) => setForm({ ...form, closing_time: value })} />
+            <label className="block"><span className="text-sm font-black text-sportNavy">Opening time</span><TimeSelect ariaLabel="Opening time" className="mt-2 w-full rounded-md border border-slate-300 px-3 py-3 text-sm outline-none focus:border-sportGreen" options={buildTimeOptions()} value={form.opening_time} onChange={(value) => setForm({ ...form, opening_time: value })} /></label>
+            <label className="block"><span className="text-sm font-black text-sportNavy">Closing time</span><TimeSelect ariaLabel="Closing time" className="mt-2 w-full rounded-md border border-slate-300 px-3 py-3 text-sm outline-none focus:border-sportGreen" options={buildTimeOptions()} value={form.closing_time} onChange={(value) => setForm({ ...form, closing_time: value })} /></label>
             <Select label="Slot duration" value={form.slot_duration_minutes} onChange={(value) => setForm({ ...form, slot_duration_minutes: value })} options={["30", "60", "90"]} />
             <Input label="Price per slot (NPR)" value={form.base_price} onChange={(value) => setForm({ ...form, base_price: value.replace(/[^\d.]/g, "") })} />
           </div>
@@ -240,11 +236,11 @@ export default function OwnerCourtSlotsPage() {
             </div>
             <p className="mt-2 text-xs text-slate-500">{form.available_days.length} of 7 days selected</p>
           </div>
-          <button className="mt-5 w-full rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" disabled={isSaving} onClick={generateSlots} type="button">
+          <button className="sport-primary-button mt-5 w-full" disabled={isSaving} onClick={generateSlots} type="button">
             {isSaving ? "Generating..." : "Generate Slots"}
           </button>
           <button
-            className="mt-3 w-full rounded-md border border-red-200 bg-white px-5 py-3 text-sm font-black text-red-700 hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="sport-secondary-button mt-3 w-full border-red-200 text-red-700 hover:bg-red-50"
             disabled={isSaving}
             onClick={() => setIsClearConfirmOpen(true)}
             type="button"
@@ -322,7 +318,7 @@ export default function OwnerCourtSlotsPage() {
       <Link className="mt-5 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/owner/courts">
         Back to Courts
       </Link>
-    </main>
+    </div>
   );
 }
 

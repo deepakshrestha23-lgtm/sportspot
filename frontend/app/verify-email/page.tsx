@@ -160,7 +160,7 @@ export default function VerifyEmailPage() {
               <input
                 aria-label={`Verification digit ${index + 1}`}
                 autoComplete={index === 0 ? "one-time-code" : "off"}
-                className="h-14 min-w-0 rounded-lg border border-slate-300 bg-white text-center text-xl font-black text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-100"
+                className="sport-input h-14 min-w-0 p-0 text-center text-xl font-black"
                 inputMode="numeric"
                 key={index}
                 maxLength={1}
@@ -187,7 +187,7 @@ export default function VerifyEmailPage() {
           </div>
 
           <button
-            className="mt-7 inline-flex h-12 w-full items-center justify-center rounded-lg bg-green-700 px-5 text-sm font-black uppercase tracking-wide text-white shadow-lg shadow-green-900/15 transition hover:-translate-y-0.5 hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:hover:translate-y-0"
+            className="sport-primary-button mt-7 w-full uppercase tracking-wide"
             disabled={!email || isSubmitting}
             type="submit"
           >

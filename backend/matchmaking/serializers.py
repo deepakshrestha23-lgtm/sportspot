@@ -239,6 +239,8 @@ class GameSerializer(serializers.ModelSerializer):
     venue_area = serializers.SerializerMethodField()
     venue_city = serializers.SerializerMethodField()
     venue_address = serializers.SerializerMethodField()
+    venue_latitude = serializers.SerializerMethodField()
+    venue_longitude = serializers.SerializerMethodField()
     venue_map_location = serializers.SerializerMethodField()
     court_name = serializers.SerializerMethodField()
     booking_code = serializers.SerializerMethodField()
@@ -304,6 +306,8 @@ class GameSerializer(serializers.ModelSerializer):
             "venue_area",
             "venue_city",
             "venue_address",
+            "venue_latitude",
+            "venue_longitude",
             "venue_map_location",
             "court_name",
             "booking_display_time",
@@ -396,7 +400,7 @@ class GameSerializer(serializers.ModelSerializer):
             user = getattr(request, "user", None)
             if user and user.is_authenticated:
                 room_access = game_room_access_level(game, user)
-        if room_access == "PLANNING":
+        if room_access in ["PLANNING", "RECONFIRMATION"]:
             return PublicGameParticipantSerializer(participants, many=True, context=self.context).data
         return GameParticipantSerializer(participants, many=True, context=self.context).data
 
@@ -411,6 +415,14 @@ class GameSerializer(serializers.ModelSerializer):
 
     def get_venue_address(self, game):
         return game.booking.venue.address if game.booking_id else ""
+
+    def get_venue_latitude(self, game):
+        venue = game.booking.venue if game.booking_id else None
+        return str(venue.latitude) if venue and venue.location_confirmed and venue.latitude is not None else None
+
+    def get_venue_longitude(self, game):
+        venue = game.booking.venue if game.booking_id else None
+        return str(venue.longitude) if venue and venue.location_confirmed and venue.longitude is not None else None
 
     def get_venue_map_location(self, game):
         return game.booking.venue.map_location if game.booking_id else ""
@@ -434,7 +446,7 @@ class GameSerializer(serializers.ModelSerializer):
         if game.booking_id:
             return BookingSerializer(game.booking).data.get("booking_display_time", "")
         if game.proposed_start_time and game.proposed_end_time:
-            return f"{game.proposed_start_time.strftime('%I:%M %p')} - {game.proposed_end_time.strftime('%I:%M %p')}"
+            return f"{game.proposed_start_time.strftime('%I:%M %p').lstrip('0')} - {game.proposed_end_time.strftime('%I:%M %p').lstrip('0')}"
         return "Time to be confirmed"
 
     def get_start_at(self, game):

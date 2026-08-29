@@ -89,10 +89,10 @@ function ResetPasswordForm() {
         ) : null}
 
         {tokenState === "invalid" ? (
-          <div className="rounded-xl border border-red-100 bg-red-50 p-4" role="alert">
+          <div className="sport-error-state" role="alert">
             <p className="text-sm font-black text-red-800">Reset link unavailable</p>
             <p className="mt-1 text-sm leading-6 text-red-700">This reset link is invalid, expired, or has already been used.</p>
-            <Link className="mt-4 inline-flex rounded-lg bg-green-700 px-4 py-2 text-sm font-black text-white hover:bg-green-800" href="/forgot-password">
+            <Link className="sport-primary-button mt-4" href="/forgot-password">
               Request a new link
             </Link>
           </div>
@@ -106,7 +106,7 @@ function ResetPasswordForm() {
             </label>
             <input
               autoComplete="email"
-              className="mt-2 h-12 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-4 focus:ring-green-100"
+              className="sport-input mt-2"
               id="reset-email"
               onChange={(event) => setEmail(event.target.value)}
               placeholder="you@example.com"
@@ -138,7 +138,7 @@ function ResetPasswordForm() {
             <PasswordChecklist password={newPassword} confirmPassword={confirmPassword} />
 
             <button
-              className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-lg bg-green-700 px-5 text-sm font-black uppercase tracking-wide text-white shadow-lg shadow-green-900/15 transition hover:-translate-y-0.5 hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:hover:translate-y-0"
+              className="sport-primary-button mt-6 w-full uppercase tracking-wide"
               disabled={isSubmitting}
               type="submit"
             >
@@ -183,7 +183,7 @@ function PasswordField({
       <div className="relative mt-2">
         <input
           autoComplete={autoComplete}
-          className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-4 focus:ring-green-100"
+          className="sport-input pr-12"
           id={id}
           maxLength={128}
           minLength={8}

@@ -1,7 +1,18 @@
 from rest_framework import serializers
 from django.utils import timezone
 
-from .models import Booking, BookingMessage, Court, CourtSlot, Venue, VenuePhoto
+from .models import (
+    NEPAL_MAX_LATITUDE,
+    NEPAL_MAX_LONGITUDE,
+    NEPAL_MIN_LATITUDE,
+    NEPAL_MIN_LONGITUDE,
+    Booking,
+    BookingMessage,
+    Court,
+    CourtSlot,
+    Venue,
+    VenuePhoto,
+)
 from .policies import (
     build_cancellation_policy_snapshot,
     get_cancellation_quote as calculate_cancellation_quote,
@@ -9,6 +20,7 @@ from .policies import (
     get_policy_summary,
     normalize_cancellation_policy_snapshot,
 )
+from .reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
 
 
 class VenuePhotoSerializer(serializers.ModelSerializer):
@@ -213,6 +225,11 @@ class VenueSerializer(serializers.ModelSerializer):
             "address",
             "city",
             "area",
+            "latitude",
+            "longitude",
+            "location_source",
+            "location_confirmed",
+            "location_updated_at",
             "map_location",
             "contact_phone",
             "opening_time",
@@ -266,6 +283,7 @@ class VenueSerializer(serializers.ModelSerializer):
             "delete_block_reason",
             "cancellation_policy_version",
             "cancellation_policy_details",
+            "location_updated_at",
             "courts",
             "photos",
             "created_at",
@@ -302,6 +320,31 @@ class VenueSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Facilities must be a list.")
         return value
 
+    def validate_city(self, value):
+        value = value.strip()
+        if not value:
+            return value
+        for district in SPORTSPOT_DISTRICTS:
+            if district.casefold() == value.casefold():
+                return district
+        raise serializers.ValidationError("Choose a district from the supported SportSpot locations.")
+
+    def validate_area(self, value):
+        value = value.strip()
+        if not value:
+            return value
+        district = self.initial_data.get("city", getattr(self.instance, "city", ""))
+        district = next(
+            (item for item in SPORTSPOT_DISTRICTS if item.casefold() == str(district).strip().casefold()),
+            "",
+        )
+        if not district:
+            raise serializers.ValidationError("Choose a district before selecting an area.")
+        for area in SPORTSPOT_AREAS_BY_DISTRICT.get(district, []):
+            if area.casefold() == value.casefold():
+                return area
+        raise serializers.ValidationError("Choose an area from the selected district.")
+
     def validate_front_photo(self, value):
         return validate_upload(value, {"image/jpeg", "image/png"}, "Front venue photo must be a JPG, JPEG, or PNG image.")
 
@@ -323,6 +366,21 @@ class VenueSerializer(serializers.ModelSerializer):
         return value.strip() if isinstance(value, str) else value
 
     def validate(self, attrs):
+        latitude = attrs.get("latitude", getattr(self.instance, "latitude", None))
+        longitude = attrs.get("longitude", getattr(self.instance, "longitude", None))
+        location_confirmed = attrs.get(
+            "location_confirmed",
+            getattr(self.instance, "location_confirmed", False),
+        )
+        if (latitude is None) != (longitude is None):
+            raise serializers.ValidationError({"latitude": "Latitude and longitude must be provided together."})
+        if latitude is not None and not (
+            NEPAL_MIN_LATITUDE <= latitude <= NEPAL_MAX_LATITUDE
+            and NEPAL_MIN_LONGITUDE <= longitude <= NEPAL_MAX_LONGITUDE
+        ):
+            raise serializers.ValidationError({"latitude": "Choose a venue location within Nepal."})
+        if location_confirmed and (latitude is None or longitude is None):
+            raise serializers.ValidationError({"location_confirmed": "Confirm a map pin before saving a confirmed location."})
         opening_time = attrs.get("opening_time", getattr(self.instance, "opening_time", None))
         closing_time = attrs.get("closing_time", getattr(self.instance, "closing_time", None))
         if opening_time and closing_time and opening_time >= closing_time:
@@ -350,6 +408,11 @@ class VenueSerializer(serializers.ModelSerializer):
         return attrs
 
     def update(self, instance, validated_data):
+        if any(
+            field in validated_data and validated_data[field] != getattr(instance, field)
+            for field in ["latitude", "longitude"]
+        ):
+            validated_data["location_updated_at"] = timezone.now()
         policy_fields = [
             "cancellation_policy",
             "cancellation_full_refund_hours",
@@ -366,10 +429,17 @@ class VenueSerializer(serializers.ModelSerializer):
 
 
 class PublicCourtDetailSerializer(CourtSerializer):
-    venue = VenueSerializer(read_only=True)
+    venue = serializers.SerializerMethodField()
 
     class Meta(CourtSerializer.Meta):
         fields = CourtSerializer.Meta.fields + ("venue",)
+
+    def get_venue(self, court):
+        data = VenueSerializer(court.venue, context=self.context).data
+        if not court.venue.location_confirmed:
+            data["latitude"] = None
+            data["longitude"] = None
+        return data
 
 
 class PublicVenueSerializer(serializers.ModelSerializer):
@@ -378,6 +448,8 @@ class PublicVenueSerializer(serializers.ModelSerializer):
     court_count = serializers.SerializerMethodField()
     minimum_price = serializers.SerializerMethodField()
     cancellation_policy_details = serializers.SerializerMethodField()
+    latitude = serializers.SerializerMethodField()
+    longitude = serializers.SerializerMethodField()
 
     class Meta:
         model = Venue
@@ -388,6 +460,8 @@ class PublicVenueSerializer(serializers.ModelSerializer):
             "address",
             "city",
             "area",
+            "latitude",
+            "longitude",
             "map_location",
             "contact_phone",
             "opening_time",
@@ -416,6 +490,12 @@ class PublicVenueSerializer(serializers.ModelSerializer):
     def get_courts(self, venue):
         courts = venue.courts.filter(is_active=True)
         return CourtSerializer(courts, many=True, context=self.context).data
+
+    def get_latitude(self, venue):
+        return str(venue.latitude) if venue.location_confirmed and venue.latitude is not None else None
+
+    def get_longitude(self, venue):
+        return str(venue.longitude) if venue.location_confirmed and venue.longitude is not None else None
 
     def get_cancellation_policy_details(self, venue):
         snapshot = build_cancellation_policy_snapshot(venue)
@@ -464,6 +544,8 @@ class BookingSerializer(serializers.ModelSerializer):
     venue_address = serializers.CharField(source="venue.address", read_only=True)
     venue_area = serializers.CharField(source="venue.area", read_only=True)
     venue_city = serializers.CharField(source="venue.city", read_only=True)
+    venue_latitude = serializers.SerializerMethodField()
+    venue_longitude = serializers.SerializerMethodField()
     venue_map_location = serializers.CharField(source="venue.map_location", read_only=True)
     court_photo = serializers.ImageField(source="court.court_photo", read_only=True)
     venue_primary_image = serializers.SerializerMethodField()
@@ -501,6 +583,8 @@ class BookingSerializer(serializers.ModelSerializer):
             "venue_address",
             "venue_area",
             "venue_city",
+            "venue_latitude",
+            "venue_longitude",
             "venue_map_location",
             "court_photo",
             "venue_primary_image",
@@ -563,6 +647,14 @@ class BookingSerializer(serializers.ModelSerializer):
     def get_matchmaking_game_title(self, booking):
         return booking.matchmaking_game.title if booking.matchmaking_game_id else ""
 
+    def get_venue_latitude(self, booking):
+        venue = booking.venue
+        return str(venue.latitude) if venue.location_confirmed and venue.latitude is not None else None
+
+    def get_venue_longitude(self, booking):
+        venue = booking.venue
+        return str(venue.longitude) if venue.location_confirmed and venue.longitude is not None else None
+
     def get_venue_primary_image(self, booking):
         photo_cache = getattr(booking.venue, "_prefetched_objects_cache", {}).get("photos")
         if photo_cache is not None:
@@ -594,7 +686,7 @@ class BookingSerializer(serializers.ModelSerializer):
         slots = get_booking_slots(booking)
         if not slots:
             return ""
-        return f"{slots[0].start_time.strftime('%I:%M %p')} - {slots[-1].end_time.strftime('%I:%M %p')}"
+        return f"{slots[0].start_time.strftime('%I:%M %p').lstrip('0')} - {slots[-1].end_time.strftime('%I:%M %p').lstrip('0')}"
 
     def get_slots_count(self, booking):
         return len(get_booking_slots(booking))

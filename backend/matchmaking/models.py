@@ -84,6 +84,8 @@ class Game(models.Model):
     booking_deadline = models.DateTimeField(blank=True, null=True)
     booking_attached_at = models.DateTimeField(blank=True, null=True)
     requires_reconfirmation = models.BooleanField(default=False)
+    reconfirmation_requested_at = models.DateTimeField(blank=True, null=True)
+    reconfirmation_deadline = models.DateTimeField(blank=True, null=True)
     is_public = models.BooleanField(default=True)
     published_at = models.DateTimeField(default=timezone.now)
     cancelled_at = models.DateTimeField(blank=True, null=True)
@@ -169,7 +171,12 @@ class Game(models.Model):
             if self.recruitment_deadline and self.recruitment_deadline > self.booking_deadline - timezone.timedelta(minutes=SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG["minimum_recruitment_to_booking_minutes"]):
                 raise ValidationError("Recruitment must close at least 30 minutes before the court-booking deadline.")
         if self.booking_id:
-            if self.booking.player_id != self.host_id:
+            booking_owner_can_remain_responsible = (
+                self.game_type == self.GameType.FILL_SQUAD
+                and self.team_id
+                and self.team.captain_id == self.host_id
+            )
+            if self.booking.player_id != self.host_id and not booking_owner_can_remain_responsible:
                 raise ValidationError("You can publish games only from your own confirmed booking.")
             if self.booking.status != Booking.BookingStatus.CONFIRMED or self.booking.payment_status != Booking.PaymentStatus.PAID:
                 raise ValidationError("Only paid confirmed bookings can be opened for players.")
@@ -195,6 +202,8 @@ class Game(models.Model):
             "recruitment_closed_at",
             "recruitment_closed_by",
             "booking_handoff_was_public",
+            "reconfirmation_requested_at",
+            "reconfirmation_deadline",
         }
         if update_fields is not None and set(update_fields).issubset(lifecycle_fields):
             super().save(*args, **kwargs)

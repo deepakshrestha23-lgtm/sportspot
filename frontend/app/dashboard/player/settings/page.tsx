@@ -247,7 +247,7 @@ function PlayerSettingsContent() {
         phone: getApiErrorField(requestError, "phone") || "",
         current_password: getApiErrorField(requestError, "current_password") || "",
       });
-      getApiErrorMessage(requestError, "We could not update your account settings. Please try again.");
+      emitToast({ message: getApiErrorMessage(requestError, "We could not update your account settings. Please try again."), type: "error", dedupeKey: "settings-account-error" });
     } finally {
       setSavingSection("");
     }
@@ -268,7 +268,7 @@ function PlayerSettingsContent() {
         new_password: getApiErrorField(requestError, "new_password") || "",
         confirm_password: getApiErrorField(requestError, "confirm_password") || "",
       });
-      getApiErrorMessage(requestError, "We could not change your password. Please try again.");
+      emitToast({ message: getApiErrorMessage(requestError, "We could not change your password. Please try again."), type: "error", dedupeKey: "settings-password-error" });
     } finally {
       setSavingSection("");
     }
@@ -281,7 +281,7 @@ function PlayerSettingsContent() {
       emitToast({ message: "Your notification preferences have been saved.", type: "success", dedupeKey: "settings-notifications-saved" });
       await loadSettings();
     } catch (requestError) {
-      getApiErrorMessage(requestError, "We could not save your notification preferences. Please try again.");
+      emitToast({ message: getApiErrorMessage(requestError, "We could not save your notification preferences. Please try again."), type: "error", dedupeKey: "settings-notifications-error" });
     } finally {
       setSavingSection("");
     }
@@ -294,7 +294,7 @@ function PlayerSettingsContent() {
       emitToast({ message: "Your privacy settings have been saved.", type: "success", dedupeKey: "settings-privacy-saved" });
       await loadSettings();
     } catch (requestError) {
-      getApiErrorMessage(requestError, "We could not save your privacy settings. Please try again.");
+      emitToast({ message: getApiErrorMessage(requestError, "We could not save your privacy settings. Please try again."), type: "error", dedupeKey: "settings-privacy-error" });
     } finally {
       setSavingSection("");
     }
@@ -308,7 +308,7 @@ function PlayerSettingsContent() {
       clearAuthSession();
       router.push("/login?account_deactivated=1");
     } catch (requestError) {
-      getApiErrorMessage(requestError, "We could not deactivate your account. Please check your password and try again.");
+      emitToast({ message: getApiErrorMessage(requestError, "We could not deactivate your account. Please check your password and try again."), type: "error", dedupeKey: "settings-deactivate-error" });
     } finally {
       setSavingSection("");
     }
@@ -320,9 +320,9 @@ function PlayerSettingsContent() {
     return (
       <div className="space-y-5">
         <DashboardPageHeader title="Settings" description="Manage your account, security, notifications and privacy." />
-        <section className="rounded-2xl border border-red-100 bg-white p-6 shadow-sm">
+        <section className="sport-error-state">
           <p className="text-sm font-semibold text-red-700">{error || "We could not load your settings."}</p>
-          <button className="mt-4 rounded-xl bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" onClick={loadSettings} type="button">
+          <button className="sport-primary-button mt-4" onClick={loadSettings} type="button">
             Retry
           </button>
         </section>
@@ -334,14 +334,14 @@ function PlayerSettingsContent() {
     <div className="space-y-5">
       <DashboardPageHeader title="Settings" description="Manage your account, security, notifications and privacy." />
 
-      <nav aria-label="Settings sections" className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+      <nav aria-label="Settings sections" className="sport-surface overflow-x-auto p-1">
         <div className="flex min-w-max gap-1">
           {sections.map((section) => {
             const active = activeSection === section.id;
             return (
               <button
                 aria-current={active ? "page" : undefined}
-                className={`min-h-11 rounded-xl px-4 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-green-200 ${active ? "bg-green-50 text-sportGreen" : "text-slate-600 hover:bg-slate-50 hover:text-sportNavy"}`}
+                className={`min-h-11 rounded-md px-4 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-green-200 ${active ? "bg-green-50 text-sportGreen" : "text-slate-600 hover:bg-slate-50 hover:text-sportNavy"}`}
                 key={section.id}
                 onClick={() => changeSection(section.id)}
                 type="button"
@@ -354,7 +354,7 @@ function PlayerSettingsContent() {
       </nav>
 
       {dirtySection ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
           You have unsaved changes in this section.
         </div>
       ) : null}
@@ -366,7 +366,7 @@ function PlayerSettingsContent() {
           actions={
             !isEditingAccount ? (
               <button
-                className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200"
+                className="sport-secondary-button min-h-11"
                 onClick={startAccountEdit}
                 type="button"
               >
@@ -391,7 +391,7 @@ function PlayerSettingsContent() {
                 <TextField error={accountErrors.phone} label="Phone number" onChange={(value) => setAccountForm((current) => ({ ...current, phone: value }))} value={accountForm.phone} />
               </div>
               {isAccountEmailChanged ? (
-                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
                   <PasswordField error={accountErrors.current_password} label="Current password" onChange={(value) => setAccountForm((current) => ({ ...current, current_password: value }))} show={showPasswords} value={accountForm.current_password} />
                   <button className="mt-2 text-sm font-black text-sportGreen hover:text-green-700" onClick={() => setShowPasswords((current) => !current)} type="button">
                     {showPasswords ? "Hide password" : "Show password"}
@@ -412,10 +412,10 @@ function PlayerSettingsContent() {
           )}
           {isEditingAccount ? (
             <SectionActions>
-              <button className="min-h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200" onClick={cancelAccountEdit} type="button">
+              <button className="sport-secondary-button min-h-11" onClick={cancelAccountEdit} type="button">
                 Cancel
               </button>
-              <button className="min-h-11 rounded-xl bg-sportGreen px-5 text-sm font-black text-white transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60" disabled={!canSaveAccount || savingSection === "account"} onClick={saveAccount} type="button">
+              <button className="sport-primary-button min-h-11" disabled={!canSaveAccount || savingSection === "account"} onClick={saveAccount} type="button">
                 {savingSection === "account" ? "Saving..." : "Save Changes"}
               </button>
             </SectionActions>
@@ -434,10 +434,10 @@ function PlayerSettingsContent() {
           </button>
           <PasswordRequirements password={passwordForm.new_password} confirmPassword={passwordForm.confirm_password} />
           <SectionActions>
-            <button className="min-h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60" disabled={dirtySection !== "security" || savingSection === "security"} onClick={cancelSecurityChanges} type="button">
+            <button className="sport-secondary-button min-h-11" disabled={dirtySection !== "security" || savingSection === "security"} onClick={cancelSecurityChanges} type="button">
               Cancel
             </button>
-            <button className="rounded-xl bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60" disabled={savingSection === "security"} onClick={changePassword} type="button">
+            <button className="sport-primary-button" disabled={savingSection === "security"} onClick={changePassword} type="button">
               {savingSection === "security" ? "Changing..." : "Change Password"}
             </button>
           </SectionActions>
@@ -457,10 +457,10 @@ function PlayerSettingsContent() {
             <SwitchRow checked={notifications.email_notifications} description="Important account and activity emails where email delivery is supported." label="Email notifications" onChange={(value) => setNotifications((current) => ({ ...current, email_notifications: value }))} />
           </div>
           <SectionActions>
-            <button className="min-h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60" disabled={dirtySection !== "notifications" || savingSection === "notifications"} onClick={cancelNotificationChanges} type="button">
+            <button className="sport-secondary-button min-h-11" disabled={dirtySection !== "notifications" || savingSection === "notifications"} onClick={cancelNotificationChanges} type="button">
               Cancel
             </button>
-            <button className="rounded-xl bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60" disabled={savingSection === "notifications"} onClick={saveNotifications} type="button">
+            <button className="sport-primary-button" disabled={savingSection === "notifications"} onClick={saveNotifications} type="button">
               {savingSection === "notifications" ? "Saving..." : "Save Notification Preferences"}
             </button>
           </SectionActions>
@@ -478,10 +478,10 @@ function PlayerSettingsContent() {
             <SwitchRow checked={privacy.allow_team_challenges} description="Allow captains to include your teams in challenge activity where supported." label="Allow team challenges" onChange={(value) => setPrivacy((current) => ({ ...current, allow_team_challenges: value }))} />
           </div>
           <SectionActions>
-            <button className="min-h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60" disabled={dirtySection !== "privacy" || savingSection === "privacy"} onClick={cancelPrivacyChanges} type="button">
+            <button className="sport-secondary-button min-h-11" disabled={dirtySection !== "privacy" || savingSection === "privacy"} onClick={cancelPrivacyChanges} type="button">
               Cancel
             </button>
-            <button className="rounded-xl bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60" disabled={savingSection === "privacy"} onClick={savePrivacy} type="button">
+            <button className="sport-primary-button" disabled={savingSection === "privacy"} onClick={savePrivacy} type="button">
               {savingSection === "privacy" ? "Saving..." : "Save Privacy Settings"}
             </button>
           </SectionActions>
@@ -490,13 +490,13 @@ function PlayerSettingsContent() {
 
       {activeSection === "management" ? (
         <SettingsCard title="Account Management" description="Deactivate your account if you no longer want to use SportSpot.">
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-5">
             <p className="text-sm font-black uppercase tracking-[0.16em] text-red-700">Danger zone</p>
             <h2 className="mt-3 text-xl font-black text-red-950">Deactivate Account</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-red-900">
               Deactivation prevents sign-in and removes your account from normal activity. Existing bookings, payments, ratings and match history stay saved for records and safety.
             </p>
-            <button className="mt-5 rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-200" onClick={() => setIsDeactivateOpen(true)} type="button">
+            <button className="sport-primary-button mt-5 bg-red-700 hover:bg-red-800 focus-visible:ring-red-300" onClick={() => setIsDeactivateOpen(true)} type="button">
               Deactivate Account
             </button>
           </div>
@@ -505,7 +505,7 @@ function PlayerSettingsContent() {
 
       {isDeactivateOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-sportNavy/50 p-3 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="deactivate-title">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
+          <div className="sport-surface w-full max-w-lg p-5 shadow-2xl sm:p-6">
             <h2 className="text-2xl font-black text-sportNavy" id="deactivate-title">Deactivate account?</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">Enter your password to confirm. Your booking, payment and reliability history will remain saved.</p>
             <PasswordField label="Password" onChange={setDeactivatePassword} show={showPasswords} value={deactivatePassword} />
@@ -524,7 +524,7 @@ function PlayerSettingsContent() {
 
 function SettingsCard({ actions, children, description, title }: { actions?: ReactNode; children: ReactNode; description: string; title: string }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <section className="sport-card sm:p-6">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-black text-sportNavy">{title}</h2>
@@ -540,8 +540,8 @@ function TextField({ error, label, onChange, type = "text", value }: { error?: s
   return (
     <label className="block">
       <span className="text-sm font-black text-sportNavy">{label}</span>
-      <input className={`mt-2 min-h-12 w-full rounded-xl border bg-white px-4 text-sm font-semibold text-sportNavy outline-none transition focus:ring-4 focus:ring-green-100 ${error ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-sportGreen"}`} onChange={(event) => onChange(event.target.value)} type={type} value={value} />
-      {error ? <span className="mt-1 block text-xs font-semibold text-red-600">{error}</span> : null}
+      <input className={`sport-input mt-2 ${error ? "border-red-300 focus:border-red-400 focus:ring-red-100" : ""}`} onChange={(event) => onChange(event.target.value)} type={type} value={value} />
+      {error ? <span className="sport-error-text">{error}</span> : null}
     </label>
   );
 }
@@ -554,7 +554,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-sm font-black text-sportNavy">{label}</p>
-      <div className="mt-2 flex min-h-12 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-600">{value}</div>
+      <div className="mt-2 flex min-h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-600">{value}</div>
     </div>
   );
 }
@@ -580,7 +580,7 @@ function SwitchRow({ checked, description, label, onChange }: { checked: boolean
 }
 
 function StatusNote({ children, tone }: { children: ReactNode; tone: "success" | "warning" }) {
-  return <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm font-semibold ${tone === "success" ? "border-green-100 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>{children}</div>;
+  return <div className={`mt-5 rounded-lg border px-4 py-3 text-sm font-semibold ${tone === "success" ? "border-green-100 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>{children}</div>;
 }
 
 function SectionActions({ children }: { children: ReactNode }) {
@@ -595,7 +595,7 @@ function PasswordRequirements({ confirmPassword, password }: { confirmPassword: 
     { label: "Passwords match", met: Boolean(confirmPassword) && password === confirmPassword },
   ];
   return (
-    <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+    <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
       <p className="text-sm font-black text-sportNavy">Password must include</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {requirements.map((item) => (
@@ -613,8 +613,8 @@ function SettingsSkeleton() {
   return (
     <div className="space-y-5">
       <div className="h-28 animate-pulse rounded-lg bg-white shadow-sm" />
-      <div className="h-14 animate-pulse rounded-2xl bg-white shadow-sm" />
-      <div className="h-96 animate-pulse rounded-2xl bg-white shadow-sm" />
+      <div className="sport-surface h-14 animate-pulse" />
+      <div className="sport-surface h-96 animate-pulse" />
     </div>
   );
 }

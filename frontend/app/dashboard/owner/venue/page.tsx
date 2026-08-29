@@ -5,8 +5,11 @@ import { useEffect, useState } from "react";
 
 import ConfirmActionModal from "@/components/ConfirmActionModal";
 import FeedbackToast from "@/components/FeedbackToast";
+import VenueMap from "@/components/venue/VenueMap";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { buildVenueDirectionsHref } from "@/lib/maps";
+import { formatTimeValue } from "@/lib/dates";
 import type { Court, Venue, VenuePhoto, VenuePhotoCategory } from "@/types/venue";
 
 type VenueAction = "delete" | "deactivate";
@@ -99,6 +102,7 @@ export default function OwnerVenuePage() {
 
   const visibleCourts = courts.filter((court) => court.is_active);
   const canPlayersSeeVenue = venue.status === "APPROVED" && venue.is_active;
+  const directionsHref = buildVenueDirectionsHref(venue.latitude, venue.longitude, venue.map_location);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -215,6 +219,23 @@ export default function OwnerVenuePage() {
               <FlowStep number="2" text="Active courts appear on /courts." done={visibleCourts.length > 0 && canPlayersSeeVenue} />
               <FlowStep number="3" text="Available slots appear on each court detail page." done={courts.some((court) => court.lowest_price)} />
               <FlowStep number="4" text="Player reserves a slot, completes payment, and the slot becomes booked." />
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-xl font-black text-sportNavy">Venue location</h2>
+                <p className="mt-1 text-sm text-slate-600">Review the map pin players will use for directions.</p>
+              </div>
+              {directionsHref ? (
+                <a className="rounded-md border border-green-200 px-3 py-2 text-sm font-black text-sportGreen hover:bg-green-50" href={directionsHref} rel="noreferrer" target="_blank">
+                  Open directions
+                </a>
+              ) : null}
+            </div>
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+              <VenueMap latitude={venue.latitude} longitude={venue.longitude} />
             </div>
           </div>
 
@@ -347,9 +368,7 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${tone}`}>{formatChoice(status)}</span>;
 }
 
-function toTime(value: string | null) {
-  return value ? value.slice(0, 5) : "Not set";
-}
+const toTime = formatTimeValue;
 
 function formatChoice(value: string) {
   return value

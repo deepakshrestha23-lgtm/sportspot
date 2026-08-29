@@ -22,9 +22,11 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "daphne",
     "django.contrib.staticfiles",
     "rest_framework",
     "corsheaders",
+    "channels",
     "accounts",
     "players",
     "teams",
@@ -65,6 +67,24 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "sportspot_api.wsgi.application"
+ASGI_APPLICATION = "sportspot_api.asgi.application"
+
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [REDIS_URL]},
+        }
+    }
+else:
+    # A single local runserver process can use this fallback. Production and
+    # multi-worker deployments must set REDIS_URL for shared delivery.
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
 
 DATABASES = {
     "default": {
@@ -115,6 +135,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.AllowAny",
     ),
+    "DEFAULT_THROTTLE_RATES": {
+        "sportspot_mutation": os.getenv("SPORTSPOT_MUTATION_RATE", "120/hour"),
+    },
 }
 
 SIMPLE_JWT = {
@@ -144,6 +167,12 @@ EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False").lower() == "true"
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "SportSpot <no-reply@sportspot.local>")
 SPORTSPOT_SUPPORT_EMAIL = os.getenv("SPORTSPOT_SUPPORT_EMAIL", "support@sportspot.local")
+LOCATION_GEOCODER_URL = os.getenv("LOCATION_GEOCODER_URL", "https://nominatim.openstreetmap.org").rstrip("/")
+LOCATION_GEOCODER_USER_AGENT = os.getenv(
+    "LOCATION_GEOCODER_USER_AGENT",
+    "SportSpot venue location picker (local development)",
+)
+LOCATION_GEOCODER_TIMEOUT = int(os.getenv("LOCATION_GEOCODER_TIMEOUT", "5"))
 ACCOUNT_RECOVERY_REVEAL_EMAIL_ERRORS = os.getenv(
     "ACCOUNT_RECOVERY_REVEAL_EMAIL_ERRORS",
     "True" if DEBUG else "False",
@@ -154,8 +183,6 @@ if EMAIL_USE_TLS and EMAIL_USE_SSL:
 CORS_ALLOWED_ORIGINS = list(dict.fromkeys(
     [
         FRONTEND_URL.rstrip("/"),
-        "http://127.0.0.1:3000",
-        "http://localhost:3000",
     ]
     + [
         origin.strip().rstrip("/")
@@ -164,9 +191,11 @@ CORS_ALLOWED_ORIGINS = list(dict.fromkeys(
     ]
 ))
 
-# Local browsers sometimes open the frontend through the computer's private
-# network address. Keep this development-only convenience out of production.
-if DEBUG:
+# When the configured frontend is local, Next may move from port 3000 to 3001
+# if another process already owns the default port. Allow that local origin
+# without weakening CORS for a deployed frontend.
+is_local_frontend = FRONTEND_URL.startswith(("http://localhost", "http://127.0.0.1"))
+if DEBUG or is_local_frontend:
     CORS_ALLOWED_ORIGIN_REGEXES = [
         r"^https?://localhost:\d+$",
         r"^https?://127\.0\.0\.1:\d+$",

@@ -41,10 +41,10 @@ const toneMap: Record<ToastType, string> = {
 };
 
 const iconMap: Record<ToastType, string> = {
-  success: "OK",
-  error: "!",
-  warning: "!",
-  info: "i",
+  success: "check",
+  error: "error",
+  warning: "warning",
+  info: "info",
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -132,21 +132,33 @@ function ToastViewport({ onDismiss, toasts }: { onDismiss: (id: string) => void;
           key={toast.id}
         >
           <div className="flex items-start gap-3">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-black shadow-sm">
-              {iconMap[toast.type]}
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+              <ToastIcon name={iconMap[toast.type]} />
             </span>
             <p className="min-w-0 flex-1 text-sm font-semibold leading-6">{toast.message}</p>
             <button
-              aria-label="Close message"
-              className="shrink-0 rounded-md px-2 py-1 text-xs font-black opacity-70 hover:bg-white hover:opacity-100"
+              aria-label="Dismiss message"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-slate-900"
               onClick={() => onDismiss(toast.id)}
               type="button"
-            >
-              Close
+              >
+              <CloseIcon />
             </button>
           </div>
         </div>
       ))}
     </div>
   );
+}
+
+function ToastIcon({ name }: { name: string }) {
+  const color = name === "error" ? "text-red-700" : name === "warning" ? "text-amber-700" : name === "info" ? "text-slate-700" : "text-sportGreen";
+  if (name === "check") {
+    return <svg aria-hidden="true" className={`h-4 w-4 ${color}`} fill="none" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.4" /></svg>;
+  }
+  return <span aria-hidden="true" className={`text-sm font-black ${color}`}>{name === "info" ? "i" : "!"}</span>;
+}
+
+function CloseIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
 }

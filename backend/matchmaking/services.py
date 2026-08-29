@@ -7,9 +7,10 @@ from rest_framework.exceptions import ValidationError
 from notifications.models import Notification
 from notifications.services import create_notification, mark_related_action_state
 from players.models import PlayerProfile
-from teams.models import TeamMember
+from teams.models import Team, TeamMember
 from venues.models import Booking
 from venues.policies import get_booking_start_at
+from venues.reference_data import SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG
 
 from .models import (
     ACTIVE_PARTICIPANT_STATUSES,
@@ -80,20 +81,134 @@ def set_participant_status(participant, status, *, actor=None, acknowledge_sched
 def game_room_access_level(game, user):
     """Return the least-privileged room a user may open for the game.
 
-    A Planning Room intentionally exposes only the plan, roster progress and
-    host announcements.  A confirmed Game Room is available only after the
-    participant has a confirmed spot and a verified court booking exists.
+    A room is a coordination record, not a booking gate.  It exists while a
+    game is being planned, remains available for schedule reconfirmation, and
+    becomes read-only after cancellation or completion.  The terminal state
+    is intentionally calculated *after* membership so a former applicant or
+    an unrelated player can never use a historical room to discover private
+    roster data.
     """
+    if not getattr(user, "is_authenticated", False):
+        return "NONE"
+
+    is_host = game.host_id == user.id
+    participant = None if is_host else game.participants.filter(
+        user=user,
+        status__in=ACTIVE_PARTICIPANT_STATUSES,
+    ).first()
+    if not is_host and not participant:
+        return "NONE"
+
     if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED]:
-        return "NONE"
-    if game.host_id == user.id:
+        return "READ_ONLY"
+    if game.requires_reconfirmation or (
+        participant and participant.status in RECONFIRMATION_PENDING_STATUSES
+    ):
+        return "RECONFIRMATION"
+    if is_host:
         return "CONFIRMED" if game.booking_id else "PLANNING"
-    participant = game.participants.filter(user=user, status__in=ACTIVE_PARTICIPANT_STATUSES).first()
-    if not participant:
-        return "NONE"
     if game.booking_id and participant.status == GameParticipant.Status.CONFIRMED:
         return "CONFIRMED"
     return "PLANNING"
+
+
+def synchronize_game_host_continuity(game, *, notify=True):
+    """Keep a Fill My Squad host aligned with the team's current captain.
+
+    A game cannot be left publicly manageable by a former captain. When a team
+    captain changes, responsibility follows the team. If there is no valid
+    active captain, the listing is closed while its booking and history remain
+    separate and intact.
+    """
+    if (
+        not game.team_id
+        or game.game_type != Game.GameType.FILL_SQUAD
+        or game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS]
+    ):
+        return False
+
+    team = (
+        Team.objects.select_related("captain")
+        .filter(pk=game.team_id)
+        .first()
+    )
+    captain = getattr(team, "captain", None) if team else None
+    captain_is_valid = bool(
+        captain
+        and captain.role == "PLAYER"
+        and captain.is_active
+        and TeamMember.objects.filter(
+            team_id=team.id,
+            user_id=captain.id,
+            member_type=TeamMember.MemberType.REGISTERED,
+            status=TeamMember.MemberStatus.ACTIVE,
+        ).exists()
+    )
+
+    if captain_is_valid and game.host_id == captain.id:
+        return False
+
+    old_host = get_user_model().objects.filter(pk=game.host_id).first()
+    now = timezone.now()
+    if captain_is_valid:
+        old_host_participant = GameParticipant.objects.select_for_update().filter(
+            game=game,
+            user_id=game.host_id,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            status__in=ACTIVE_PARTICIPANT_STATUSES,
+        ).first()
+        if old_host_participant:
+            old_host_is_still_member = TeamMember.objects.filter(
+                team_id=team.id,
+                user_id=game.host_id,
+                member_type=TeamMember.MemberType.REGISTERED,
+                status=TeamMember.MemberStatus.ACTIVE,
+            ).exists()
+            old_host_participant.participant_type = (
+                GameParticipant.ParticipantType.TEAM_MEMBER
+                if old_host_is_still_member
+                else GameParticipant.ParticipantType.HOST
+            )
+            if not old_host_is_still_member:
+                old_host_participant.status = GameParticipant.Status.REMOVED
+                old_host_participant.status_changed_at = now
+                old_host_participant.status_changed_by = captain
+                old_host_participant.save(update_fields=[
+                    "participant_type", "status", "status_changed_at",
+                    "status_changed_by",
+                ])
+            else:
+                old_host_participant.save(update_fields=["participant_type"])
+        game.host_id = captain.id
+        game.host = captain
+        game.save(update_fields=["host", "updated_at"])
+        if notify:
+            notify_game_host_transferred(game, old_host=old_host, new_host=captain)
+        return True
+
+    game.status = Game.Status.CANCELLED
+    game.is_public = False
+    game.cancelled_at = game.cancelled_at or now
+    game.cancellation_reason = (
+        "This game was closed because the team no longer has an active captain to manage it."
+    )
+    game.recruitment_closed_at = game.recruitment_closed_at or now
+    game.save(update_fields=[
+        "status", "is_public", "cancelled_at", "cancellation_reason",
+        "recruitment_closed_at", "updated_at",
+    ])
+    expire_open_join_requests_for_game(game, now=now)
+    if notify:
+        notify_game_cancelled(game, old_host, booking_cancelled=False)
+    return True
+
+
+def synchronize_and_require_game_host(game, actor, message):
+    """Synchronize team-host ownership before authorizing a host action."""
+    synchronize_game_host_continuity(game)
+    if game.host_id != actor.id:
+        raise ValidationError(message)
+    return game
 
 
 def synchronize_game_lifecycle(game, now=None, expire_requests=False):
@@ -108,8 +223,10 @@ def synchronize_game_lifecycle(game, now=None, expire_requests=False):
     # Keep both operations in one transaction so read endpoints can safely
     # repair stale lifecycle data without raising a transaction error.
     with transaction.atomic():
+        synchronize_game_host_continuity(game)
         synchronize_linked_booking_state(game, now=now)
         game.refresh_status(now=now)
+        expire_pending_reconfirmations(game, now=now)
         if expire_requests and game_should_expire_open_requests(game, now):
             expire_open_join_requests_for_game(game, now=now)
     return game
@@ -185,8 +302,7 @@ def cancel_games_for_booking(booking, actor=None):
 def close_game_recruitment(game, actor):
     """Stop discovery and new requests without cancelling the game booking."""
     locked_game = Game.objects.select_for_update(of=("self",)).select_related("host", "booking").get(id=game.id)
-    if locked_game.host_id != actor.id:
-        raise ValidationError("Only the game host can close recruitment.")
+    synchronize_and_require_game_host(locked_game, actor, "Only the game host can close recruitment.")
     synchronize_game_lifecycle(locked_game, expire_requests=True)
     if locked_game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS, Game.Status.BOOKING_PENDING]:
         raise ValidationError("Recruitment cannot be changed for this game anymore.")
@@ -210,8 +326,7 @@ def close_game_recruitment(game, actor):
 def reopen_game_recruitment(game, actor):
     """Reopen discovery only while the original schedule remains safe."""
     locked_game = Game.objects.select_for_update(of=("self",)).select_related("host", "booking").get(id=game.id)
-    if locked_game.host_id != actor.id:
-        raise ValidationError("Only the game host can reopen recruitment.")
+    synchronize_and_require_game_host(locked_game, actor, "Only the game host can reopen recruitment.")
     synchronize_game_lifecycle(locked_game, expire_requests=True)
     if locked_game.status != Game.Status.CLOSED:
         raise ValidationError("Only a closed game can reopen recruitment.")
@@ -266,6 +381,11 @@ def ensure_booking_can_publish_game(booking, host, exclude_game_id=None):
 
 
 def eligible_bookings_for_user(user):
+    # A paid booking can only anchor one active player game, team challenge,
+    # or confirmed fixture. Keep this catalogue authoritative for every
+    # booking handoff flow instead of relying on each frontend to filter it.
+    from team_challenges.models import ACTIVE_CHALLENGE_STATUSES
+
     now = timezone.now()
     bookings = (
         Booking.objects.filter(
@@ -273,8 +393,12 @@ def eligible_bookings_for_user(user):
             status=Booking.BookingStatus.CONFIRMED,
             payment_status=Booking.PaymentStatus.PAID,
         )
+        .exclude(matchmaking_games__status__in=ACTIVE_GAME_STATUSES)
+        .exclude(team_challenges__status__in=ACTIVE_CHALLENGE_STATUSES)
+        .exclude(team_fixture__isnull=False)
         .select_related("venue", "court", "slot", "player")
         .prefetch_related("slot_items__slot", "matchmaking_games")
+        .distinct()
         .order_by("slot__date", "slot__start_time")
     )
     eligible = []
@@ -282,16 +406,13 @@ def eligible_bookings_for_user(user):
         start_at = get_booking_start_at(booking)
         if not start_at or start_at <= now:
             continue
-        if booking.matchmaking_games.filter(status__in=ACTIVE_GAME_STATUSES).exists():
-            continue
         eligible.append(booking)
     return eligible
 
 
 def validate_game_booking_handoff(game, host):
+    synchronize_and_require_game_host(game, host, "Only the host can book a court for this game.")
     synchronize_game_lifecycle(game, expire_requests=True)
-    if game.host_id != host.id:
-        raise ValidationError("Only the host can book a court for this game.")
     if game.creation_mode != Game.CreationMode.PLAN_FIRST:
         raise ValidationError("This game already uses the booking-first flow.")
     if game.booking_id:
@@ -318,8 +439,9 @@ def mark_game_booking_payment_pending(game_id, booking_id, actor):
     """
     game = Game.objects.select_for_update(of=("self",)).get(id=game_id)
     booking = Booking.objects.select_for_update().get(id=booking_id)
-    if game.host_id != actor.id or booking.player_id != actor.id:
-        raise ValidationError("Only the host can start court payment for this game.")
+    synchronize_and_require_game_host(game, actor, "Only the host can start court payment for this game.")
+    if booking.player_id != actor.id:
+        raise ValidationError("The court reservation must belong to the game host.")
     if booking.matchmaking_game_id != game.id:
         raise ValidationError("This reservation is not connected to this game plan.")
     if booking.status != Booking.BookingStatus.RESERVED or booking.payment_status != Booking.PaymentStatus.PENDING:
@@ -390,7 +512,12 @@ def add_initial_participants(game, host, guests=None, selected_team_member_ids=N
     initial_status = GameParticipant.Status.CONFIRMED if game.booking_id else GameParticipant.Status.PROVISIONAL
     host_role = get_user_preferred_role(host)
     if game.game_type == Game.GameType.FILL_SQUAD and game.team_id:
-        host_membership = TeamMember.objects.filter(team=game.team, user=host, status=TeamMember.MemberStatus.ACTIVE).first()
+        host_membership = TeamMember.objects.filter(
+            team=game.team,
+            user=host,
+            member_type=TeamMember.MemberType.REGISTERED,
+            status=TeamMember.MemberStatus.ACTIVE,
+        ).first()
         if host_membership:
             host_role = team_member_role_to_game_role(host_membership)
     GameParticipant.objects.get_or_create(
@@ -484,29 +611,112 @@ def player_meets_skill(game, player):
     return SKILL_ORDER.get(get_user_skill_level(player), 0) >= SKILL_ORDER.get(game.min_skill_level, 0)
 
 
-def player_has_overlapping_confirmed_game(player, game):
-    start_at = game.start_at
-    end_at = game.end_at
+def _slot_window(slot):
+    current_timezone = timezone.get_current_timezone()
+    start_at = timezone.make_aware(
+        timezone.datetime.combine(slot.date, slot.start_time),
+        current_timezone,
+    )
+    end_at = timezone.make_aware(
+        timezone.datetime.combine(slot.date, slot.end_time),
+        current_timezone,
+    )
+    return start_at, end_at
+
+
+def player_has_overlapping_commitment(
+    player,
+    start_at,
+    end_at,
+    *,
+    exclude_game_id=None,
+    exclude_booking_id=None,
+    now=None,
+):
+    """Return whether a player already has a real schedule commitment.
+
+    Matchmaking participants and court bookings are separate records, so
+    checking only one source can let a player accept an overlapping activity.
+    A confirmed paid booking, or a still-held unpaid reservation, is treated
+    as committed until its backend lifecycle releases it.
+    """
     if not start_at or not end_at:
         return False
-    games = (
-        Game.objects.filter(
-            participants__user=player,
-            participants__status__in=ACTIVE_PARTICIPANT_STATUSES,
-            status__in=[
-                Game.Status.RECRUITING, Game.Status.FULL, Game.Status.CLOSED,
-                Game.Status.BOOKING_PENDING, Game.Status.IN_PROGRESS,
-            ],
-        )
-        .exclude(id=game.id)
-        .select_related("booking", "booking__slot")
-    )
+    now = now or timezone.now()
+    games = Game.objects.filter(
+        participants__user=player,
+        participants__status__in=ACTIVE_PARTICIPANT_STATUSES,
+        status__in=[
+            Game.Status.RECRUITING, Game.Status.FULL, Game.Status.CLOSED,
+            Game.Status.BOOKING_PENDING, Game.Status.IN_PROGRESS,
+        ],
+    ).select_related("booking", "booking__slot")
+    if exclude_game_id:
+        games = games.exclude(pk=exclude_game_id)
     for other in games:
         other_start = other.start_at
         other_end = other.end_at
         if other_start and other_end and start_at < other_end and end_at > other_start:
             return True
+
+    bookings = Booking.objects.filter(player=player).filter(
+        Q(
+            status=Booking.BookingStatus.CONFIRMED,
+            payment_status=Booking.PaymentStatus.PAID,
+        )
+        | Q(
+            status=Booking.BookingStatus.RESERVED,
+            payment_status=Booking.PaymentStatus.PENDING,
+            reserved_until__gt=now,
+        )
+    ).prefetch_related("slot_items__slot", "slot")
+    if exclude_booking_id:
+        bookings = bookings.exclude(pk=exclude_booking_id)
+    for booking in bookings:
+        seen_slot_ids = set()
+        for slot in booking.booked_slots:
+            if slot.pk in seen_slot_ids:
+                continue
+            seen_slot_ids.add(slot.pk)
+            booking_start, booking_end = _slot_window(slot)
+            if start_at < booking_end and end_at > booking_start:
+                return True
+
+    # Team fixtures are a separate domain from Pickup Games, but a selected
+    # lineup is still a real player commitment. Import lazily to avoid the
+    # matchmaking <-> team-challenge service import cycle.
+    from team_challenges.models import TeamFixture, TeamFixtureParticipant
+
+    fixture_participants = (
+        TeamFixtureParticipant.objects.filter(
+            player=player,
+            status=TeamFixtureParticipant.Status.SELECTED,
+            fixture__status__in=[
+                TeamFixture.Status.SCHEDULED,
+                TeamFixture.Status.RECONFIRMATION_REQUIRED,
+            ],
+            fixture__booking__isnull=False,
+        )
+        .select_related("fixture__booking")
+        .prefetch_related("fixture__booking__slot_items__slot", "fixture__booking__slot")
+    )
+    for fixture_participant in fixture_participants:
+        fixture_booking = fixture_participant.fixture.booking
+        for slot in fixture_booking.booked_slots:
+            fixture_start, fixture_end = _slot_window(slot)
+            if start_at < fixture_end and end_at > fixture_start:
+                return True
     return False
+
+
+def player_has_overlapping_confirmed_game(player, game):
+    """Backward-compatible wrapper for callers using the old service name."""
+    return player_has_overlapping_commitment(
+        player,
+        game.start_at,
+        game.end_at,
+        exclude_game_id=game.id,
+    )
 
 
 def role_progress(game):
@@ -582,12 +792,48 @@ def refresh_reconfirmation_state(game, save=True):
     player has responded, and makes guest acknowledgement visible separately.
     """
     pending = game.participants.filter(status__in=RECONFIRMATION_PENDING_STATUSES).exists()
-    if game.requires_reconfirmation == pending:
-        return pending
-    game.requires_reconfirmation = pending
-    if save:
-        game.save(update_fields=["requires_reconfirmation", "updated_at"])
+    update_fields = []
+    if pending:
+        if not game.reconfirmation_requested_at:
+            game.reconfirmation_requested_at = timezone.now()
+            update_fields.append("reconfirmation_requested_at")
+        if not game.reconfirmation_deadline:
+            game.reconfirmation_deadline = _reconfirmation_deadline(game, game.reconfirmation_requested_at)
+            update_fields.append("reconfirmation_deadline")
+    else:
+        if game.reconfirmation_requested_at is not None:
+            game.reconfirmation_requested_at = None
+            update_fields.append("reconfirmation_requested_at")
+        if game.reconfirmation_deadline is not None:
+            game.reconfirmation_deadline = None
+            update_fields.append("reconfirmation_deadline")
+    if game.requires_reconfirmation != pending:
+        game.requires_reconfirmation = pending
+        update_fields.append("requires_reconfirmation")
+    if save and update_fields:
+        game.save(update_fields=[*update_fields, "updated_at"])
     return pending
+
+
+def _reconfirmation_deadline(game, requested_at=None):
+    requested_at = requested_at or timezone.now()
+    max_response_window = timezone.timedelta(
+        hours=SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG.get(
+            "maximum_reconfirmation_response_hours", 24
+        )
+    )
+    start_at = game.start_at
+    safe_deadline = (
+        start_at
+        - timezone.timedelta(
+            minutes=SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG.get(
+                "minimum_reconfirmation_notice_minutes", 30
+            )
+        )
+        if start_at
+        else requested_at + max_response_window
+    )
+    return min(safe_deadline, requested_at + max_response_window)
 
 
 def mark_schedule_reconfirmation_required(game, actor=None):
@@ -607,6 +853,8 @@ def mark_schedule_reconfirmation_required(game, actor=None):
         status=GameParticipant.Status.RECONFIRM_REQUIRED,
         status_changed_at=now,
         status_changed_by=actor,
+        schedule_acknowledged_at=None,
+        schedule_acknowledged_by=None,
     )
     active_non_host.filter(
         participant_type=GameParticipant.ParticipantType.GUEST,
@@ -618,6 +866,58 @@ def mark_schedule_reconfirmation_required(game, actor=None):
         schedule_acknowledged_by=None,
     )
     return refresh_reconfirmation_state(game)
+
+
+def expire_pending_reconfirmations(game, now=None, *, notify=True):
+    """Close unresolved participant commitments after their response window.
+
+    A changed schedule is not considered accepted just because a participant
+    stayed silent. Removing the unresolved spot preserves the confirmed
+    booking, reopens capacity, and lets the host deliberately use the
+    existing waitlist or invite flow.
+    """
+    now = now or timezone.now()
+    if not game.reconfirmation_deadline or game.reconfirmation_deadline > now:
+        return 0
+    pending = list(
+        game.participants.select_for_update().filter(
+            status__in=RECONFIRMATION_PENDING_STATUSES,
+        ).select_related("user")
+    )
+    if not pending:
+        refresh_reconfirmation_state(game)
+        return 0
+    for participant in pending:
+        set_participant_status(participant, GameParticipant.Status.REMOVED, actor=game.host)
+        if participant.user_id:
+            requests = JoinRequest.objects.select_for_update().filter(
+                game=game,
+                player_id=participant.user_id,
+                status=JoinRequest.Status.ACCEPTED,
+            )
+            for join_request in requests:
+                previous_status = join_request.status
+                join_request.status = JoinRequest.Status.REMOVED
+                join_request.decided_by = game.host
+                join_request.decided_at = now
+                join_request.save(update_fields=["status", "decided_by", "decided_at", "updated_at"])
+                record_join_request_event(
+                    join_request,
+                    JoinRequestEvent.EventType.REMOVED,
+                    actor=game.host,
+                    previous_status=previous_status,
+                    metadata={"reason": "reconfirmation_deadline"},
+                )
+            if notify:
+                notify_participant_removed(game, participant, game.host)
+    resequence_waitlist(game)
+    refresh_reconfirmation_state(game)
+    game.refresh_status()
+    if game.status in [Game.Status.RECRUITING, Game.Status.FULL]:
+        notify_waitlist_spot_available(game, game.host)
+    if notify:
+        notify_reconfirmation_expired(game, len(pending))
+    return len(pending)
 
 
 @transaction.atomic
@@ -633,8 +933,7 @@ def update_game_host_settings(game_id, actor, changes):
         .select_related("host", "booking", "booking__venue")
         .get(id=game_id)
     )
-    if game.host_id != actor.id:
-        raise ValidationError("Only the host can edit this game.")
+    synchronize_and_require_game_host(game, actor, "Only the host can edit this game.")
     synchronize_game_lifecycle(game, expire_requests=True)
     if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS, Game.Status.BOOKING_PENDING]:
         raise ValidationError("This game can no longer be edited.")
@@ -748,8 +1047,7 @@ def update_game_host_settings(game_id, actor, changes):
 @transaction.atomic
 def update_game_participant(game_id, participant_id, actor, changes):
     game = Game.objects.select_for_update(of=("self",)).select_related("host").get(id=game_id)
-    if game.host_id != actor.id:
-        raise ValidationError("Only the host can edit the game roster.")
+    synchronize_and_require_game_host(game, actor, "Only the host can edit the game roster.")
     synchronize_game_lifecycle(game, expire_requests=True)
     if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS, Game.Status.BOOKING_PENDING]:
         raise ValidationError("The roster can no longer be changed.")
@@ -789,8 +1087,7 @@ def update_game_participant(game_id, participant_id, actor, changes):
 @transaction.atomic
 def remove_game_participant(game_id, participant_id, actor):
     game = Game.objects.select_for_update(of=("self",)).select_related("host").get(id=game_id)
-    if game.host_id != actor.id:
-        raise ValidationError("Only the host can remove players from the roster.")
+    synchronize_and_require_game_host(game, actor, "Only the host can remove players from the roster.")
     synchronize_game_lifecycle(game, expire_requests=True)
     if game.status in [Game.Status.CANCELLED, Game.Status.COMPLETED, Game.Status.IN_PROGRESS, Game.Status.BOOKING_PENDING]:
         raise ValidationError("The roster can no longer be changed.")
@@ -859,8 +1156,7 @@ def validate_join_request(game, player, requested_role=None):
 @transaction.atomic
 def add_guest_participant(game_id, actor, guest_name, role):
     game = Game.objects.select_for_update(of=("self",)).order_by().get(id=game_id)
-    if game.host_id != actor.id:
-        raise ValidationError("Only the host can add guest players.")
+    synchronize_and_require_game_host(game, actor, "Only the host can add guest players.")
     synchronize_game_lifecycle(game, expire_requests=True)
     if game.status not in [Game.Status.RECRUITING, Game.Status.FULL, Game.Status.CLOSED]:
         raise ValidationError("Guests cannot be added to this game right now.")
@@ -888,8 +1184,7 @@ def add_guest_participant(game_id, actor, guest_name, role):
 @transaction.atomic
 def invite_player_to_game(game_id, actor, sportspot_id, requested_role, message=""):
     game = Game.objects.select_for_update(of=("self",)).order_by().get(id=game_id)
-    if game.host_id != actor.id:
-        raise ValidationError("Only the host can invite players to this game.")
+    synchronize_and_require_game_host(game, actor, "Only the host can invite players to this game.")
     game.refresh_status()
     if game.status not in [Game.Status.RECRUITING, Game.Status.FULL]:
         raise ValidationError("Players cannot be invited to this game right now.")
@@ -986,8 +1281,9 @@ def invite_temporary_participant_to_team(game_id, participant_id, actor):
     )
     if game.game_type != Game.GameType.FILL_SQUAD or not game.team_id:
         raise ValidationError("Permanent team invitations are available only for Fill My Squad games.")
-    if game.host_id != actor.id or game.team.captain_id != actor.id:
-        raise ValidationError("Only the team captain who hosted this game can send a permanent team invitation.")
+    current_captain = _active_registered_captain(game.team)
+    if not current_captain or current_captain.id != actor.id:
+        raise ValidationError("Only the current team captain can send a permanent team invitation.")
     if game.status != Game.Status.COMPLETED:
         raise ValidationError("A permanent team invitation can be sent after the game is completed.")
     participant = GameParticipant.objects.select_for_update().select_related("user").filter(
@@ -1116,8 +1412,7 @@ def decide_join_request(join_request, actor, decision):
     # Lock the game first so this decision has the same lock ordering as join,
     # withdrawal and maintenance expiry.
     game = Game.objects.select_for_update(of=("self",)).order_by().select_related("host").get(id=join_request.game_id)
-    if game.host_id != actor.id:
-        raise ValidationError("Only the game host can manage requests.")
+    synchronize_and_require_game_host(game, actor, "Only the game host can manage requests.")
     synchronize_game_lifecycle(game, expire_requests=True)
     locked_request = JoinRequest.objects.select_for_update().select_related("game", "player").get(id=join_request.id, game_id=game.id)
     if locked_request.status not in [JoinRequest.Status.PENDING, JoinRequest.Status.WAITLISTED]:
@@ -1270,8 +1565,7 @@ def leave_game(game, player):
 @transaction.atomic
 def attach_booking_to_game(game, booking, actor, *, from_payment_handoff=False):
     locked_game = Game.objects.select_for_update(of=("self",)).order_by().select_related("host").get(id=game.id)
-    if locked_game.host_id != actor.id:
-        raise ValidationError("Only the host can attach a booking to this game.")
+    synchronize_and_require_game_host(locked_game, actor, "Only the host can attach a booking to this game.")
     if locked_game.booking_id:
         if locked_game.booking_id == booking.id:
             return locked_game
@@ -1522,12 +1816,30 @@ def expire_matchmaking_deadlines(now=None, dry_run=False, notify=True, limit=100
         status__in=[Game.Status.CLOSED, Game.Status.CANCELLED, Game.Status.IN_PROGRESS, Game.Status.COMPLETED],
         join_requests__status__in=EXPIRABLE_JOIN_REQUEST_STATUSES,
     )
+    batch_limit = max(1, int(limit))
     game_ids = list(
         Game.objects.filter(due_lifecycle | stale_requests)
         .distinct()
         .order_by("id")
-        .values_list("id", flat=True)[: max(1, int(limit))]
+        .values_list("id", flat=True)[:batch_limit]
     )
+    # A team captain can change while a future Fill My Squad listing is not
+    # otherwise due for a lifecycle transition. Include a bounded continuity
+    # pass so ownership follows the team without waiting for a page request.
+    continuity_game_ids = list(Game.objects.filter(
+        game_type=Game.GameType.FILL_SQUAD,
+        status__in=[
+            Game.Status.DRAFT,
+            Game.Status.RECRUITING,
+            Game.Status.FULL,
+            Game.Status.CLOSED,
+            Game.Status.BOOKING_PENDING,
+        ],
+    ).exclude(id__in=game_ids).order_by("id").values_list("id", flat=True)[:batch_limit])
+    # Keep the deadline batch bounded while still giving host-continuity work
+    # its own fair slice. Otherwise a large queue of due games can starve
+    # future Fill My Squad listings indefinitely.
+    game_ids = [*game_ids, *continuity_game_ids]
 
     for game_id in game_ids:
         if dry_run:
@@ -1543,6 +1855,7 @@ def expire_matchmaking_deadlines(now=None, dry_run=False, notify=True, limit=100
         with transaction.atomic():
             game = Game.objects.select_for_update(of=("self",)).select_related("booking").order_by().get(id=game_id)
             previous_status = game.status
+            synchronize_game_host_continuity(game)
             linked_booking_cancelled = synchronize_linked_booking_state(game, now=now)
             next_status = game.status if linked_booking_cancelled else game.refresh_status(save=True, now=now)
             if previous_status != next_status:
@@ -1828,6 +2141,60 @@ def notify_participant_removed(game, participant, actor):
         action_status=Notification.ActionStatus.REJECTED,
         metadata={"game_id": game.id, "participant_id": participant.id, "change": "participant_removed"},
         deduplication_key=f"game:{game.id}:participant-removed:{participant.id}",
+    )
+
+
+def notify_game_host_transferred(game, *, old_host=None, new_host=None):
+    """Explain a team-captain handoff to the people affected by it."""
+    if not new_host:
+        return []
+    recipients = [new_host]
+    if old_host and old_host.id != new_host.id:
+        recipients.append(old_host)
+    notifications = []
+    for recipient in recipients:
+        is_new_host = recipient.id == new_host.id
+        notifications.append(
+            create_notification(
+                recipient=recipient,
+                actor=old_host if is_new_host else new_host,
+                notification_type=Notification.NotificationType.MATCH_UPDATED,
+                title="Game host updated",
+                message=(
+                    f"You are now responsible for managing {game.title} as the team captain."
+                    if is_new_host
+                    else f"{new_host.full_name} is now responsible for managing {game.title} as the team captain."
+                ),
+                priority=Notification.Priority.IMPORTANT,
+                action_url=f"/dashboard/player/games/{game.id}",
+                related_entity_type="game",
+                related_entity_id=game.id,
+                action_status=Notification.ActionStatus.COMPLETED,
+                metadata={"game_id": game.id, "new_host_id": new_host.id},
+                deduplication_key=f"game:{game.id}:host-transferred:{new_host.id}:{recipient.id}",
+            )
+        )
+    return notifications
+
+
+def notify_reconfirmation_expired(game, removed_count):
+    return create_notification(
+        recipient=game.host,
+        actor=game.host,
+        notification_type=Notification.NotificationType.MATCH_UPDATED,
+        title="Updated game schedule needs attention",
+        message=(
+            f"{removed_count} participant{'s' if removed_count != 1 else ''} did not confirm the updated details in time. "
+            "Their spot is open again for you to fill."
+        ),
+        priority=Notification.Priority.IMPORTANT,
+        action_url=f"/dashboard/player/games/{game.id}",
+        related_entity_type="game",
+        related_entity_id=game.id,
+        action_required=True,
+        action_status=Notification.ActionStatus.PENDING,
+        metadata={"game_id": game.id, "removed_count": removed_count, "reason": "reconfirmation_deadline"},
+        deduplication_key=f"game:{game.id}:reconfirmation-expired:{game.reconfirmation_deadline.isoformat() if game.reconfirmation_deadline else 'none'}",
     )
 
 

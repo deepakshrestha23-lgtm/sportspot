@@ -39,6 +39,11 @@ export type Venue = {
   address: string;
   city: string;
   area: string;
+  latitude: number | string | null;
+  longitude: number | string | null;
+  location_source: "MANUAL_PIN" | "GEOCODED" | "LEGACY_LINK" | "";
+  location_confirmed: boolean;
+  location_updated_at: string | null;
   map_location: string;
   contact_phone: string;
   opening_time: string | null;
@@ -223,6 +228,8 @@ export type Booking = {
   venue_address: string;
   venue_area: string;
   venue_city: string;
+  venue_latitude: number | string | null;
+  venue_longitude: number | string | null;
   venue_map_location: string;
   court_photo: string;
   venue_primary_image: string;

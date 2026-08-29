@@ -10,8 +10,11 @@ import {
   useState,
 } from "react";
 
-import { api } from "@/lib/api";
+import { api, refreshAccessTokenForRealtime } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { getAccessToken } from "@/lib/auth";
+import { emitToast } from "@/lib/toast";
+import { getNotificationWebSocketUrl } from "@/lib/realtime";
 import type {
   NotificationAction,
   NotificationActionResponse,
@@ -63,7 +66,12 @@ export default function NotificationCenter({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [actionId, setActionId] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState("");
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const latestNotificationIdRef = useRef(0);
+
+  useEffect(() => {
+    latestNotificationIdRef.current = 0;
+  }, [userId]);
 
   const updateUnseenCount = useCallback((count: number) => {
     setUnseenCount(count);
@@ -78,13 +86,17 @@ export default function NotificationCenter({
       const latest = response.data.latest_notification;
       if (!latest || typeof window === "undefined") return;
       const storageKey = `sportspot_notification_latest_${userId}`;
-      const previousLatestId = Number(window.sessionStorage.getItem(storageKey) || 0);
+      const previousLatestId = Math.max(
+        Number(window.sessionStorage.getItem(storageKey) || 0),
+        latestNotificationIdRef.current,
+      );
       if (previousLatestId > 0 && latest.id > previousLatestId) {
         onNewNotification?.(latest.title);
       }
       if (latest.id > previousLatestId) {
         window.sessionStorage.setItem(storageKey, String(latest.id));
       }
+      latestNotificationIdRef.current = Math.max(latestNotificationIdRef.current, latest.id);
     } catch {
       // A failed background refresh should not clear a previously correct badge.
     }
@@ -106,9 +118,116 @@ export default function NotificationCenter({
     }
   }, [updateUnseenCount]);
 
+  const activeFilterRef = useRef(activeFilter);
+  const isOpenRef = useRef(isOpen);
+  const loadCountRef = useRef(loadCount);
+  const loadNotificationsRef = useRef(loadNotifications);
+
+  useEffect(() => {
+    activeFilterRef.current = activeFilter;
+    isOpenRef.current = isOpen;
+    loadCountRef.current = loadCount;
+    loadNotificationsRef.current = loadNotifications;
+  }, [activeFilter, isOpen, loadCount, loadNotifications]);
+
+  useEffect(() => {
+    let disposed = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let heartbeatTimer: number | null = null;
+    let reconnectAttempt = 0;
+
+    function clearConnectionTimers() {
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
+      reconnectTimer = null;
+      heartbeatTimer = null;
+    }
+
+    function scheduleReconnect() {
+      if (disposed || reconnectTimer !== null) return;
+      const delay = Math.min(30000, 1000 * (2 ** reconnectAttempt));
+      reconnectAttempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, delay);
+    }
+
+    async function connect() {
+      if (disposed || typeof window === "undefined" || !window.WebSocket) return;
+      const accessToken = getAccessToken();
+      if (!accessToken) {
+        setIsRealtimeConnected(false);
+        return;
+      }
+
+      clearConnectionTimers();
+      socket = new WebSocket(getNotificationWebSocketUrl());
+
+      socket.onopen = () => {
+        socket?.send(JSON.stringify({ type: "authenticate", access_token: accessToken }));
+      };
+
+      socket.onmessage = (event) => {
+        let payload: { type?: string };
+        try {
+          payload = JSON.parse(event.data) as { type?: string };
+        } catch {
+          return;
+        }
+
+        if (payload.type === "ready") {
+          reconnectAttempt = 0;
+          setIsRealtimeConnected(true);
+          void loadCountRef.current();
+          heartbeatTimer = window.setInterval(() => {
+            if (socket?.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: "ping" }));
+            }
+          }, 30000);
+          return;
+        }
+
+        if (payload.type === "notification.created") {
+          // The event is only an invalidation signal. The authenticated REST
+          // endpoint returns the complete, permission-checked notification.
+          void loadCountRef.current();
+          if (isOpenRef.current) {
+            void loadNotificationsRef.current(activeFilterRef.current, false);
+          }
+        }
+      };
+
+      socket.onerror = () => {
+        socket?.close();
+      };
+
+      socket.onclose = async (event) => {
+        clearConnectionTimers();
+        setIsRealtimeConnected(false);
+        if (disposed) return;
+
+        if (event.code === 4401) {
+          const refreshedToken = await refreshAccessTokenForRealtime();
+          if (!refreshedToken || disposed) return;
+        }
+        scheduleReconnect();
+      };
+    }
+
+    void connect();
+    return () => {
+      disposed = true;
+      clearConnectionTimers();
+      setIsRealtimeConnected(false);
+      socket?.close(1000, "Component closed");
+    };
+  }, [userId]);
+
   useEffect(() => {
     loadCount();
-    const intervalId = window.setInterval(loadCount, 10000);
+    const intervalId = window.setInterval(loadCount, isRealtimeConnected ? 30000 : 10000);
     const handleFocus = () => loadCount();
     const handleVisibility = () => {
       if (document.visibilityState === "visible") loadCount();
@@ -120,7 +239,7 @@ export default function NotificationCenter({
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [loadCount]);
+  }, [isRealtimeConnected, loadCount]);
 
   useEffect(() => {
     api
@@ -157,11 +276,6 @@ export default function NotificationCenter({
   function closeDrawer() {
     onClose();
     window.setTimeout(() => triggerRef?.current?.focus(), 0);
-  }
-
-  function showToast(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 3000);
   }
 
   const flushSeenQueue = useCallback(async () => {
@@ -231,9 +345,13 @@ export default function NotificationCenter({
       })));
       updateUnseenCount(0);
       if (activeFilter === "UNSEEN") setNotifications([]);
-      showToast("All notifications marked as read.");
+      emitToast({ message: "All notifications marked as read.", type: "success", dedupeKey: "notifications-marked-read" });
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Could not mark notifications as read."));
+      emitToast({
+        message: getApiErrorMessage(requestError, "Could not mark notifications as read."),
+        type: "error",
+        dedupeKey: "notifications-mark-read-error",
+      });
     }
   }
 
@@ -249,7 +367,7 @@ export default function NotificationCenter({
         item.id === notification.id ? response.data.notification : item
       )));
       updateUnseenCount(response.data.unseen_count);
-      showToast(response.data.detail);
+      emitToast({ message: response.data.detail, type: "success", dedupeKey: `notification-action-${notification.id}-${action.key}` });
       if (action.key === "open" && response.data.target_url) {
         closeDrawer();
         router.push(response.data.target_url);
@@ -258,7 +376,11 @@ export default function NotificationCenter({
         await loadNotifications(activeFilter, false);
       }
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, `Could not ${action.label.toLowerCase()}.`));
+      emitToast({
+        message: getApiErrorMessage(requestError, `Could not ${action.label.toLowerCase()}.`),
+        type: "error",
+        dedupeKey: `notification-action-error-${notification.id}-${action.key}`,
+      });
     } finally {
       setActionId(null);
     }
@@ -418,11 +540,6 @@ export default function NotificationCenter({
           )}
         </div>
 
-        {toast ? (
-          <div aria-live="polite" className="pointer-events-none absolute bottom-5 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 rounded-md bg-sportNavy px-4 py-3 text-sm font-semibold text-white shadow-xl sm:w-auto">
-            {toast}
-          </div>
-        ) : null}
       </aside>
     </div>
   );

@@ -48,12 +48,12 @@ export default function VenueOwnerDashboardLayout({ children }: { children: Reac
   const lifecycleState = isVenueLoading ? "SETUP_INCOMPLETE" : getOwnerLifecycleState(venue);
 
   return (
-    <RoleGate allowedRoles={["COURT_OWNER"]}>
-      <div className="min-h-[calc(100vh-68px)] bg-slate-50">
+    <RoleGate allowedRoles={["COURT_OWNER"]} workspace="owner">
+      <div className="sport-page-shell">
 
         <div className="flex min-w-0">
           <VenueOwnerSidebar isLoading={isVenueLoading} venue={venue} />
-          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
             <OwnerDashboardContent>{children}</OwnerDashboardContent>
           </main>
         </div>

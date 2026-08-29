@@ -6,7 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { formatDateOnly, formatDateTimeInNepal, formatTimeValue } from "@/lib/dates";
 import { emitToast } from "@/lib/toast";
+import BackButton from "@/components/BackButton";
 import type { GameResponse, GameRole, JoinRequestResponse, MatchmakingGame } from "@/types/matchmaking";
 
 const fallbackRoles: Array<{ label: string; value: GameRole }> = [
@@ -125,8 +127,8 @@ export default function GameDetailPage() {
     }
   }
 
-  if (isLoading) return <main className="min-h-screen bg-slate-50 px-4 py-8"><div className="mx-auto h-[560px] max-w-6xl animate-pulse rounded-3xl bg-white" /></main>;
-  if (error || !game) return <main className="min-h-screen bg-slate-50 px-4 py-8"><section className="mx-auto max-w-3xl rounded-2xl border border-red-100 bg-red-50 p-6"><h1 className="text-2xl font-black text-red-950">Game unavailable</h1><p className="mt-2 text-sm font-semibold text-red-700">{error || "This game could not be found."}</p><button className="mt-5 rounded-xl bg-red-600 px-5 py-3 text-sm font-black text-white" onClick={() => loadGame()} type="button">Retry</button></section></main>;
+  if (isLoading) return <main className="min-h-screen bg-[var(--sport-canvas)] px-4 py-8"><div className="sport-surface mx-auto h-[560px] max-w-6xl animate-pulse bg-white" /></main>;
+  if (error || !game) return <main className="min-h-screen bg-[var(--sport-canvas)] px-4 py-8"><section className="sport-error-state mx-auto max-w-3xl"><h1 className="text-2xl font-bold text-red-950">Game unavailable</h1><p className="mt-2 text-sm font-semibold text-red-700">{error || "This game could not be found."}</p><button className="sport-primary-button mt-5 bg-red-600 hover:bg-red-700" onClick={() => loadGame()} type="button">Retry</button></section></main>;
 
   const canRequest = !game.user_state.is_host && !game.user_state.is_participant && !game.user_state.request_status && game.status === "RECRUITING";
   const canWaitlist = !game.user_state.is_host && !game.user_state.is_participant && !game.user_state.request_status && game.status === "FULL" && game.waitlist_enabled;
@@ -136,8 +138,8 @@ export default function GameDetailPage() {
     <main className="min-h-screen bg-slate-50">
       <section className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
         <div className="space-y-5">
-          <Link className="text-sm font-black text-sportGreen hover:text-green-700" href="/find-game">Back to games</Link>
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <BackButton href="/find-game" label="Back to games" />
+          <section className="sport-surface p-5 sm:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex flex-wrap gap-2"><Badge tone="green">{game.game_type === "FILL_SQUAD" ? "Fill My Squad" : "Pickup Game"}</Badge><Badge tone={game.is_booking_verified ? "green" : "blue"}>{game.is_booking_verified ? "Verified SportSpot Booking" : "Planning - Court Not Booked Yet"}</Badge><Badge>{game.game_intensity_label}</Badge></div>
@@ -148,7 +150,7 @@ export default function GameDetailPage() {
             </div>
             {game.description ? <p className="mt-5 max-w-3xl text-sm leading-6 text-slate-600">{game.description}</p> : null}
             <div className="mt-6 grid gap-3 sm:grid-cols-4">
-              <InfoCard label="Date & time" value={`${formatDateTime(game.start_at)} - ${game.booking_display_time}`} />
+              <InfoCard label="Date & time" value={`${formatDateTimeInNepal(game.start_at)} - ${game.booking_display_time}`} />
               <InfoCard label="Roster" value={`${game.occupied_spots_count}/${game.total_capacity}`} />
               <InfoCard label="Minimum" value={`${game.minimum_players_to_proceed} players`} />
               <InfoCard label="Skill" value={formatSkill(game.min_skill_level)} />
@@ -156,43 +158,43 @@ export default function GameDetailPage() {
             {!game.is_booking_verified ? <p className="mt-5 rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">This is a planning game. Accepted players are provisional until the host books a court and confirms the final details.</p> : null}
           </section>
 
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="sport-surface p-5 sm:p-6">
             <h2 className="text-xl font-black text-sportNavy">{game.game_type === "FILL_SQUAD" ? "Temporary roles needed" : "Role-wise recruitment"}</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {game.role_progress.map((item) => <div className="rounded-2xl border border-slate-200 p-4" key={item.role}><div className="flex items-center justify-between"><p className="font-black text-sportNavy">{item.role_label}</p><Badge tone={item.is_filled ? "green" : "slate"}>{item.is_filled ? "Filled" : `${item.filled_count}/${item.required_count}`}</Badge></div><div className="mt-3 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-sportGreen" style={{ width: `${Math.min((item.filled_count / Math.max(item.required_count, 1)) * 100, 100)}%` }} /></div></div>)}
+              {game.role_progress.map((item) => <div className="rounded-lg border border-slate-200 p-4" key={item.role}><div className="flex items-center justify-between"><p className="font-black text-sportNavy">{item.role_label}</p><Badge tone={item.is_filled ? "green" : "slate"}>{item.is_filled ? "Filled" : `${item.filled_count}/${item.required_count}`}</Badge></div><div className="mt-3 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-sportGreen" style={{ width: `${Math.min((item.filled_count / Math.max(item.required_count, 1)) * 100, 100)}%` }} /></div></div>)}
             </div>
           </section>
 
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-black text-sportNavy">Roster</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {game.participants.map((participant) => <div className="rounded-2xl border border-slate-200 p-4" key={participant.id}><div className="flex items-start justify-between gap-3"><div><p className="font-black text-sportNavy">{participant.full_name}</p><p className="mt-1 text-sm font-semibold text-slate-500">{participant.role_label} - {participant.participant_type_label}</p>{participant.reliability_label ? <p className="mt-2 text-xs font-black text-sportGreen">{participant.reliability_label}</p> : null}</div><Badge tone={participant.status === "CONFIRMED" ? "green" : "blue"}>{participant.status_label}</Badge></div></div>)}
+              {game.participants.map((participant) => <div className="rounded-lg border border-slate-200 p-4" key={participant.id}><div className="flex items-start justify-between gap-3"><div><p className="font-black text-sportNavy">{participant.full_name}</p><p className="mt-1 text-sm font-semibold text-slate-500">{participant.role_label} - {participant.participant_type_label}</p>{participant.reliability_label ? <p className="mt-2 text-xs font-black text-sportGreen">{participant.reliability_label}</p> : null}</div><Badge tone={participant.status === "CONFIRMED" ? "green" : "blue"}>{participant.status_label}</Badge></div></div>)}
             </div>
           </section>
         </div>
 
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{game.game_type === "FILL_SQUAD" ? "Team captain" : "Host"}</p><h2 className="mt-2 text-xl font-black text-sportNavy">{game.host_name}</h2>{game.game_type === "FILL_SQUAD" && game.team_name ? <p className="mt-1 text-sm font-black text-sportGreen">{game.team_name}</p> : null}<p className="mt-1 text-sm font-semibold text-slate-500">{game.host_sportspot_id || "SportSpot player"}</p>{game.host_reliability_label ? <p className="mt-3 rounded-xl bg-green-50 px-3 py-2 text-sm font-black text-sportGreen">{game.host_reliability_label}</p> : null}</section>
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-black text-sportNavy">Deadlines</h2><CountdownRow label="Recruitment" target={game.recruitment_deadline} /><CountdownRow label="Court booking" target={!game.is_booking_verified ? game.booking_deadline : null} /></section>
+          <section className="sport-card"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{game.game_type === "FILL_SQUAD" ? "Team captain" : "Host"}</p><h2 className="mt-2 text-xl font-black text-sportNavy">{game.host_name}</h2>{game.game_type === "FILL_SQUAD" && game.team_name ? <p className="mt-1 text-sm font-black text-sportGreen">{game.team_name}</p> : null}<p className="mt-1 text-sm font-semibold text-slate-500">{game.host_sportspot_id || "SportSpot player"}</p>{game.host_reliability_label ? <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm font-black text-sportGreen">{game.host_reliability_label}</p> : null}</section>
+          <section className="sport-card"><h2 className="text-lg font-black text-sportNavy">Deadlines</h2><CountdownRow label="Recruitment" target={game.recruitment_deadline} /><CountdownRow label="Court booking" target={!game.is_booking_verified ? game.booking_deadline : null} /></section>
 
           {game.user_state.is_host ? <Link className="flex min-h-12 items-center justify-center rounded-xl bg-sportGreen text-sm font-black text-white" href={`/dashboard/player/games/${game.id}`}>Manage Game</Link> : null}
-          {hasRoomAccess && game.user_state.room_access !== "NONE" ? <Link className="flex min-h-12 items-center justify-center rounded-xl border border-green-200 bg-white text-sm font-black text-sportGreen" href={`/dashboard/player/games/${game.id}/room`}>{game.game_type === "FILL_SQUAD" ? (game.is_booking_verified ? "Open Squad Room" : "Open Squad Planning") : (game.is_booking_verified ? "Open Game Room" : "Open Planning Room")}</Link> : null}
-          {game.user_state.requires_reconfirmation ? <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5"><h2 className="text-lg font-black text-amber-950">Confirm your updated schedule</h2><p className="mt-2 text-sm font-semibold leading-6 text-amber-800">{scheduleChangeMessage(game)} Confirm only if this final SportSpot booking still works for you. You can decline without a reliability penalty.</p><div className="mt-4 grid gap-2 text-sm font-black text-amber-950 sm:grid-cols-2"><div className="rounded-xl bg-white/70 p-3"><span className="block text-[11px] uppercase tracking-wide text-amber-700">Plan you joined</span>{formatProposedSchedule(game)}</div><div className="rounded-xl bg-white/70 p-3"><span className="block text-[11px] uppercase tracking-wide text-amber-700">Confirmed booking</span>{formatConfirmedSchedule(game)}</div></div><div className="mt-4 flex gap-2"><button className="min-h-11 flex-1 rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={isSubmitting} onClick={() => reconfirm("RECONFIRM")} type="button">Confirm my spot</button><button className="min-h-11 flex-1 rounded-xl border border-amber-300 bg-white text-sm font-black text-amber-800 disabled:opacity-60" disabled={isSubmitting} onClick={() => reconfirm("DECLINE")} type="button">I cannot attend</button></div></section> : null}
-          {!game.user_state.is_host && game.user_state.is_participant && !game.user_state.requires_reconfirmation ? <button className="min-h-12 w-full rounded-xl border border-red-200 bg-white text-sm font-black text-red-600 disabled:opacity-60" disabled={isSubmitting} onClick={leave} type="button">Leave Game</button> : null}
-          {game.user_state.request_status === "INVITED" ? <section className="rounded-3xl border border-green-200 bg-green-50 p-5"><h2 className="text-lg font-black text-green-950">You are invited</h2><p className="mt-2 text-sm font-semibold text-green-800">Review the game details before accepting your spot.</p><div className="mt-4 flex gap-2"><button className="min-h-11 flex-1 rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={isSubmitting} onClick={() => respondInvitation("ACCEPT")} type="button">Accept Invite</button><button className="min-h-11 flex-1 rounded-xl border border-red-200 bg-white text-sm font-black text-red-600 disabled:opacity-60" disabled={isSubmitting} onClick={() => respondInvitation("DECLINE")} type="button">Decline</button></div></section> : game.user_state.request_status ? <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-black text-green-900">Your request is {formatStatus(game.user_state.request_status)}.</div> : null}
-          {canRequest || canWaitlist ? <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-black text-sportNavy">{canWaitlist ? "Join waitlist" : "Request to join"}</h2><label className="mt-4 block"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Your role</span><select className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold" onChange={(event) => setRequestedRole(event.target.value as GameRole)} value={requestedRole}>{availableRoles.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="mt-3 block"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Message</span><textarea className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 p-3 text-sm font-semibold" onChange={(event) => setMessage(event.target.value)} placeholder="Add a short note for the host" value={message} /></label><label className="mt-3 flex gap-3 text-sm font-semibold text-slate-600"><input className="mt-1" checked={attendanceConfirmed} onChange={(event) => setAttendanceConfirmed(event.target.checked)} type="checkbox" /> I confirm that I can attend this schedule if accepted.</label><button className="mt-4 min-h-12 w-full rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={isSubmitting} onClick={requestToJoin} type="button">{isSubmitting ? "Sending..." : canWaitlist ? "Join Waitlist" : "Request to Join"}</button></section> : null}
+          {hasRoomAccess && game.user_state.room_access !== "NONE" ? <Link className="flex min-h-12 items-center justify-center rounded-xl border border-green-200 bg-white text-sm font-black text-sportGreen" href={`/dashboard/player/games/${game.id}/room`}>{roomLinkLabel(game)}</Link> : null}
+          {game.user_state.requires_reconfirmation ? <section className="rounded-xl border border-amber-200 bg-amber-50 p-5"><h2 className="text-lg font-black text-amber-950">Confirm your updated schedule</h2><p className="mt-2 text-sm font-semibold leading-6 text-amber-800">{scheduleChangeMessage(game)} Confirm only if this final SportSpot booking still works for you. You can decline without a reliability penalty.</p><div className="mt-4 grid gap-2 text-sm font-black text-amber-950 sm:grid-cols-2"><div className="rounded-lg bg-white/70 p-3"><span className="block text-[11px] uppercase tracking-wide text-amber-700">Plan you joined</span>{formatProposedSchedule(game)}</div><div className="rounded-lg bg-white/70 p-3"><span className="block text-[11px] uppercase tracking-wide text-amber-700">Confirmed booking</span>{formatConfirmedSchedule(game)}</div></div><div className="mt-4 flex gap-2"><button className="sport-primary-button min-h-11 flex-1" disabled={isSubmitting} onClick={() => reconfirm("RECONFIRM")} type="button">Confirm my spot</button><button className="sport-secondary-button min-h-11 flex-1 border-amber-300 text-amber-800" disabled={isSubmitting} onClick={() => reconfirm("DECLINE")} type="button">I cannot attend</button></div></section> : null}
+          {!game.user_state.is_host && game.user_state.is_participant && !game.user_state.requires_reconfirmation ? <button className="sport-secondary-button min-h-12 w-full border-red-200 text-red-600 hover:bg-red-50" disabled={isSubmitting} onClick={leave} type="button">Leave Game</button> : null}
+          {game.user_state.request_status === "INVITED" ? <section className="rounded-xl border border-green-200 bg-green-50 p-5"><h2 className="text-lg font-black text-green-950">You are invited</h2><p className="mt-2 text-sm font-semibold text-green-800">Review the game details before accepting your spot.</p><div className="mt-4 flex gap-2"><button className="sport-primary-button min-h-11 flex-1" disabled={isSubmitting} onClick={() => respondInvitation("ACCEPT")} type="button">Accept Invite</button><button className="sport-secondary-button min-h-11 flex-1 border-red-200 text-red-600 hover:bg-red-50" disabled={isSubmitting} onClick={() => respondInvitation("DECLINE")} type="button">Decline</button></div></section> : game.user_state.request_status ? <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-black text-green-900">Your request is {formatStatus(game.user_state.request_status)}.</div> : null}
+          {canRequest || canWaitlist ? <section className="sport-card"><h2 className="text-lg font-black text-sportNavy">{canWaitlist ? "Join waitlist" : "Request to join"}</h2><label className="mt-4 block"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Your role</span><select className="sport-input mt-1" onChange={(event) => setRequestedRole(event.target.value as GameRole)} value={requestedRole}>{availableRoles.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="mt-3 block"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Message</span><textarea className="sport-input mt-1 min-h-24" onChange={(event) => setMessage(event.target.value)} placeholder="Add a short note for the host" value={message} /></label><label className="mt-3 flex gap-3 text-sm font-semibold text-slate-600"><input className="mt-1" checked={attendanceConfirmed} onChange={(event) => setAttendanceConfirmed(event.target.checked)} type="checkbox" /> I confirm that I can attend this schedule if accepted.</label><button className="sport-primary-button mt-4 min-h-12 w-full" disabled={isSubmitting} onClick={requestToJoin} type="button">{isSubmitting ? "Sending..." : canWaitlist ? "Join Waitlist" : "Request to Join"}</button></section> : null}
         </aside>
       </section>
     </main>
   );
 }
 
-function InfoCard({ label, value }: { label: string; value: string }) { return <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 text-sm font-black text-sportNavy">{value}</p></div>; }
+function roomLinkLabel(game: MatchmakingGame) { if (game.user_state.room_access === "READ_ONLY") return "View Game Record"; if (game.user_state.room_access === "RECONFIRMATION") return "Review Schedule Change"; if (game.game_type === "FILL_SQUAD") return game.is_booking_verified ? "Open Squad Room" : "Open Squad Planning"; return game.is_booking_verified ? "Open Game Room" : "Open Planning Room"; }
+function InfoCard({ label, value }: { label: string; value: string }) { return <div className="rounded-lg bg-slate-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 text-sm font-black text-sportNavy">{value}</p></div>; }
 function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: "slate" | "green" | "blue" }) { const classes = tone === "green" ? "border-green-200 bg-green-50 text-sportGreen" : tone === "blue" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600"; return <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${classes}`}>{children}</span>; }
 function StatusBadge({ game }: { game: MatchmakingGame }) { const label = game.status === "RECRUITING" ? "Recruiting" : game.status === "FULL" ? (game.waitlist_enabled ? "Waitlist open" : "Full") : game.status === "CLOSED" ? "Recruitment closed" : game.status_label; return <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{label}</span>; }
 function CountdownRow({ label, target }: { label: string; target: string | null }) { const countdown = useCountdown(target); if (!target) return null; return <div className="mt-3 rounded-xl bg-slate-50 p-3"><p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 font-black text-sportNavy">{countdown}</p></div>; }
 function useCountdown(target: string | null) { const [now, setNow] = useState<Date | null>(null); useEffect(() => { setNow(new Date()); const id = window.setInterval(() => setNow(new Date()), 60000); return () => window.clearInterval(id); }, []); if (!target || !now) return ""; const ms = new Date(target).getTime() - now.getTime(); if (ms <= 0) return "Closed"; const minutes = Math.floor(ms / 60000); if (minutes < 60) return minutes <= 15 ? `Closing soon - ${minutes}m` : `${minutes}m left`; const hours = Math.floor(minutes / 60); const days = Math.floor(hours / 24); return days > 0 ? `${days}d ${hours % 24}h left` : `${hours}h ${minutes % 60}m left`; }
-function formatDateTime(value: string | null) { if (!value) return "Date to be confirmed"; return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
 function formatSkill(value: string) { if (value === "OPEN") return "Open to all"; return `${value.charAt(0)}${value.slice(1).toLowerCase()}+`; }
 function formatStatus(value: string) { return value.replace(/_/g, " ").toLowerCase(); }
 
@@ -203,26 +205,18 @@ function scheduleChangeMessage(game: MatchmakingGame) {
 
 function formatProposedSchedule(game: MatchmakingGame) {
   if (!game.proposed_date || !game.proposed_start_time) return "Original schedule not available";
-  const date = new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(`${game.proposed_date}T${game.proposed_start_time}`));
-  const start = formatClock(game.proposed_start_time);
-  const end = game.proposed_end_time ? ` - ${formatClock(game.proposed_end_time)}` : "";
+  const date = formatDateOnly(game.proposed_date);
+  const start = formatTimeValue(game.proposed_start_time);
+  const end = game.proposed_end_time ? ` - ${formatTimeValue(game.proposed_end_time)}` : "";
   return `${date}, ${start}${end}`;
 }
 
 function formatConfirmedSchedule(game: MatchmakingGame) {
   if (!game.start_at) return "Final schedule not available";
-  const start = new Date(game.start_at);
-  const end = game.end_at ? new Date(game.end_at) : null;
-  const date = new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(start);
-  const time = new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(start);
-  const endTime = end ? ` - ${new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(end)}` : "";
+  const date = formatDateTimeInNepal(game.start_at, { dateStyle: "medium" });
+  const time = formatDateTimeInNepal(game.start_at, { timeStyle: "short" });
+  const endTime = game.end_at ? ` - ${formatDateTimeInNepal(game.end_at, { timeStyle: "short" })}` : "";
   return `${date}, ${time}${endTime}`;
-}
-
-function formatClock(value: string) {
-  const [hour, minute] = value.split(":").map(Number);
-  const date = new Date(2000, 0, 1, hour, minute);
-  return new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(date);
 }
 
 

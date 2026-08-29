@@ -19,6 +19,7 @@ from .services import (
     cancel_games_for_booking,
     expire_matchmaking_deadlines,
     player_has_overlapping_confirmed_game,
+    synchronize_game_lifecycle,
 )
 
 
@@ -87,6 +88,40 @@ class PickupGameApiTests(APITestCase):
             preferred_cricksal_role=role,
         )
         return user
+
+    def test_fill_squad_host_follows_a_valid_team_captain_change(self):
+        game = Game.objects.create(
+            game_type=Game.GameType.FILL_SQUAD,
+            team=self.team,
+            host=self.host,
+            booking=self.booking,
+            title="Captain handoff game",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        GameParticipant.objects.create(
+            game=game,
+            user=self.host,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            role=GameRoleRequirement.CricksalRole.BATSMAN,
+        )
+
+        self.team.captain = self.player_one
+        self.team.save(update_fields=["captain", "updated_at"])
+        synchronize_game_lifecycle(game)
+        game.refresh_from_db()
+
+        self.assertEqual(game.host_id, self.player_one.id)
+        self.assertEqual(game.booking_id, self.booking.id)
+        self.assertEqual(game.status, Game.Status.RECRUITING)
+
+        self.client.force_authenticate(self.player_one)
+        my_games = self.client.get(reverse("matchmaking-my-games"))
+        self.assertEqual(my_games.status_code, 200, my_games.data)
+        self.assertIn(game.id, [item["id"] for item in my_games.data["hosted"]])
+
+        private_detail = self.client.get(reverse("matchmaking-game-manage", args=[game.id]))
+        self.assertEqual(private_detail.status_code, 200, private_detail.data)
 
     def test_invalid_plan_first_times_return_json_validation_errors(self):
         self.client.force_authenticate(self.host)
@@ -1243,7 +1278,7 @@ class PickupGameApiTests(APITestCase):
 
         self.assertTrue(player_has_overlapping_confirmed_game(self.player_one, second_game))
 
-    def test_planning_room_is_limited_and_cancelled_games_close_room_access(self):
+    def test_planning_room_is_limited_and_cancelled_games_become_read_only(self):
         game = Game.objects.create(
             host=self.host,
             creation_mode=Game.CreationMode.PLAN_FIRST,
@@ -1287,6 +1322,7 @@ class PickupGameApiTests(APITestCase):
         )
         self.assertEqual(cancel_response.status_code, 200, cancel_response.data)
         self.client.force_authenticate(self.player_one)
-        closed_room_response = self.client.get(reverse("matchmaking-game-room", args=[game.id]))
-        self.assertEqual(closed_room_response.status_code, 403, closed_room_response.data)
+        historical_room_response = self.client.get(reverse("matchmaking-game-room", args=[game.id]))
+        self.assertEqual(historical_room_response.status_code, 200, historical_room_response.data)
+        self.assertEqual(historical_room_response.data["room_access"], "READ_ONLY")
 

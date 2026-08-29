@@ -15,9 +15,9 @@ export default function PlayerDashboardLayout({ children }: { children: ReactNod
   const activeItem = getActivePlayerDashboardItem(pathname);
 
   return (
-    <RoleGate allowedRoles={["PLAYER"]}>
-      <div className="min-h-[calc(100vh-68px)] bg-slate-50">
-        <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+    <RoleGate allowedRoles={["PLAYER"]} workspace="player">
+      <div className="sport-page-shell">
+        <div className="border-b border-slate-200/80 bg-white px-4 py-3 lg:hidden">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-black uppercase tracking-wide text-sportGreen">Player Dashboard</p>
@@ -41,7 +41,7 @@ export default function PlayerDashboardLayout({ children }: { children: ReactNod
 
         <div className="flex min-w-0">
           <PlayerSidebar />
-          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
             <DashboardContentContainer>{children}</DashboardContentContainer>
           </main>
         </div>

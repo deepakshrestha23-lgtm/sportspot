@@ -43,7 +43,7 @@ class Command(BaseCommand):
                 title="Your Cricksal booking is coming up",
                 message=(
                     f"{booking.booking_code} at {booking.venue.name} starts "
-                    f"{timezone.localtime(starts_at).strftime('%d %b at %I:%M %p')}."
+                    f"{timezone.localtime(starts_at).strftime('%d %b at %I:%M %p').replace(' at 0', ' at ')}."
                 ),
                 priority=Notification.Priority.IMPORTANT,
                 action_url=f"/dashboard/player/bookings/{booking.id}",

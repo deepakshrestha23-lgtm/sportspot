@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import CancelBookingModal, { type CancelBookingPayload } from "@/components/CancelBookingModal";
 import BookingMessageModal, { type BookingMessagePayload } from "@/components/BookingMessageModal";
 import FeedbackToast from "@/components/FeedbackToast";
+import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateOnly, getLocalDateString } from "@/lib/dates";
@@ -80,7 +81,7 @@ export default function OwnerBookingsPage() {
   });
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="space-y-6">
       <FeedbackToast
         message={error || notice}
         onClose={() => {
@@ -89,30 +90,27 @@ export default function OwnerBookingsPage() {
         }}
         type={error ? "error" : notice ? "success" : "info"}
       />
-      <section className="rounded-lg bg-sportNavy p-6 text-white shadow-sm">
-        <p className="text-sm font-black uppercase tracking-wide text-green-300">Owner Bookings</p>
-        <h1 className="mt-2 text-3xl font-black">Bookings for your venue</h1>
-      </section>
+      <OwnerPageHeader description="Review reservations, payment status and important player communication for your venue." eyebrow="Venue Manager" title="Bookings" />
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="sport-tab-list overflow-x-auto">
         {["ALL", "TODAY", "RESERVED", "CONFIRMED", "COMPLETED", "CANCELLED"].map((item) => (
-          <button className={`rounded-full px-4 py-2 text-sm font-black ${filter === item ? "bg-sportGreen text-white" : "bg-white text-slate-700"}`} key={item} onClick={() => setFilter(item)} type="button">
+          <button aria-selected={filter === item} className="sport-tab" key={item} onClick={() => setFilter(item)} type="button">
             {item}
           </button>
         ))}
       </div>
 
       {isLoading ? (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">Loading bookings...</div>
+        <div className="sport-surface mt-6 p-6">Loading bookings...</div>
       ) : visibleBookings.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="sport-empty-state mt-6">
           <h2 className="text-xl font-black text-sportNavy">No bookings found</h2>
           <p className="mt-2 text-sm text-slate-600">Confirmed player bookings will appear here.</p>
         </div>
       ) : (
         <section className="mt-6 grid gap-4">
           {visibleBookings.map((booking) => (
-            <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" key={booking.id}>
+            <article className="sport-card" key={booking.id}>
               <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr_1fr_1fr] lg:items-center">
                 <div>
                   <p className="text-xs font-black uppercase tracking-wide text-sportGreen">{booking.booking_code}</p>
@@ -130,12 +128,12 @@ export default function OwnerBookingsPage() {
                     <span className="rounded-md bg-green-50 px-4 py-2 text-sm font-black text-green-800">Completed history</span>
                   ) : null}
                   {["RESERVED", "CONFIRMED"].includes(booking.status) ? (
-                    <button className="rounded-md border border-green-200 px-4 py-2 text-sm font-black text-sportGreen hover:bg-green-50" onClick={() => setBookingToMessage(booking)} type="button">
+                    <button className="sport-secondary-button" onClick={() => setBookingToMessage(booking)} type="button">
                       Message Player
                     </button>
                   ) : null}
                   {booking.can_cancel ? (
-                    <button className="rounded-md border border-red-200 px-4 py-2 text-sm font-black text-red-600 hover:bg-red-50" onClick={() => setBookingToCancel(booking)} type="button">
+                    <button className="sport-secondary-button border-red-200 text-red-700 hover:bg-red-50" onClick={() => setBookingToCancel(booking)} type="button">
                       Cancel
                     </button>
                   ) : null}
@@ -152,7 +150,7 @@ export default function OwnerBookingsPage() {
       {bookingToMessage ? (
         <BookingMessageModal booking={bookingToMessage} isWorking={isSendingMessage} onClose={() => setBookingToMessage(null)} onSend={sendBookingMessage} />
       ) : null}
-    </main>
+    </div>
   );
 }
 

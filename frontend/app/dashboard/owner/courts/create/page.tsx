@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import FeedbackToast from "@/components/FeedbackToast";
+import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import type { Court } from "@/types/venue";
@@ -36,11 +37,10 @@ export default function CreateOwnerCourtPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm font-black uppercase tracking-wide text-sportGreen">Court Management</p>
-        <h1 className="mt-2 text-3xl font-black text-sportNavy">Add Cricksal Court</h1>
-        <p className="mt-2 text-sm text-slate-600">Every court in SportSpot is Cricksal-only for now.</p>
+    <div className="space-y-6">
+      <OwnerPageHeader backHref="/dashboard/owner/courts" backLabel="Back to courts" description="Add a physical Cricksal court to your venue, then configure its bookable slots." eyebrow="Venue Manager" title="Add Court" />
+      <section className="sport-card max-w-3xl">
+        <p className="text-sm text-slate-600">Every court in SportSpot is Cricksal-only for now.</p>
         <FeedbackToast message={error} onClose={() => setError("")} type="error" />
 
         <form className="mt-6 space-y-4" onSubmit={submit}>
@@ -55,42 +55,42 @@ export default function CreateOwnerCourtPage() {
             Court is active
           </label>
           <div className="flex flex-wrap gap-3 pt-2">
-            <button className="rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" disabled={isSaving} type="submit">
+            <button className="sport-primary-button" disabled={isSaving} type="submit">
               {isSaving ? "Saving..." : "Create Court"}
             </button>
-            <Link className="rounded-md border border-slate-200 px-5 py-3 text-sm font-black text-sportNavy hover:bg-slate-50" href="/dashboard/owner/courts">
+            <Link className="sport-secondary-button" href="/dashboard/owner/courts">
               Cancel
             </Link>
           </div>
         </form>
       </section>
-    </main>
+    </div>
   );
 }
 
 function Input({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label className="block">
+    <label className="sport-field">
       <span className="text-sm font-black text-sportNavy">{label}</span>
-      <input className="mt-2 w-full rounded-md border border-slate-300 px-3 py-3 text-sm outline-none focus:border-sportGreen" onChange={(event) => onChange(event.target.value)} value={value} />
+      <input className="sport-input" onChange={(event) => onChange(event.target.value)} value={value} />
     </label>
   );
 }
 
 function Textarea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label className="block">
+    <label className="sport-field">
       <span className="text-sm font-black text-sportNavy">{label}</span>
-      <textarea className="mt-2 min-h-28 w-full rounded-md border border-slate-300 px-3 py-3 text-sm outline-none focus:border-sportGreen" onChange={(event) => onChange(event.target.value)} value={value} />
+      <textarea className="sport-input min-h-28" onChange={(event) => onChange(event.target.value)} value={value} />
     </label>
   );
 }
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
   return (
-    <label className="block">
+    <label className="sport-field">
       <span className="text-sm font-black text-sportNavy">{label}</span>
-      <select className="mt-2 w-full rounded-md border border-slate-300 px-3 py-3 text-sm outline-none focus:border-sportGreen" onChange={(event) => onChange(event.target.value)} value={value}>
+      <select className="sport-input" onChange={(event) => onChange(event.target.value)} value={value}>
         {options.map((option) => (
           <option key={option} value={option}>
             {formatChoice(option)}

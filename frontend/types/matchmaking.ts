@@ -51,7 +51,7 @@ export type GameUserState = {
   reconfirmation_status?: "PENDING" | "";
   request_status: JoinRequestStatus | "";
   join_request_id: number | null;
-  room_access?: "NONE" | "PLANNING" | "CONFIRMED";
+  room_access?: "NONE" | "PLANNING" | "RECONFIRMATION" | "CONFIRMED" | "READ_ONLY";
 };
 
 export type MatchmakingGame = {
@@ -95,6 +95,8 @@ export type MatchmakingGame = {
   venue_area: string;
   venue_city: string;
   venue_address: string;
+  venue_latitude: number | string | null;
+  venue_longitude: number | string | null;
   venue_map_location: string;
   court_name: string;
   booking_display_time: string;
@@ -200,7 +202,7 @@ export type GameCreatePayload = {
 };
 
 export type GameListResponse = { games: MatchmakingGame[] };
-export type GameResponse = { game: MatchmakingGame; room_access?: "NONE" | "PLANNING" | "CONFIRMED" };
+export type GameResponse = { game: MatchmakingGame; room_access?: "NONE" | "PLANNING" | "RECONFIRMATION" | "CONFIRMED" | "READ_ONLY" };
 export type EligibleBookingsResponse = { bookings: EligibleGameBooking[] };
 export type JoinRequestResponse = { request: JoinRequest };
 

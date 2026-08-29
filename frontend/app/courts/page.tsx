@@ -8,7 +8,8 @@ import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getCurrentUser } from "@/lib/auth";
 import { emitToast } from "@/lib/toast";
-import { getLocalDateString } from "@/lib/dates";
+import { buildTimeOptions, formatTimeValue, getLocalDateString } from "@/lib/dates";
+import TimeSelect from "@/components/TimeSelect";
 import type { VenueDiscoveryFilters, VenueDiscoveryItem, VenueDiscoveryResponse } from "@/types/venue";
 import type { WishlistSummary } from "@/types/wishlist";
 
@@ -18,6 +19,7 @@ const SORT_OPTIONS = [
   { value: "price_asc", label: "Price: Low to High" },
   { value: "price_desc", label: "Price: High to Low" },
 ];
+const formatTime = formatTimeValue;
 
 const TIME_WINDOWS = [
   { value: "morning", label: "Morning" },
@@ -241,7 +243,7 @@ function CourtDiscovery() {
                   <span className="sr-only">Search venues</span>
                   <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-400">⌕</span>
                   <input
-                    className="h-14 w-full rounded-lg border border-transparent bg-white pl-11 pr-4 text-sm font-semibold text-sportNavy outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-4 focus:ring-green-400/20"
+                    className="h-12 w-full rounded-lg border border-transparent bg-white pl-11 pr-4 text-sm font-semibold text-sportNavy outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-4 focus:ring-green-400/20"
                     onChange={(event) => setSearchText(event.target.value)}
                     placeholder="Search venues, areas, or districts"
                     type="search"
@@ -251,7 +253,7 @@ function CourtDiscovery() {
                 <label className="block">
                   <span className="sr-only">Sort courts</span>
                   <select
-                    className="h-14 w-full rounded-lg border border-transparent bg-white px-4 text-sm font-black text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20"
+                    className="h-12 w-full rounded-lg border border-transparent bg-white px-4 text-sm font-black text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20"
                     onChange={(event) => updateQuery({ sort: event.target.value })}
                     value={searchParams.get("sort") || "recommended"}
                   >
@@ -401,7 +403,7 @@ function FilterPanel({ activeCount, appliedDate, filters, isUpdating, onClear, o
           </div>
           <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
             <summary className="cursor-pointer text-xs font-black text-sportGreen">Choose exact start time</summary>
-            <input className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20" onChange={(event) => updateQuery({ start_time: event.target.value || null, time_window: null })} type="time" value={searchParams.get("start_time") || ""} />
+            <TimeSelect ariaLabel="Exact start time" className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20" options={buildTimeOptions()} placeholder="Any start time" value={searchParams.get("start_time") || ""} onChange={(value) => updateQuery({ start_time: value || null, time_window: null })} />
           </details>
         </FilterGroup>
 
@@ -483,8 +485,8 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
   const facilityLabels = venue.important_facilities.slice(0, 2);
 
   return (
-    <article className="group flex h-full min-h-[365px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition duration-200 hover:-translate-y-1 hover:border-green-200 hover:shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
-      <div className="relative h-44 overflow-hidden bg-sportNavy">
+    <article className="group flex h-full min-h-[330px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_16px_rgba(15,23,42,0.05)] transition duration-200 hover:-translate-y-0.5 hover:border-green-200 hover:shadow-[0_12px_28px_rgba(15,23,42,0.10)]">
+      <div className="relative h-36 overflow-hidden bg-sportNavy">
         <Link className="absolute inset-0 z-10" href={href} aria-label={`View courts at ${venue.name}`} />
         {venue.primary_image ? (
           <img alt={`${venue.name} venue`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" src={venue.primary_image} />
@@ -493,13 +495,13 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
         )}
         <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/35 to-transparent" />
         {venue.is_verified ? (
-          <span className="absolute left-4 top-4 z-20 inline-flex items-center gap-1.5 rounded-full bg-sportGreen px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white shadow-sm">
+          <span className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full bg-sportGreen px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-sm">
             <CheckBadgeIcon /> Verified
           </span>
         ) : null}
         <button
           aria-label={isWishlisted ? `Remove ${venue.name} from wishlist` : `Save ${venue.name} to wishlist`}
-          className={`absolute right-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border shadow-sm backdrop-blur transition ${isWishlisted ? "border-green-200 bg-sportGreen text-white" : "border-white/60 bg-white/90 text-slate-700 hover:bg-white hover:text-sportGreen"}`}
+          className={`absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border shadow-sm backdrop-blur transition ${isWishlisted ? "border-green-200 bg-sportGreen text-white" : "border-white/60 bg-white/90 text-slate-700 hover:bg-white hover:text-sportGreen"}`}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -511,10 +513,10 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
         </button>
       </div>
 
-      <div className="flex flex-1 flex-col p-5">
+      <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start justify-between gap-3">
           <Link className="min-w-0 group/title" href={href}>
-            <h2 className="line-clamp-2 text-[21px] font-black leading-tight text-sportNavy group-hover/title:text-sportGreen">{venue.name}</h2>
+            <h2 className="line-clamp-2 text-lg font-black leading-tight text-sportNavy group-hover/title:text-sportGreen">{venue.name}</h2>
           </Link>
           {hasRating ? (
             <span className="mt-1 inline-flex shrink-0 items-center gap-1 text-sm font-black text-sportGreen">
@@ -524,29 +526,29 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
           ) : null}
         </div>
 
-        <p className="mt-3 flex items-center gap-2 text-[15px] font-semibold text-slate-500">
+        <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-500">
           <LocationIcon />
           <span className="line-clamp-1">{location || "Location available in details"}</span>
         </p>
 
-        <div className="mt-4 flex min-h-8 flex-wrap items-center gap-2">
+        <div className="mt-3 flex min-h-7 flex-wrap items-center gap-1.5">
           <CardPill icon={<VenueTypeIcon />} label={primaryType} />
           <span className="text-sm font-bold text-slate-500">· {courtAvailabilityLabel}</span>
         </div>
 
-        <div className="mt-3 flex min-h-7 flex-wrap items-center gap-2">
+        <div className="mt-2 flex min-h-6 flex-wrap items-center gap-1.5">
           <AvailabilityBadge available={hasAvailability} label={availabilityLabel} />
           {facilityLabels.map((facility) => <CardPill key={facility} label={facility} />)}
         </div>
 
-        <div className="mt-auto flex items-center justify-between gap-4 border-t border-slate-100 pt-5">
+        <div className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
           <div>
             <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Starts from</p>
-            <p className="mt-1 text-2xl font-black leading-none text-sportGreen">
+            <p className="mt-1 text-xl font-black leading-none text-sportGreen">
               NPR {priceAmount}<span className="text-sm font-semibold text-slate-500">/hr</span>
             </p>
           </div>
-          <Link className="inline-flex min-h-14 min-w-32 items-center justify-center rounded-lg bg-sportGreen px-6 py-3 text-center text-base font-black leading-tight text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-300" href={href}>
+          <Link className="inline-flex min-h-10 min-w-24 items-center justify-center rounded-lg bg-sportGreen px-4 py-2.5 text-center text-sm font-black leading-tight text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-300" href={href}>
             View Courts
           </Link>
         </div>
@@ -557,7 +559,7 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
 
 function CardPill({ icon, label }: { icon?: React.ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-700">
+    <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700">
       {icon ? <span className="text-sportNavy">{icon}</span> : null}
       {label}
     </span>
@@ -566,7 +568,7 @@ function CardPill({ icon, label }: { icon?: React.ReactNode; label: string }) {
 
 function AvailabilityBadge({ available, label }: { available: boolean; label: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-black ${available ? "bg-green-50 text-sportGreen" : "bg-slate-100 text-slate-500"}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-black ${available ? "bg-green-50 text-sportGreen" : "bg-slate-100 text-slate-500"}`}>
       <span className={`h-2 w-2 rounded-full ${available ? "bg-sportGreen" : "bg-slate-400"}`} />
       {label}
     </span>
@@ -766,15 +768,6 @@ function formatOptionWithCount(option: { label: string; count?: number }) {
 }
 function formatMoney(value: string | number) {
   return `NPR ${Number(value).toLocaleString("en-NP", { maximumFractionDigits: 0 })}`;
-}
-
-function formatTime(value: string) {
-  const [hourValue, minuteValue] = value.split(":");
-  const hour = Number(hourValue);
-  const minute = Number(minuteValue);
-  const suffix = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
 function formatChoice(value: string) {

@@ -4,9 +4,11 @@ import Link from "next/link";
 import { ChangeEvent, FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 
 import FeedbackToast from "@/components/FeedbackToast";
+import TimeSelect from "@/components/TimeSelect";
+import VenueLocationPicker, { type VenueLocationChange } from "@/components/owner/VenueLocationPicker";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
-import { addCalendarDays, formatDateOnly, getLocalDateString } from "@/lib/dates";
+import { addCalendarDays, buildTimeOptions, formatDateOnly, formatTimeValue, getLocalDateString } from "@/lib/dates";
 import { estimateGeneratedSlots } from "@/lib/slotSchedule";
 import type { Court, Venue, VenuePhoto, VenuePhotoCategory } from "@/types/venue";
 
@@ -47,6 +49,10 @@ type VenueForm = {
   address: string;
   city: string;
   area: string;
+  latitude: number | null;
+  longitude: number | null;
+  location_source: string;
+  location_confirmed: boolean;
   map_location: string;
   contact_phone: string;
   opening_time: string;
@@ -71,17 +77,31 @@ type CourtForm = {
   court_photo: File | null;
 };
 
+type ReferenceOption = { value: string; label: string };
+type DiscoveryReferenceResponse = {
+  filters?: {
+    districts?: ReferenceOption[];
+    areas_by_district?: Record<string, ReferenceOption[]>;
+  };
+};
+
 export default function VenueSetupPage() {
   const [step, setStep] = useState(1);
   const [venue, setVenue] = useState<Venue | null>(null);
   const [courts, setCourts] = useState<Court[]>([]);
   const [venuePhotos, setVenuePhotos] = useState<VenuePhoto[]>([]);
+  const [districtOptions, setDistrictOptions] = useState<ReferenceOption[]>([]);
+  const [areasByDistrict, setAreasByDistrict] = useState<Record<string, ReferenceOption[]>>({});
   const [form, setForm] = useState<VenueForm>({
     name: "",
     description: "",
     address: "",
     city: "Kathmandu",
     area: "",
+    latitude: null,
+    longitude: null,
+    location_source: "",
+    location_confirmed: false,
     map_location: "",
     contact_phone: "",
     opening_time: "06:00",
@@ -135,10 +155,13 @@ export default function VenueSetupPage() {
     setIsLoading(true);
     setError("");
     try {
-      const [venueResponse, courtsResponse] = await Promise.all([
+      const [venueResponse, courtsResponse, referenceResponse] = await Promise.all([
         api.get<{ venue: Venue | null }>("/api/venues/owner/venue/"),
         api.get<{ courts: Court[] }>("/api/venues/owner/courts/").catch(() => ({ data: { courts: [] } })),
+        api.get<DiscoveryReferenceResponse>("/api/venues/discovery/reference/").catch(() => null),
       ]);
+      setDistrictOptions(referenceResponse?.data.filters?.districts || []);
+      setAreasByDistrict(referenceResponse?.data.filters?.areas_by_district || {});
       const currentVenue = venueResponse.data.venue;
       setVenue(currentVenue);
       setCourts(courtsResponse.data.courts);
@@ -152,6 +175,10 @@ export default function VenueSetupPage() {
           address: currentVenue.address || "",
           city: currentVenue.city || "Kathmandu",
           area: currentVenue.area || "",
+          latitude: currentVenue.latitude === null ? null : Number(currentVenue.latitude),
+          longitude: currentVenue.longitude === null ? null : Number(currentVenue.longitude),
+          location_source: currentVenue.location_source || "",
+          location_confirmed: Boolean(currentVenue.location_confirmed),
           map_location: currentVenue.map_location || "",
           contact_phone: currentVenue.contact_phone || "",
           opening_time: toInputTime(currentVenue.opening_time) || "06:00",
@@ -180,6 +207,14 @@ export default function VenueSetupPage() {
   }
 
   const selectedBasePrice = getSelectedBasePrice(slotForm);
+  const availableDistricts = useMemo(
+    () => mergeReferenceOption(districtOptions, form.city),
+    [districtOptions, form.city],
+  );
+  const availableAreas = useMemo(
+    () => mergeReferenceOption(areasByDistrict[form.city] || [], form.area),
+    [areasByDistrict, form.area, form.city],
+  );
   const isApprovedVenue = venue?.status === "APPROVED";
   const hasMajorChanges = Boolean(isApprovedVenue && venue && detectMajorVenueChanges(venue, form, files));
   const hasOutsideVenuePhoto = Boolean(venue?.front_photo || venuePhotos.some((photo) => photo.category === "OUTSIDE"));
@@ -221,7 +256,7 @@ export default function VenueSetupPage() {
     try {
       const payload = new FormData();
       Object.entries(form).forEach(([key, value]) => {
-        payload.append(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+        payload.append(key, Array.isArray(value) ? JSON.stringify(value) : value === null ? "" : String(value));
       });
       Object.entries(files).forEach(([key, file]) => {
         if (file) payload.append(key, file);
@@ -435,6 +470,29 @@ export default function VenueSetupPage() {
     setForm({ ...form, rules: form.rules ? `${form.rules}\n${rule}` : rule });
   }
 
+  function updateVenueLocation(location: VenueLocationChange) {
+    setForm((current) => ({
+      ...current,
+      address: location.displayName || current.address,
+      city: location.district || current.city,
+      area: location.area || current.area,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      location_source: location.source,
+      location_confirmed: false,
+    }));
+  }
+
+  function clearVenueLocation() {
+    setForm((current) => ({
+      ...current,
+      latitude: null,
+      longitude: null,
+      location_source: "",
+      location_confirmed: false,
+    }));
+  }
+
   if (isLoading) {
     return (
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -487,12 +545,22 @@ export default function VenueSetupPage() {
               <Input label="Venue Name" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
               <Input label="Contact Phone" value={form.contact_phone} onChange={(value) => setForm({ ...form, contact_phone: onlyPhone(value) })} />
               <Input label="Address" value={form.address} onChange={(value) => setForm({ ...form, address: value })} />
-              <Select label="City" value={form.city} onChange={(value) => setForm({ ...form, city: value })} options={["Kathmandu", "Lalitpur", "Bhaktapur"]} />
-              <Input label="Area" value={form.area} onChange={(value) => setForm({ ...form, area: value })} />
-              <Input label="Google Maps Link" value={form.map_location} onChange={(value) => setForm({ ...form, map_location: value })} />
-              <Input label="Opening Time" type="time" value={form.opening_time} onChange={(value) => setForm({ ...form, opening_time: value })} />
-              <Input label="Closing Time" type="time" value={form.closing_time} onChange={(value) => setForm({ ...form, closing_time: value })} />
+              <Select label="District" value={form.city} onChange={(value) => setForm((current) => ({ ...current, city: value, area: "" }))} options={availableDistricts.map((item) => item.value)} labels={Object.fromEntries(availableDistricts.map((item) => [item.value, item.label]))} />
+              <Select label="Area" value={form.area} onChange={(value) => setForm({ ...form, area: value })} options={availableAreas.map((item) => item.value)} labels={Object.fromEntries(availableAreas.map((item) => [item.value, item.label]))} />
+              <p className="-mt-2 text-xs leading-5 text-slate-500 md:col-span-2">Choose the area players will use to discover this venue. The map pin below stores the exact entrance for directions.</p>
+              <Input label="Map link (optional)" value={form.map_location} onChange={(value) => setForm({ ...form, map_location: value })} />
+              <TimeSelectField label="Opening Time" value={form.opening_time} onChange={(value) => setForm({ ...form, opening_time: value })} />
+              <TimeSelectField label="Closing Time" value={form.closing_time} onChange={(value) => setForm({ ...form, closing_time: value })} />
             </div>
+            <VenueLocationPicker
+              address={form.address}
+              confirmed={form.location_confirmed}
+              latitude={form.latitude}
+              longitude={form.longitude}
+              onChange={updateVenueLocation}
+              onClear={clearVenueLocation}
+              onConfirm={() => setForm((current) => ({ ...current, location_confirmed: true }))}
+            />
             <Textarea label="Description" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
             <div>
               <p className="text-sm font-black text-sportNavy">Sport</p>
@@ -571,8 +639,8 @@ export default function VenueSetupPage() {
                   <span className="mt-3 inline-flex rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-black text-green-800">Nepal time</span>
                 </div>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <Input label="Opening time" type="time" value={slotForm.opening_time} onChange={(value) => setSlotForm({ ...slotForm, opening_time: value })} />
-                  <Input label="Closing time" type="time" value={slotForm.closing_time} onChange={(value) => setSlotForm({ ...slotForm, closing_time: value })} />
+                  <TimeSelectField label="Opening time" value={slotForm.opening_time} onChange={(value) => setSlotForm({ ...slotForm, opening_time: value })} />
+                  <TimeSelectField label="Closing time" value={slotForm.closing_time} onChange={(value) => setSlotForm({ ...slotForm, closing_time: value })} />
                 </div>
                 <div className="mt-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -669,7 +737,7 @@ export default function VenueSetupPage() {
             <div className="space-y-5">
               <SectionHeader title="Final Verification" description="Review your details before submitting. Admin approval protects players from fake or incomplete venues." />
               <div className="grid gap-4 md:grid-cols-2">
-                <ReviewCard title="Venue Details" items={[["Venue Name", form.name || "Not added"], ["Location", `${form.area || "Area"}, ${form.city}`], ["Operating Hours", `${form.opening_time} - ${form.closing_time}`]]} onEdit={() => setStep(1)} />
+                <ReviewCard title="Venue Details" items={[["Venue Name", form.name || "Not added"], ["Location", `${form.area || "Area"}, ${form.city}`], ["Operating Hours", `${formatTimeValue(form.opening_time)} - ${formatTimeValue(form.closing_time)}`]]} onEdit={() => setStep(1)} />
                 <ReviewCard title="Facilities" items={(form.facilities.length ? form.facilities : ["No facilities selected"]).map((item) => ["", item])} onEdit={() => setStep(1)} />
                 <ReviewCard
                   title="Rules & Cancellation"
@@ -1086,6 +1154,15 @@ function Input({ label, value, onChange, type = "text", min, max }: { label: str
   );
 }
 
+function TimeSelectField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-black text-sportNavy">{label}</span>
+      <TimeSelect ariaLabel={label} className="mt-2 w-full rounded-md border border-slate-300 px-3 py-3 text-sm outline-none focus:border-sportGreen" options={buildTimeOptions()} value={value} onChange={onChange} />
+    </label>
+  );
+}
+
 function Textarea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label className="block">
@@ -1240,7 +1317,7 @@ function getSelectedBasePrice(slotForm: { slot_duration_minutes: string; price_3
 }
 
 function detectMajorVenueChanges(venue: Venue, form: VenueForm, files: Record<string, File | null>) {
-  const majorFields: Array<keyof VenueForm> = ["name", "address", "city", "area", "map_location", "verification_document_type"];
+  const majorFields: Array<keyof VenueForm> = ["name", "address", "city", "area", "map_location", "latitude", "longitude", "verification_document_type"];
   const changedMajorField = majorFields.some((field) => normalizeCompare(String(venue[field] || "")) !== normalizeCompare(String(form[field] || "")));
   return changedMajorField || Boolean(files.verification_document);
 }
@@ -1268,4 +1345,12 @@ function formatChoice(value: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function mergeReferenceOption(options: ReferenceOption[], currentValue: string) {
+  const normalizedCurrent = currentValue.trim();
+  if (!normalizedCurrent || options.some((option) => option.value.toLowerCase() === normalizedCurrent.toLowerCase())) {
+    return options;
+  }
+  return [{ value: normalizedCurrent, label: `${normalizedCurrent} (current)` }, ...options];
 }

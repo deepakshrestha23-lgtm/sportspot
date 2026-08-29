@@ -129,7 +129,11 @@ export default function CreateTeamPage() {
         skill_level: getApiErrorField(requestError, "skill_level") || "",
         team_photo: getApiErrorField(requestError, "team_photo") || "",
       });
-      getApiErrorMessage(requestError, "We could not create your team. Please try again.");
+      emitToast({
+        message: getApiErrorMessage(requestError, "We could not create your team. Please try again."),
+        type: "error",
+        dedupeKey: "team-create-error",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -138,11 +142,8 @@ export default function CreateTeamPage() {
   return (
     <div className="space-y-5">
       <DashboardPageHeader
-        actions={
-          <Link className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200" href="/dashboard/player/teams">
-            Back to Teams
-          </Link>
-        }
+        backHref="/dashboard/player/teams"
+        backLabel="Back to teams"
         eyebrow="Cricksal squads"
         title="Create Team"
         description="Build a team profile, invite players, and manage your Cricksal squad from SportSpot."
@@ -188,7 +189,7 @@ export default function CreateTeamPage() {
                     const active = form.preferred_playing_time === time;
                     return (
                       <button
-                        className={`min-h-11 rounded-xl border px-3 text-left text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-green-200 ${active ? "border-sportGreen bg-green-50 text-sportGreen" : "border-slate-200 bg-white text-slate-700 hover:border-green-200 hover:bg-slate-50"}`}
+                        className={`min-h-11 rounded-md border px-3 text-left text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-green-200 ${active ? "border-sportGreen bg-green-50 text-sportGreen" : "border-slate-200 bg-white text-slate-700 hover:border-green-200 hover:bg-slate-50"}`}
                         key={time}
                         onClick={() => updateForm({ preferred_playing_time: time })}
                         type="button"
@@ -208,7 +209,7 @@ export default function CreateTeamPage() {
                 const active = form.skill_level === skill.value;
                 return (
                   <button
-                    className={`rounded-2xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-green-200 ${active ? "border-sportGreen bg-green-50 shadow-sm" : "border-slate-200 bg-white hover:border-green-200 hover:bg-slate-50"}`}
+                    className={`rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-green-200 ${active ? "border-sportGreen bg-green-50 shadow-sm" : "border-slate-200 bg-white hover:border-green-200 hover:bg-slate-50"}`}
                     key={skill.value}
                     onClick={() => updateForm({ skill_level: skill.value })}
                     type="button"
@@ -222,11 +223,11 @@ export default function CreateTeamPage() {
             {errors.skill_level ? <p className="mt-2 text-xs font-semibold text-red-600">{errors.skill_level}</p> : null}
           </FormCard>
 
-          <div className="flex flex-col-reverse gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:justify-end">
-            <Link className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 px-5 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200" href="/dashboard/player/teams">
+          <div className="sport-surface flex flex-col-reverse gap-3 p-4 sm:flex-row sm:justify-end">
+            <Link className="sport-secondary-button" href="/dashboard/player/teams">
               Cancel
             </Link>
-            <button className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-6 text-sm font-black text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60" disabled={isSubmitting} type="submit">
+            <button className="sport-primary-button min-h-11 px-6" disabled={isSubmitting} type="submit">
               {isSubmitting ? "Creating Team..." : "Create Team"}
             </button>
           </div>
@@ -259,7 +260,7 @@ function validateForm(form: TeamPayload) {
 
 function FormCard({ children, description, title }: { children: ReactNode; description: string; title: string }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <section className="sport-card">
       <div className="mb-5">
         <h2 className="text-xl font-black text-sportNavy">{title}</h2>
         <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
@@ -273,16 +274,16 @@ function TeamPhotoPicker({ error, name, onChange, preview }: { error?: string; n
   return (
     <div>
       <p className="text-sm font-black text-sportNavy">Team Photo</p>
-      <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <div className="relative mx-auto flex h-32 w-32 items-center justify-center overflow-hidden rounded-2xl bg-sportNavy text-3xl font-black text-white shadow-sm">
+      <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="relative mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-xl bg-sportNavy text-2xl font-black text-white shadow-sm">
           {preview ? <Image alt="Team photo preview" className="object-cover" fill sizes="128px" src={preview} unoptimized /> : getTeamInitials(name || "Team")}
         </div>
-        <label className="mt-4 flex min-h-11 cursor-pointer items-center justify-center rounded-xl bg-sportGreen px-4 text-center text-sm font-black text-white transition hover:bg-green-700 focus-within:ring-2 focus-within:ring-green-200">
+        <label className="mt-4 flex min-h-11 cursor-pointer items-center justify-center rounded-md bg-sportGreen px-4 text-center text-sm font-bold text-white transition hover:bg-green-700 focus-within:ring-2 focus-within:ring-green-200">
           Upload Photo
           <input accept=".jpg,.jpeg,.png,image/jpeg,image/png" className="sr-only" onChange={(event) => onChange(event.target.files?.[0] || null)} type="file" />
         </label>
         {preview ? (
-          <button className="mt-2 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-red-200 hover:text-red-600" onClick={() => onChange(null)} type="button">
+          <button className="sport-secondary-button mt-2 w-full border-red-200 text-red-700 hover:bg-red-50" onClick={() => onChange(null)} type="button">
             Remove Photo
           </button>
         ) : null}
@@ -295,7 +296,7 @@ function TeamPhotoPicker({ error, name, onChange, preview }: { error?: string; n
 
 function TeamPreview({ form, photoPreview, selectedSkill }: { form: TeamPayload; photoPreview: string; selectedSkill: { label: string; helper: string; value: TeamSkillLevel } }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section className="sport-surface overflow-hidden">
       <div className="bg-sportNavy p-5 text-white">
         <p className="text-xs font-black uppercase tracking-[0.16em] text-green-300">Preview</p>
         <p className="mt-1 text-sm font-semibold text-slate-300">This is how your team starts to look.</p>
@@ -323,7 +324,7 @@ function TeamPreview({ form, photoPreview, selectedSkill }: { form: TeamPayload;
           <PreviewRow label="Team level" value={selectedSkill.helper} />
         </div>
 
-        <p className="mt-5 line-clamp-4 rounded-2xl bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
+        <p className="mt-5 line-clamp-4 rounded-lg bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
           {form.description.trim() || "Add a short description so players understand your squad before joining."}
         </p>
       </div>

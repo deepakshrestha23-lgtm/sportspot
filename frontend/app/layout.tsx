@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import AppChrome from "@/components/AppChrome";
 
@@ -14,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>
+      <body suppressHydrationWarning>
         <AppChrome>{children}</AppChrome>
       </body>
     </html>

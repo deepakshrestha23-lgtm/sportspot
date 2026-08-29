@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import ConfirmActionModal from "@/components/ConfirmActionModal";
 import FeedbackToast from "@/components/FeedbackToast";
+import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import type { Court, Venue } from "@/types/venue";
@@ -68,25 +69,14 @@ export default function OwnerCourtsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="space-y-6">
       <FeedbackToast message={feedbackMessage} onClose={() => { setMessage(""); setError(""); }} type={feedbackType} />
 
-      <div className="flex flex-col gap-4 rounded-lg bg-sportNavy p-6 text-white shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm font-black uppercase tracking-wide text-green-300">Court Management</p>
-          <h1 className="mt-2 text-3xl font-black">Your Cricksal Courts</h1>
-          <p className="mt-3 max-w-3xl text-slate-300">
-            Courts are the physical play areas inside your venue. Players see active courts only after your venue is approved.
-          </p>
-        </div>
-        <Link className="rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" href="/dashboard/owner/courts/create">
-          Add Court
-        </Link>
-      </div>
+      <OwnerPageHeader actions={<Link className="sport-primary-button" href="/dashboard/owner/courts/create">Add Court</Link>} description="Manage the Cricksal courts inside your venue. Active courts become visible to players after approval." eyebrow="Venue Manager" title="Venue & Courts" />
 
 
       {!isLoading ? (
-        <section className="mt-6 grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-3">
           <InfoCard label="Venue Status" value={venue ? formatChoice(venue.status) : "No Venue"} />
           <InfoCard label="Player Visibility" value={venue?.status === "APPROVED" ? "Approved active courts appear on /courts" : "Hidden until admin approval"} />
           <InfoCard label="How Slots Work" value="Slots are the exact times players select and pay for." />
@@ -94,19 +84,19 @@ export default function OwnerCourtsPage() {
       ) : null}
 
       {isLoading ? (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">Loading courts...</div>
+        <div className="sport-surface p-6">Loading courts...</div>
       ) : courts.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="sport-empty-state">
           <h2 className="text-xl font-black text-sportNavy">No courts added yet</h2>
           <p className="mt-2 text-sm text-slate-600">Add your first Cricksal court to generate bookable slots.</p>
-          <Link className="mt-5 inline-flex rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" href="/dashboard/owner/courts/create">
+          <Link className="sport-primary-button mt-5" href="/dashboard/owner/courts/create">
             Add Court
           </Link>
         </div>
       ) : (
         <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {courts.map((court) => (
-            <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" key={court.id}>
+            <article className="sport-card" key={court.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-black text-sportNavy">{court.name}</h2>
@@ -128,20 +118,20 @@ export default function OwnerCourtsPage() {
                 </div>
               ) : null}
               <div className="mt-5 flex flex-wrap gap-2">
-                <Link className="inline-flex rounded-md border border-green-200 px-4 py-2 text-sm font-black text-sportGreen hover:bg-green-50" href={`/dashboard/owner/courts/${court.id}/slots`}>
+                <Link className="sport-secondary-button" href={`/dashboard/owner/courts/${court.id}/slots`}>
                   Manage Slots
                 </Link>
                 {venue?.status === "APPROVED" && court.is_active ? (
-                  <Link className="inline-flex rounded-md border border-slate-200 px-4 py-2 text-sm font-black text-sportNavy hover:bg-slate-50" href={`/courts/${venue.id}`}>
+                  <Link className="sport-secondary-button" href={`/courts/${venue.id}`}>
                     View Venue Page
                   </Link>
                 ) : null}
                 {court.can_delete ? (
-                  <button className="rounded-md border border-red-200 px-4 py-2 text-sm font-black text-red-600 hover:bg-red-50" onClick={() => setPendingAction({ court, type: "delete" })} type="button">
+                    <button className="sport-secondary-button border-red-200 text-red-700 hover:bg-red-50" onClick={() => setPendingAction({ court, type: "delete" })} type="button">
                     Delete Court
                   </button>
                 ) : court.is_active ? (
-                  <button className="rounded-md border border-amber-200 px-4 py-2 text-sm font-black text-amber-700 hover:bg-amber-50" onClick={() => setPendingAction({ court, type: "deactivate" })} type="button">
+                    <button className="sport-secondary-button border-amber-200 text-amber-700 hover:bg-amber-50" onClick={() => setPendingAction({ court, type: "deactivate" })} type="button">
                     Deactivate Court
                   </button>
                 ) : null}
@@ -166,7 +156,7 @@ export default function OwnerCourtsPage() {
           title={pendingAction.type === "delete" ? `Delete ${pendingAction.court.name}?` : `Deactivate ${pendingAction.court.name}?`}
         />
       ) : null}
-    </main>
+    </div>
   );
 }
 
