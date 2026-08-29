@@ -362,6 +362,123 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
         }
 
 
+class MyTeamFixtureSerializer(serializers.ModelSerializer):
+    """Small, player-safe summary used by the unified My Games feed.
+
+    The full fixture serializer is intentionally reserved for the private Game
+    Room. My Games only needs the scheduled match identity and booking details,
+    which keeps the response compact and avoids exposing a full lineup on a
+    list screen.
+    """
+
+    challenge_id = serializers.IntegerField(read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    room_access = serializers.SerializerMethodField()
+    is_captain = serializers.SerializerMethodField()
+    is_participant = serializers.SerializerMethodField()
+    team_name = serializers.SerializerMethodField()
+    team_photo = serializers.SerializerMethodField()
+    opponent_team_name = serializers.SerializerMethodField()
+    opponent_team_photo = serializers.SerializerMethodField()
+    booking_summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamFixture
+        fields = (
+            "id",
+            "challenge_id",
+            "status",
+            "status_label",
+            "room_access",
+            "is_captain",
+            "is_participant",
+            "team_name",
+            "team_photo",
+            "opponent_team_name",
+            "opponent_team_photo",
+            "booking_summary",
+            "result",
+            "created_at",
+            "updated_at",
+        )
+
+    def _viewer(self):
+        request = self.context.get("request")
+        return getattr(request, "user", None)
+
+    def _viewer_participant(self, fixture):
+        return next(iter(getattr(fixture, "_viewer_fixture_participants", [])), None)
+
+    def _is_captain(self, fixture):
+        viewer = self._viewer()
+        return bool(
+            viewer
+            and viewer.is_authenticated
+            and any(
+                team and team.captain_id == viewer.id
+                for team in [fixture.challenge.challenger_team, fixture.challenge.challenged_team]
+            )
+        )
+
+    def get_is_captain(self, fixture):
+        return self._is_captain(fixture)
+
+    def get_is_participant(self, fixture):
+        return bool(self._viewer_participant(fixture))
+
+    def get_room_access(self, fixture):
+        if not self._is_captain(fixture) and not self._viewer_participant(fixture):
+            return "NONE"
+        if fixture.status == TeamFixture.Status.RECONFIRMATION_REQUIRED:
+            return "RECONFIRMATION"
+        if fixture.status == TeamFixture.Status.SCHEDULED:
+            return "CONFIRMED"
+        if fixture.status == TeamFixture.Status.IN_PROGRESS:
+            return "IN_PROGRESS"
+        return "READ_ONLY"
+
+    def _viewer_team(self, fixture):
+        participant = self._viewer_participant(fixture)
+        if participant:
+            return participant.team
+        viewer = self._viewer()
+        if viewer and fixture.challenge.challenger_team.captain_id == viewer.id:
+            return fixture.challenge.challenger_team
+        return fixture.challenge.challenged_team
+
+    def _opponent_team(self, fixture):
+        viewer_team = self._viewer_team(fixture)
+        if not viewer_team:
+            return None
+        challenge = fixture.challenge
+        return (
+            challenge.challenged_team
+            if viewer_team.id == challenge.challenger_team_id
+            else challenge.challenger_team
+        )
+
+    def get_team_name(self, fixture):
+        team = self._viewer_team(fixture)
+        return team.name if team else "Team match"
+
+    def get_team_photo(self, fixture):
+        team = self._viewer_team(fixture)
+        return team.team_photo.url if team and team.team_photo else ""
+
+    def get_opponent_team_name(self, fixture):
+        team = self._opponent_team(fixture)
+        return team.name if team else "Opponent"
+
+    def get_opponent_team_photo(self, fixture):
+        team = self._opponent_team(fixture)
+        return team.team_photo.url if team and team.team_photo else ""
+
+    def get_booking_summary(self, fixture):
+        if not fixture.booking_id:
+            return None
+        return ChallengeBookingSummarySerializer(fixture.booking, context=self.context).data
+
+
 class FixtureEligiblePlayerSerializer(serializers.ModelSerializer):
     player_id = serializers.IntegerField(source="user_id", read_only=True)
     player_name = serializers.CharField(source="user.full_name", read_only=True)

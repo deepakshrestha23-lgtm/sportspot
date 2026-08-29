@@ -169,8 +169,9 @@ function formatDate(value?: string) {
 }
 
 function formatRating(value?: string) {
-  if (!value) return "0.00";
-  return Number(value).toFixed(2);
+  if (!value) return "Not rated yet";
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue.toFixed(1) : "Not rated yet";
 }
 
 function getMediaSrc(value: string) {

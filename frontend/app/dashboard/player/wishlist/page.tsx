@@ -45,7 +45,7 @@ export default function PlayerWishlistPage() {
   const courtItems = items.filter((item) => item.item_type === "COURT" && item.court_detail);
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <DashboardPageHeader description="Keep favourite Cricksal venues and courts ready for your next booking." eyebrow="Saved places" title="My Wishlist" />
 
       {isLoading ? (
@@ -80,7 +80,7 @@ export default function PlayerWishlistPage() {
           ) : null}
         </div>
       )}
-    </main>
+    </div>
   );
 }
 

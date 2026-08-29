@@ -4,15 +4,17 @@
 
 :root {
   color-scheme: light;
-  --sport-ink: #142019;
+  --sport-ink: #18231c;
   --sport-navy: #0b1220;
-  --sport-muted: #647168;
-  --sport-line: #d9e3dc;
+  --sport-muted: #68756d;
+  --sport-line: #dce5de;
   --sport-surface: #ffffff;
-  --sport-canvas: #f6f8f7;
+  --sport-canvas: #f4f7f5;
   --sport-green: #087a3e;
-  --sport-green-soft: #e9f5ee;
-  --sport-focus: rgba(22, 163, 74, 0.2);
+  --sport-green-strong: #066b36;
+  --sport-green-soft: #eaf5ee;
+  --sport-focus: rgba(8, 122, 62, 0.2);
+  --sport-shadow: 0 1px 2px rgba(16, 32, 22, 0.04), 0 8px 22px rgba(16, 32, 22, 0.035);
 }
 
 * {
@@ -96,19 +98,21 @@ a {
 
 @layer components {
   .sport-page-content {
-    @apply mx-auto w-full max-w-7xl space-y-6;
+    @apply mx-auto w-full max-w-[1220px] space-y-6;
   }
 
   .sport-surface {
-    @apply rounded-xl border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(16,32,22,0.03)];
+    @apply rounded-xl border bg-white;
+    border-color: var(--sport-line);
+    box-shadow: var(--sport-shadow);
   }
 
   .sport-card {
-    @apply sport-surface p-5 sm:p-6;
+    @apply sport-surface p-5;
   }
 
   .sport-page-header {
-    @apply flex flex-col gap-4 border-b border-slate-200/80 pb-5 sm:flex-row sm:items-end sm:justify-between;
+    @apply flex flex-col gap-4 pb-1 sm:flex-row sm:items-end sm:justify-between;
   }
 
   .sport-eyebrow {
@@ -116,7 +120,8 @@ a {
   }
 
   .sport-page-title {
-    @apply mt-1 text-[clamp(1.65rem,2.3vw,2.15rem)] font-bold tracking-tight text-sportNavy;
+    @apply mt-1 text-[clamp(1.7rem,2.3vw,2.2rem)] font-bold text-sportNavy;
+    letter-spacing: 0;
   }
 
   .sport-page-description {
@@ -124,15 +129,18 @@ a {
   }
 
   .sport-primary-button {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-sportGreen px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55;
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-sportGreen px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55;
+    box-shadow: 0 1px 2px rgba(6, 107, 54, 0.16);
   }
 
   .sport-secondary-button {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-sportNavy transition-colors hover:border-green-300 hover:bg-green-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55;
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border bg-white px-4 py-2.5 text-sm font-semibold text-sportNavy transition-colors hover:border-green-300 hover:bg-green-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55;
+    border-color: var(--sport-line);
   }
 
   .sport-icon-button {
-    @apply inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:border-green-300 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2;
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-md border bg-white text-slate-600 transition-colors hover:border-green-300 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2;
+    border-color: var(--sport-line);
   }
 
   .sport-field {
@@ -142,14 +150,16 @@ a {
   .sport-field input,
   .sport-field select,
   .sport-field textarea {
-    @apply min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
+    @apply min-h-10 rounded-md border bg-white px-3 py-2 text-sm font-normal text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
+    border-color: var(--sport-line);
   }
 
   /* Some older forms apply the field class directly to the control. Keep those controls styled while the wrapper API is migrated. */
   input.sport-field,
   select.sport-field,
   textarea.sport-field {
-    @apply min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
+    @apply min-h-10 rounded-md border bg-white px-3 py-2 text-sm font-normal text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
+    border-color: var(--sport-line);
   }
 
   .sport-tab-list {
@@ -178,7 +188,8 @@ a {
   }
 
   .sport-input {
-    @apply min-h-11 w-full rounded-md border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-sportNavy outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-sportGreen focus:ring-4 focus:ring-green-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500;
+    @apply min-h-11 w-full rounded-md border bg-white px-3.5 py-2.5 text-sm text-sportNavy outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-sportGreen focus:ring-4 focus:ring-green-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500;
+    border-color: var(--sport-line);
   }
 
   .sport-field-label {
@@ -221,6 +232,154 @@ a {
   .calendar-field select,
   .calendar-field textarea {
     @apply min-h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100;
+  }
+}
+
+@keyframes sportspot-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sportspot-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/*
+ * The player workspace contains older pages that predate the shared surface
+ * primitives. Keep those pages visually coherent while they are migrated by
+ * normalising the few utility styles that define their visual weight.
+ */
+.player-dashboard-theme {
+  --dashboard-gap: 1.25rem;
+}
+
+.sport-dashboard-stat,
+.sport-dashboard-panel,
+.sport-dashboard-empty,
+.sport-dashboard-feature,
+.sport-dashboard-action {
+  border-radius: 0.75rem;
+}
+
+.player-dashboard-drawer-backdrop {
+  animation: sportspot-backdrop-in 160ms ease-out both;
+}
+
+.player-dashboard-drawer-panel {
+  animation: sportspot-drawer-in 180ms ease-out both;
+}
+
+.player-header-actions > a,
+.player-header-actions > button {
+  white-space: nowrap;
+}
+
+.player-dashboard-theme .font-black {
+  font-weight: 700;
+}
+
+.player-dashboard-theme .tracking-tight {
+  letter-spacing: 0;
+}
+
+.player-dashboard-theme .rounded-2xl {
+  border-radius: 0.875rem;
+}
+
+.player-dashboard-theme .rounded-3xl {
+  border-radius: 1rem;
+}
+
+.player-dashboard-theme .rounded-xl {
+  border-radius: 0.75rem;
+}
+
+.player-dashboard-theme .shadow-sm {
+  box-shadow: var(--sport-shadow);
+}
+
+.player-dashboard-theme .shadow-md {
+  box-shadow: 0 2px 4px rgba(16, 32, 22, 0.05), 0 10px 26px rgba(16, 32, 22, 0.06);
+}
+
+.player-dashboard-theme .border-slate-200,
+.player-dashboard-theme .border-slate-300 {
+  border-color: var(--sport-line);
+}
+
+.player-dashboard-theme .border-green-100 {
+  border-color: #d9ece0;
+}
+
+.player-dashboard-theme .bg-slate-50 {
+  background-color: #f7faf8;
+}
+
+.player-dashboard-theme .bg-green-50 {
+  background-color: var(--sport-green-soft);
+}
+
+.player-dashboard-theme [role="tab"] {
+  position: relative;
+  min-height: 2.75rem;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  font-weight: 600;
+  color: #68756d;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.player-dashboard-theme [role="tab"]:hover {
+  background: #f5f9f6;
+  color: var(--sport-navy);
+}
+
+.player-dashboard-theme [role="tab"][aria-selected="true"] {
+  color: var(--sport-green);
+  background: var(--sport-green-soft);
+}
+
+.dashboard-settings-tabs {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.dashboard-settings-tabs > div > button {
+  min-height: 2.75rem;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  font-weight: 600;
+  color: #68756d;
+  white-space: nowrap;
+}
+
+.dashboard-settings-tabs > div > button[aria-current="page"] {
+  background: var(--sport-green-soft);
+  color: var(--sport-green);
+}
+
+@media (max-width: 1023px) {
+  .player-dashboard-theme main {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+  }
+
+  .player-header-actions {
+    width: 100%;
+  }
+
+  .player-header-actions > a,
+  .player-header-actions > button {
+    flex: 1 1 auto;
   }
 }
 

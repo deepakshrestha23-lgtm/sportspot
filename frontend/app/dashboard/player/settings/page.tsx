@@ -334,7 +334,7 @@ function PlayerSettingsContent() {
     <div className="space-y-5">
       <DashboardPageHeader title="Settings" description="Manage your account, security, notifications and privacy." />
 
-      <nav aria-label="Settings sections" className="sport-surface overflow-x-auto p-1">
+      <nav aria-label="Settings sections" className="sport-surface dashboard-settings-tabs overflow-x-auto p-1">
         <div className="flex min-w-max gap-1">
           {sections.map((section) => {
             const active = activeSection === section.id;

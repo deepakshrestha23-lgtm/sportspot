@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getCurrentUser } from "@/lib/auth";
 import { emitToast } from "@/lib/toast";
-import { buildTimeOptions, formatTimeValue, getLocalDateString } from "@/lib/dates";
+import { buildTimeOptions, formatDateOnly, formatTimeValue, getLocalDateString } from "@/lib/dates";
 import TimeSelect from "@/components/TimeSelect";
 import type { VenueDiscoveryFilters, VenueDiscoveryItem, VenueDiscoveryResponse } from "@/types/venue";
 import type { WishlistSummary } from "@/types/wishlist";
@@ -20,12 +20,6 @@ const SORT_OPTIONS = [
   { value: "price_desc", label: "Price: High to Low" },
 ];
 const formatTime = formatTimeValue;
-
-const TIME_WINDOWS = [
-  { value: "morning", label: "Morning" },
-  { value: "afternoon", label: "Afternoon" },
-  { value: "evening", label: "Evening" },
-];
 
 const EMPTY_FILTERS: VenueDiscoveryFilters = {
   areas_by_district: {},
@@ -205,24 +199,26 @@ function CourtDiscovery() {
   const currentPage = data?.page || Number(searchParams.get("page") || 1);
 
   return (
-    <main className="bg-[#f4f7fb] text-sportNavy">
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-black uppercase tracking-[0.16em] text-sportGreen">Cricksal Court Discovery</p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Find the right venue for your next game</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-              Compare approved Cricksal venues by location, availability, facilities, and price before choosing a specific court and time slot.
-            </p>
+    <main className="min-h-[calc(100vh-68px)] bg-[#f6f8f7] text-sportNavy">
+      <section className="mx-auto max-w-[1280px] px-4 py-7 sm:px-6 lg:px-8 lg:py-10">
+        <header className="flex flex-col gap-5 border-b border-slate-200/80 pb-7 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex items-center gap-2">
+              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-sportGreen" />
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-sportGreen">Court discovery</p>
+            </div>
+            <h1 className="mt-3 text-[clamp(2rem,4vw,3rem)] font-bold leading-[1.08] text-sportNavy">Find a better place to play.</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">Compare approved Cricksal venues by location, availability and price, then choose the court and time that fit your game.</p>
           </div>
-          <Link className="inline-flex items-center justify-center rounded-md border border-green-200 bg-white px-4 py-3 text-sm font-black text-sportGreen shadow-sm hover:bg-green-50" href="/dashboard/player/bookings">
-            My Bookings
-          </Link>
-        </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {data?.filters.total_active_courts ? <span className="hidden text-sm font-semibold text-slate-500 sm:inline">{data.filters.total_active_courts} active courts</span> : null}
+            <Link className="sport-secondary-button" href="/dashboard/player/bookings">My bookings</Link>
+          </div>
+        </header>
 
-        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+        <div className="mt-7 grid gap-5 lg:grid-cols-[272px_minmax(0,1fr)] lg:gap-7">
           <aside className="hidden lg:block">
-            <div className="sticky top-24 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="sticky top-24 rounded-lg border border-slate-200 bg-white p-5 shadow-[0_2px_8px_rgba(16,32,22,0.04)]">
               <FilterPanel
                 activeCount={activeChipList.length}
                 appliedDate={appliedDate}
@@ -236,95 +232,63 @@ function CourtDiscovery() {
             </div>
           </aside>
 
-          <section className="min-w-0">
-            <div className="rounded-lg bg-sportNavy p-4 shadow-lg shadow-slate-200/70 sm:p-5">
-              <div className="grid gap-3 md:grid-cols-[1fr_240px]">
-                <label className="relative block">
-                  <span className="sr-only">Search venues</span>
-                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-400">⌕</span>
+          <section aria-busy={isLoading} className="min-w-0">
+            <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-[0_2px_8px_rgba(16,32,22,0.04)] sm:p-2.5">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <label className="relative flex min-h-14 min-w-0 flex-1 items-center">
+                  <span className="sr-only">Search venues, areas, or districts</span>
+                  <SearchIcon />
                   <input
-                    className="h-12 w-full rounded-lg border border-transparent bg-white pl-11 pr-4 text-sm font-semibold text-sportNavy outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-4 focus:ring-green-400/20"
+                    className="h-14 w-full rounded-lg bg-slate-50 pl-12 pr-11 text-base font-semibold text-sportNavy outline-none transition placeholder:text-slate-400 hover:bg-slate-100 focus:bg-white focus:ring-2 focus:ring-green-100"
                     onChange={(event) => setSearchText(event.target.value)}
-                    placeholder="Search venues, areas, or districts"
+                    placeholder="Search by venue, area or district"
                     type="search"
                     value={searchText}
                   />
+                  {searchText ? <button aria-label="Clear venue search" className="absolute right-3 inline-flex h-9 w-9 items-center justify-center rounded-md text-lg text-slate-400 hover:bg-white hover:text-sportNavy" onClick={() => setSearchText("")} type="button">×</button> : null}
                 </label>
-                <label className="block">
-                  <span className="sr-only">Sort courts</span>
-                  <select
-                    className="h-12 w-full rounded-lg border border-transparent bg-white px-4 text-sm font-black text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20"
-                    onChange={(event) => updateQuery({ sort: event.target.value })}
-                    value={searchParams.get("sort") || "recommended"}
-                  >
-                    {SORT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
+                <label className="relative flex min-h-14 sm:w-56">
+                  <span className="sr-only">Sort venues</span>
+                  <SortIcon />
+                  <select className="h-14 w-full appearance-none rounded-lg bg-slate-50 pl-11 pr-10 text-sm font-black text-sportNavy outline-none transition hover:bg-slate-100 focus:bg-white focus:ring-2 focus:ring-green-100" onChange={(event) => updateQuery({ sort: event.target.value })} value={searchParams.get("sort") || "recommended"}>
+                    {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
+                  <ChevronDownIcon />
                 </label>
               </div>
             </div>
 
-            <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p aria-live="polite" className="text-lg font-black text-sportNavy">
-                  {isLoading ? "Finding venues" : `${resultCount} venue${resultCount === 1 ? "" : "s"} found`}
-                </p>
-                <p className="mt-1 text-sm text-slate-500">Only approved, active Cricksal venues are shown.</p>
+                <p aria-live="polite" className="text-xl font-bold text-sportNavy">{isLoading && !data ? "Finding venues" : `${resultCount} venue${resultCount === 1 ? "" : "s"} found`}</p>
+                <p className="mt-1 text-sm text-slate-500">Availability for <strong className="font-bold text-slate-700">{formatDateOnly(appliedDate, { month: "short", day: "numeric", year: "numeric" })}</strong> · approved, active venues only</p>
               </div>
-              <button
-                className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-black text-sportNavy shadow-sm hover:border-sportGreen lg:hidden"
-                onClick={() => setMobileFiltersOpen(true)}
-                type="button"
-              >
-                Filters{activeChipList.length ? ` (${activeChipList.length})` : ""}
-              </button>
+              <div className="flex items-center gap-2 lg:hidden">
+                <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-sportNavy transition focus-within:border-sportGreen focus-within:ring-2 focus-within:ring-green-100">
+                  <CalendarIcon />
+                  <span className="sr-only">Playing date</span>
+                  <input aria-label="Playing date" className="w-[8.5rem] bg-transparent text-sm font-semibold outline-none" min={getLocalDateString()} onChange={(event) => updateQuery({ date: event.target.value || null })} type="date" value={appliedDate} />
+                </label>
+                <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-sportNavy transition hover:border-green-300 hover:bg-green-50" onClick={() => setMobileFiltersOpen(true)} type="button"><FilterIcon /> Filters{activeChipList.length ? ` (${activeChipList.length})` : ""}</button>
+              </div>
             </div>
 
             <ActiveFilterChips chips={activeChipList} onClear={clearAllFilters} onRemove={(chip) => updateQuery({ [chip.key]: chip.nextValue })} />
 
-            {error ? (
-              <DiscoveryErrorState message={error} onRetry={() => setReloadCounter((value) => value + 1)} />
-            ) : isLoading && !data ? (
-              <section className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, index) => <VenueCardSkeleton key={index} />)}
-              </section>
-            ) : data && data.venues.length === 0 ? (
-              <DiscoveryEmptyState hasFilters={activeChipList.length > 0 || Boolean(searchParams.get("search"))} onClear={clearAllFilters} />
-            ) : (
-              <>
-                <section className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {data?.venues.map((venue) => (
-                    <VenueDiscoveryCard isWishlisted={wishlistedVenueIds.has(venue.id)} key={venue.id} onToggleWishlist={toggleVenueWishlist} queryString={queryString} venue={venue} />
-                  ))}
-                </section>
-                <Pagination currentPage={currentPage} totalPages={totalPages} updateQuery={updateQuery} />
-              </>
-            )}
+            {error ? <DiscoveryErrorState message={error} onRetry={() => setReloadCounter((value) => value + 1)} /> : isLoading && !data ? <section className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, index) => <VenueCardSkeleton key={index} />)}</section> : data && data.venues.length === 0 ? <DiscoveryEmptyState hasFilters={activeChipList.length > 0 || Boolean(searchParams.get("search"))} onClear={clearAllFilters} /> : <><section className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{data?.venues.map((venue) => <VenueDiscoveryCard isWishlisted={wishlistedVenueIds.has(venue.id)} key={venue.id} onToggleWishlist={toggleVenueWishlist} queryString={queryString} venue={venue} />)}</section><Pagination currentPage={currentPage} totalPages={totalPages} updateQuery={updateQuery} /></>}
           </section>
         </div>
       </section>
 
       <MobileFilterDrawer isOpen={mobileFiltersOpen} onClose={() => setMobileFiltersOpen(false)}>
-        <FilterPanel
-          activeCount={activeChipList.length}
-          appliedDate={appliedDate}
-          filters={filters}
-          isUpdating={isFilterUpdating}
-          onClear={clearAllFilters}
-          onToggleMulti={toggleMultiFilter}
-          searchParams={searchParams}
-          updateQuery={updateQuery}
-        />
-        <button className="mt-5 w-full rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" onClick={() => setMobileFiltersOpen(false)} type="button">
-          Apply Filters
-        </button>
+        <FilterPanel activeCount={activeChipList.length} appliedDate={appliedDate} filters={filters} isUpdating={isFilterUpdating} onClear={clearAllFilters} onToggleMulti={toggleMultiFilter} searchParams={searchParams} showHeader={false} updateQuery={updateQuery} />
+        <button className="mt-6 w-full min-h-12 rounded-lg bg-sportGreen px-5 py-3 text-sm font-black text-white transition hover:bg-green-700" onClick={() => setMobileFiltersOpen(false)} type="button">Show {resultCount} venue{resultCount === 1 ? "" : "s"}</button>
       </MobileFilterDrawer>
     </main>
   );
 }
 
-function FilterPanel({ activeCount, appliedDate, filters, isUpdating, onClear, onToggleMulti, searchParams, updateQuery }: {
+function FilterPanel({ activeCount, appliedDate, filters, isUpdating, onClear, onToggleMulti, searchParams, showHeader = true, updateQuery }: {
   activeCount: number;
   appliedDate: string;
   filters: VenueDiscoveryFilters;
@@ -332,6 +296,7 @@ function FilterPanel({ activeCount, appliedDate, filters, isUpdating, onClear, o
   onClear: () => void;
   onToggleMulti: (key: "facility" | "venue_type", value: string) => void;
   searchParams: URLSearchParams;
+  showHeader?: boolean;
   updateQuery: (updates: Record<string, string | string[] | null>, options?: { keepPage?: boolean }) => void;
 }) {
   const [showAllFacilities, setShowAllFacilities] = useState(false);
@@ -345,16 +310,16 @@ function FilterPanel({ activeCount, appliedDate, filters, isUpdating, onClear, o
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3">
+      {showHeader ? <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
         <div>
-          <h2 className="text-lg font-black">Filters</h2>
-          <p className="mt-1 text-xs font-semibold text-slate-500">{activeCount ? `${activeCount} applied` : "Find a suitable venue"}</p>
+          <h2 className="text-lg font-bold text-sportNavy">Filters</h2>
+          <p className="mt-1 text-xs font-semibold text-slate-500">{activeCount ? `${activeCount} filter${activeCount === 1 ? "" : "s"} applied` : "Find a suitable venue"}</p>
         </div>
-        <button className="text-sm font-black text-sportGreen hover:text-green-700" onClick={onClear} type="button">Clear All</button>
-      </div>
+        <button className="text-xs font-black text-sportGreen transition hover:text-green-700 disabled:cursor-not-allowed disabled:opacity-40" disabled={!activeCount} onClick={onClear} type="button">Clear all</button>
+      </div> : null}
 
-      <div className="mt-6 space-y-5">
-        <FilterGroup label="Location">
+      <div className={`${showHeader ? "mt-5" : "mt-1"} space-y-5`}>
+        <FilterGroup label="Where">
           <select
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20"
             onChange={(event) => updateQuery({ district: event.target.value || null, area: null })}
@@ -382,37 +347,37 @@ function FilterPanel({ activeCount, appliedDate, filters, isUpdating, onClear, o
           </select>
         </FilterGroup>
 
-        <FilterGroup label="Preferred Date">
+        <FilterGroup label="When">
           <input className="w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20" min={getLocalDateString()} onChange={(event) => updateQuery({ date: event.target.value || null })} type="date" value={appliedDate} />
         </FilterGroup>
 
         <FilterGroup label="Preferred Time">
-          <div className="grid grid-cols-2 gap-2">
-            <button className={`rounded-md border px-3 py-2.5 text-xs font-black transition ${!selectedTimePeriod && !searchParams.get("start_time") ? "border-sportGreen bg-sportGreen text-white" : "border-slate-200 bg-white text-slate-600 hover:border-sportGreen"}`} onClick={() => updateQuery({ time_window: null, start_time: null })} type="button">
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+            <button aria-pressed={!selectedTimePeriod && !searchParams.get("start_time")} className={`rounded-md px-2 py-2.5 text-xs font-bold transition ${!selectedTimePeriod && !searchParams.get("start_time") ? "bg-white text-sportGreen shadow-sm" : "text-slate-600 hover:bg-white/70"}`} onClick={() => updateQuery({ time_window: null, start_time: null })} type="button">
               Any time
             </button>
             {timePeriods.map((timeWindow) => {
               const active = selectedTimePeriod === timeWindow.value;
               return (
-                <button className={`rounded-md border px-3 py-2.5 text-left text-xs font-black transition ${active ? "border-sportGreen bg-sportGreen text-white" : "border-slate-200 bg-white text-slate-600 hover:border-sportGreen"}`} key={timeWindow.value} onClick={() => updateQuery({ time_window: active ? null : timeWindow.value, start_time: null })} type="button">
+                <button aria-pressed={active} className={`rounded-md px-2 py-2.5 text-left text-xs font-bold transition ${active ? "bg-white text-sportGreen shadow-sm" : "text-slate-600 hover:bg-white/70"}`} key={timeWindow.value} onClick={() => updateQuery({ time_window: active ? null : timeWindow.value, start_time: null })} type="button">
                   <span className="block">{timeWindow.label}</span>
-                  <span className={`mt-0.5 block text-[10px] font-semibold ${active ? "text-green-50" : "text-slate-400"}`}>{timeWindow.description}</span>
+                  <span className="mt-0.5 block text-[10px] font-medium text-slate-400">{timeWindow.description}</span>
                 </button>
               );
             })}
           </div>
-          <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-            <summary className="cursor-pointer text-xs font-black text-sportGreen">Choose exact start time</summary>
+          <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3" open={Boolean(searchParams.get("start_time"))}>
+            <summary className="cursor-pointer text-xs font-black text-sportGreen">Choose an exact start time</summary>
             <TimeSelect ariaLabel="Exact start time" className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20" options={buildTimeOptions()} placeholder="Any start time" value={searchParams.get("start_time") || ""} onChange={(value) => updateQuery({ start_time: value || null, time_window: null })} />
           </details>
         </FilterGroup>
 
         <FilterGroup label="Duration">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
             {filters.durations.map((duration) => {
               const active = Number(searchParams.get("duration") || 60) === duration;
               return (
-                <button className={`rounded-md border px-3 py-2.5 text-xs font-black transition ${active ? "border-sportGreen bg-sportGreen text-white" : "border-slate-200 bg-white text-slate-600 hover:border-sportGreen"}`} key={duration} onClick={() => updateQuery({ duration: String(duration) })} type="button">
+                <button aria-pressed={active} className={`rounded-md px-2 py-2.5 text-xs font-bold transition ${active ? "bg-white text-sportGreen shadow-sm" : "text-slate-600 hover:bg-white/70"}`} key={duration} onClick={() => updateQuery({ duration: String(duration) })} type="button">
                   {duration / 60} hr
                 </button>
               );
@@ -420,7 +385,7 @@ function FilterPanel({ activeCount, appliedDate, filters, isUpdating, onClear, o
           </div>
         </FilterGroup>
 
-        <FilterGroup label="Price Range">
+        <FilterGroup label="Budget per hour">
           <div className="grid grid-cols-2 gap-3">
             <input className="w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20" min="0" onChange={(event) => updateQuery({ min_price: event.target.value || null })} placeholder={filters.price_min ? `Min ${formatMoney(filters.price_min)}` : "Min NPR"} type="number" value={searchParams.get("min_price") || ""} />
             <input className="w-full rounded-md border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-sportNavy outline-none transition focus:border-sportGreen focus:ring-4 focus:ring-green-400/20" min="0" onChange={(event) => updateQuery({ max_price: event.target.value || null })} placeholder={filters.price_max ? `Max ${formatMoney(filters.price_max)}` : "Max NPR"} type="number" value={searchParams.get("max_price") || ""} />
@@ -445,15 +410,15 @@ function FilterPanel({ activeCount, appliedDate, filters, isUpdating, onClear, o
           ) : null}
         </FilterGroup>
 
-        {isUpdating ? <p className="rounded-md bg-green-50 px-3 py-2 text-xs font-black text-sportGreen">Updating results...</p> : null}
+        {isUpdating ? <p aria-live="polite" className="rounded-lg bg-green-50 px-3 py-2 text-xs font-black text-sportGreen">Updating results...</p> : null}
       </div>
     </div>
   );
 }
 function FilterGroup({ children, label }: { children: React.ReactNode; label: string }) {
   return (
-    <section>
-      <h3 className="mb-3 text-sm font-black text-sportNavy">{label}</h3>
+    <section className="border-b border-slate-100 pb-5 last:border-b-0 last:pb-0">
+      <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{label}</h3>
       {children}
     </section>
   );
@@ -461,12 +426,12 @@ function FilterGroup({ children, label }: { children: React.ReactNode; label: st
 
 function CheckboxRow({ checked, count, label, onChange }: { checked: boolean; count?: number; label: string; onChange: () => void }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-sportGreen">
+    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2 text-sm font-medium text-slate-600 transition hover:bg-green-50/70">
       <span className="flex min-w-0 items-center gap-3">
-        <input checked={checked} className="h-4 w-4 rounded border-slate-300 text-sportGreen focus:ring-sportGreen" onChange={onChange} type="checkbox" />
+        <input aria-label={label} checked={checked} className="h-4 w-4 rounded border-slate-300 text-sportGreen focus:ring-sportGreen" onChange={onChange} type="checkbox" />
         <span className="truncate">{label}</span>
       </span>
-      {typeof count === "number" ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-500">{count}</span> : null}
+      {typeof count === "number" ? <span className="text-xs font-bold text-slate-400">{count}</span> : null}
     </label>
   );
 }
@@ -477,31 +442,28 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
   const hasAvailability = venue.available_court_count > 0;
   const primaryType = venue.court_types[0]?.label || "Court";
   const priceAmount = venue.starting_price ? Number(venue.starting_price).toLocaleString("en-NP", { maximumFractionDigits: 0 }) : "--";
-  const hasRating = venue.average_rating && venue.review_count > 0;
-  const courtAvailabilityLabel = hasAvailability
-    ? `${venue.available_court_count} court${venue.available_court_count === 1 ? "" : "s"} available`
-    : `${venue.court_count} court${venue.court_count === 1 ? "" : "s"}`;
-  const availabilityLabel = venue.next_available_time ? `Available: ${formatTime(venue.next_available_time)}` : venue.availability_label;
+  const hasRating = Boolean(venue.average_rating && venue.review_count > 0);
+  const courtAvailabilityLabel = hasAvailability ? `${venue.available_court_count} court${venue.available_court_count === 1 ? "" : "s"} available` : `${venue.court_count} court${venue.court_count === 1 ? "" : "s"}`;
+  const availabilityLabel = venue.next_available_time ? `Available from ${formatTime(venue.next_available_time)}` : venue.availability_label;
   const facilityLabels = venue.important_facilities.slice(0, 2);
 
   return (
-    <article className="group flex h-full min-h-[330px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_16px_rgba(15,23,42,0.05)] transition duration-200 hover:-translate-y-0.5 hover:border-green-200 hover:shadow-[0_12px_28px_rgba(15,23,42,0.10)]">
-      <div className="relative h-36 overflow-hidden bg-sportNavy">
+    <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_2px_8px_rgba(16,32,22,0.04)] transition duration-200 hover:border-green-300 hover:shadow-[0_8px_20px_rgba(16,32,22,0.08)]">
+      <div className="relative aspect-[16/9] overflow-hidden bg-sportNavy">
         <Link className="absolute inset-0 z-10" href={href} aria-label={`View courts at ${venue.name}`} />
         {venue.primary_image ? (
-          <img alt={`${venue.name} venue`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" src={venue.primary_image} />
+          <img alt={`${venue.name} venue`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" loading="lazy" src={venue.primary_image} />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_20%_15%,#15803d,#0b1b2b_64%)] text-4xl font-black text-white">{getInitials(venue.name)}</div>
+          <div className="flex h-full w-full items-center justify-center bg-sportNavy text-4xl font-black text-white">{getInitials(venue.name)}</div>
         )}
-        <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/35 to-transparent" />
         {venue.is_verified ? (
-          <span className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full bg-sportGreen px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-sm">
+          <span className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sportGreen shadow-sm">
             <CheckBadgeIcon /> Verified
           </span>
         ) : null}
         <button
           aria-label={isWishlisted ? `Remove ${venue.name} from wishlist` : `Save ${venue.name} to wishlist`}
-          className={`absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border shadow-sm backdrop-blur transition ${isWishlisted ? "border-green-200 bg-sportGreen text-white" : "border-white/60 bg-white/90 text-slate-700 hover:bg-white hover:text-sportGreen"}`}
+          className={`absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition ${isWishlisted ? "border-sportGreen bg-sportGreen text-white" : "border-white bg-white/95 text-slate-700 hover:border-green-200 hover:text-sportGreen"}`}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -516,14 +478,9 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start justify-between gap-3">
           <Link className="min-w-0 group/title" href={href}>
-            <h2 className="line-clamp-2 text-lg font-black leading-tight text-sportNavy group-hover/title:text-sportGreen">{venue.name}</h2>
+            <h2 className="line-clamp-2 text-[1.2rem] font-bold leading-tight text-sportNavy group-hover/title:text-sportGreen">{venue.name}</h2>
           </Link>
-          {hasRating ? (
-            <span className="mt-1 inline-flex shrink-0 items-center gap-1 text-sm font-black text-sportGreen">
-              <StarIcon /> {Number(venue.average_rating).toFixed(1)}
-              <span className="font-semibold text-slate-400">({venue.review_count})</span>
-            </span>
-          ) : null}
+          {hasRating ? <span className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-sportNavy"><StarIcon /> {Number(venue.average_rating).toFixed(1)} <span className="font-medium text-slate-400">({venue.review_count})</span></span> : null}
         </div>
 
         <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-500">
@@ -531,25 +488,26 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
           <span className="line-clamp-1">{location || "Location available in details"}</span>
         </p>
 
-        <div className="mt-3 flex min-h-7 flex-wrap items-center gap-1.5">
-          <CardPill icon={<VenueTypeIcon />} label={primaryType} />
-          <span className="text-sm font-bold text-slate-500">· {courtAvailabilityLabel}</span>
+        <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-600">
+          <span className="inline-flex items-center gap-1.5"><VenueTypeIcon /> {primaryType}</span>
+          <span aria-hidden="true" className="text-slate-300">|</span>
+          <span>{courtAvailabilityLabel}</span>
         </div>
 
-        <div className="mt-2 flex min-h-6 flex-wrap items-center gap-1.5">
+        <div className="mt-3 flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1.5">
           <AvailabilityBadge available={hasAvailability} label={availabilityLabel} />
-          {facilityLabels.map((facility) => <CardPill key={facility} label={facility} />)}
+          {facilityLabels.length ? <span className="text-xs font-semibold text-slate-400">{facilityLabels.join(" · ")}</span> : null}
         </div>
 
-        <div className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+        <div className="mt-4 flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
           <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Starts from</p>
-            <p className="mt-1 text-xl font-black leading-none text-sportGreen">
-              NPR {priceAmount}<span className="text-sm font-semibold text-slate-500">/hr</span>
+            <p className="text-xs font-semibold text-slate-500">From</p>
+            <p className="mt-0.5 text-lg font-bold leading-none text-sportNavy">
+              NPR {priceAmount}<span className="text-xs font-semibold text-slate-500"> / hour</span>
             </p>
           </div>
-          <Link className="inline-flex min-h-10 min-w-24 items-center justify-center rounded-lg bg-sportGreen px-4 py-2.5 text-center text-sm font-black leading-tight text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-300" href={href}>
-            View Courts
+          <Link className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-sportGreen px-4 py-2.5 text-center text-sm font-bold leading-tight text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-green-300" href={href}>
+            View venue <ArrowRightIcon />
           </Link>
         </div>
       </div>
@@ -557,18 +515,9 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
   );
 }
 
-function CardPill({ icon, label }: { icon?: React.ReactNode; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700">
-      {icon ? <span className="text-sportNavy">{icon}</span> : null}
-      {label}
-    </span>
-  );
-}
-
 function AvailabilityBadge({ available, label }: { available: boolean; label: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-black ${available ? "bg-green-50 text-sportGreen" : "bg-slate-100 text-slate-500"}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold ${available ? "bg-green-50 text-sportGreen" : "bg-slate-100 text-slate-500"}`}>
       <span className={`h-2 w-2 rounded-full ${available ? "bg-sportGreen" : "bg-slate-400"}`} />
       {label}
     </span>
@@ -615,17 +564,42 @@ function VenueTypeIcon() {
     </svg>
   );
 }
+
+function SearchIcon() {
+  return <svg aria-hidden="true" className="pointer-events-none absolute left-4 h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" /><path d="m16 16 4 4" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
+}
+
+function SortIcon() {
+  return <svg aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-500" fill="none" viewBox="0 0 24 24"><path d="M5 7h14M8 12h8m-5 5h2" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
+}
+
+function FilterIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10m-7 6h4" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
+}
+
+function CalendarIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4 shrink-0 text-sportGreen" fill="none" viewBox="0 0 24 24"><rect height="16" rx="2" stroke="currentColor" strokeWidth="2" width="18" x="3" y="5" /><path d="M8 3v4m8-4v4M3 10h18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
+}
+
+function ChevronDownIcon() {
+  return <svg aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" fill="none" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
+}
+
+function ArrowRightIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M5 12h13m-5-5 5 5-5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
+}
+
 function ActiveFilterChips({ chips, onClear, onRemove }: { chips: FilterChip[]; onClear: () => void; onRemove: (chip: FilterChip) => void }) {
   if (!chips.length) return null;
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-2">
+    <div aria-label="Active filters" className="mt-4 flex flex-wrap items-center gap-2">
       {chips.map((chip) => (
-        <button className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-white px-3 py-2 text-xs font-black text-sportNavy shadow-sm hover:border-sportGreen" key={`${chip.key}-${chip.label}`} onClick={() => onRemove(chip)} type="button">
+        <button aria-label={`Remove ${chip.label} filter`} className="inline-flex min-h-9 items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-black text-sportNavy transition hover:border-sportGreen hover:bg-white" key={`${chip.key}-${chip.label}`} onClick={() => onRemove(chip)} type="button">
           {chip.label}
           <span aria-hidden="true" className="text-slate-400">×</span>
         </button>
       ))}
-      <button className="px-2 py-2 text-xs font-black text-sportGreen hover:text-green-700" onClick={onClear} type="button">Clear all</button>
+      <button className="px-2 py-2 text-xs font-black text-sportGreen transition hover:text-green-700" onClick={onClear} type="button">Clear all</button>
     </div>
   );
 }
@@ -653,21 +627,26 @@ function Pagination({ currentPage, totalPages, updateQuery }: { currentPage: num
 function MobileFilterDrawer({ children, isOpen, onClose }: { children: React.ReactNode; isOpen: boolean; onClose: () => void }) {
   useEffect(() => {
     if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Court filters">
+    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-court-filters-title">
       <button className="absolute inset-0 bg-sportNavy/50" onClick={onClose} type="button" aria-label="Close filters" />
-      <div className="absolute inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl">
+      <div className="absolute inset-x-0 bottom-0 max-h-[90vh] overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-black text-sportNavy">Filter Venues</h2>
-          <button className="rounded-full border border-slate-200 px-3 py-1 text-sm font-black text-slate-600" onClick={onClose} type="button">Close</button>
+          <h2 className="text-lg font-black text-sportNavy" id="mobile-court-filters-title">Filter venues</h2>
+          <button aria-label="Close filters" className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-xl text-slate-600 transition hover:border-sportGreen hover:text-sportGreen" onClick={onClose} type="button">×</button>
         </div>
         {children}
       </div>
@@ -677,7 +656,7 @@ function MobileFilterDrawer({ children, isOpen, onClose }: { children: React.Rea
 
 function VenueCardSkeleton() {
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="aspect-[16/9] animate-pulse bg-slate-200" />
       <div className="space-y-4 p-5">
         <div className="h-5 w-2/3 animate-pulse rounded bg-slate-200" />
@@ -693,9 +672,10 @@ function VenueCardSkeleton() {
 
 function DiscoveryShellSkeleton() {
   return (
-    <main className="bg-[#f4f7fb] px-4 py-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="h-48 animate-pulse rounded-lg bg-slate-200" />
+    <main className="min-h-[calc(100vh-68px)] bg-[#f6f8f7] px-4 py-8">
+      <div className="mx-auto max-w-[1280px]">
+        <div className="h-40 animate-pulse rounded-xl bg-slate-200" />
+        <div className="mt-7 grid gap-5 lg:grid-cols-[272px_1fr]"><div className="hidden h-[620px] animate-pulse rounded-xl bg-white lg:block" /><div className="h-[620px] animate-pulse rounded-xl bg-white" /></div>
       </div>
     </main>
   );
@@ -703,23 +683,23 @@ function DiscoveryShellSkeleton() {
 
 function DiscoveryEmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
   return (
-    <section className="mt-5 rounded-lg border border-slate-200 bg-white p-10 text-center shadow-sm">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-xl font-black text-sportGreen">SS</div>
-      <h2 className="mt-5 text-2xl font-black text-sportNavy">No courts match your current filters.</h2>
+    <section className="mt-6 rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm sm:p-14">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-green-50 text-sm font-black text-sportGreen">SS</div>
+      <h2 className="mt-5 text-xl font-black text-sportNavy">No venues match this search.</h2>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
         {hasFilters ? "Try a different date, location, duration, or price range." : "Approved venues will appear here when court owners publish available slots."}
       </p>
-      {hasFilters ? <button className="mt-5 rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" onClick={onClear} type="button">Clear Filters</button> : null}
+      {hasFilters ? <button className="sport-primary-button mt-5" onClick={onClear} type="button">Clear filters</button> : null}
     </section>
   );
 }
 
 function DiscoveryErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <section className="mt-5 rounded-lg border border-red-100 bg-white p-8 text-center shadow-sm">
+    <section className="mt-6 rounded-xl border border-red-200 bg-white p-8 text-center shadow-sm">
       <h2 className="text-xl font-black text-sportNavy">We could not load courts right now.</h2>
       <p className="mt-2 text-sm text-slate-600">{message}</p>
-      <button className="mt-5 rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" onClick={onRetry} type="button">Try Again</button>
+      <button className="sport-primary-button mt-5" onClick={onRetry} type="button">Try again</button>
     </section>
   );
 }

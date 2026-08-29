@@ -548,6 +548,86 @@ class TeamChallengeServiceTests(TestCase):
     @patch("team_challenges.services.notify_challenge_status")
     @patch("team_challenges.services.notify_challenge_decision")
     @patch("team_challenges.services.notify_challenge_received")
+    def test_my_games_includes_only_authorised_scheduled_team_fixtures(self, _received, _decision, _status):
+        booking = self.create_confirmed_booking(days=3, owner=self.host)
+        challenge_data = self.challenge_data(request_id="my-games-team-fixture")
+        challenge_data.update({
+            "court_mode": TeamChallenge.CourtMode.BOOKING_FIRST,
+            "booking": booking,
+            "booking_deadline": None,
+        })
+        challenge = create_challenge(challenge_data, self.host)
+        decide_challenge(challenge.pk, self.opponent, "ACCEPT")
+        fixture = challenge.fixture
+
+        TeamMember.objects.create(
+            team=self.host_team,
+            user=self.member,
+            member_type=TeamMember.MemberType.REGISTERED,
+            role_in_team=TeamMember.TeamRole.PLAYER,
+            cricksal_role=TeamMember.CricksalRole.BOWLER,
+            status=TeamMember.MemberStatus.ACTIVE,
+        )
+        TeamFixtureParticipant.objects.create(
+            fixture=fixture,
+            team=self.host_team,
+            player=self.member,
+            selected_by=self.host,
+        )
+
+        host_client = APIClient()
+        host_client.force_authenticate(self.host)
+        host_response = host_client.get("/api/matchmaking/games/my/")
+        self.assertEqual(host_response.status_code, 200, host_response.data)
+        host_matches = host_response.data["team_matches"]["upcoming"]
+        self.assertEqual(len(host_matches), 1)
+        self.assertEqual(host_matches[0]["challenge_id"], challenge.id)
+        self.assertEqual(host_matches[0]["team_name"], self.host_team.name)
+        self.assertEqual(host_matches[0]["opponent_team_name"], self.opponent_team.name)
+        self.assertTrue(host_matches[0]["is_captain"])
+        self.assertEqual(host_matches[0]["room_access"], "CONFIRMED")
+
+        member_client = APIClient()
+        member_client.force_authenticate(self.member)
+        member_response = member_client.get("/api/matchmaking/games/my/")
+        self.assertEqual(member_response.status_code, 200, member_response.data)
+        member_matches = member_response.data["team_matches"]["upcoming"]
+        self.assertEqual(len(member_matches), 1)
+        self.assertEqual(member_matches[0]["team_name"], self.host_team.name)
+        self.assertTrue(member_matches[0]["is_participant"])
+        self.assertEqual(member_matches[0]["room_access"], "CONFIRMED")
+
+        alternate_team = self.create_team("Alternate Host Team", self.host)
+        plan_only_data = self.challenge_data(request_id="my-games-plan-only")
+        plan_only_data["challenger_team"] = alternate_team
+        plan_only = create_challenge(plan_only_data, self.host)
+        decide_challenge(plan_only.pk, self.opponent, "ACCEPT")
+
+        outsider = self.create_player("team-outsider@example.com", "Team Outsider")
+        TeamMember.objects.create(
+            team=self.host_team,
+            user=outsider,
+            member_type=TeamMember.MemberType.REGISTERED,
+            role_in_team=TeamMember.TeamRole.PLAYER,
+            cricksal_role=TeamMember.CricksalRole.ALL_ROUNDER,
+            status=TeamMember.MemberStatus.ACTIVE,
+        )
+        outsider_client = APIClient()
+        outsider_client.force_authenticate(outsider)
+        outsider_response = outsider_client.get("/api/matchmaking/games/my/")
+        self.assertEqual(outsider_response.status_code, 200, outsider_response.data)
+        self.assertEqual(outsider_response.data["team_matches"]["upcoming"], [])
+
+        host_after_plan = host_client.get("/api/matchmaking/games/my/")
+        self.assertEqual(host_after_plan.status_code, 200, host_after_plan.data)
+        self.assertEqual(
+            [item["challenge_id"] for item in host_after_plan.data["team_matches"]["upcoming"]],
+            [challenge.id],
+        )
+
+    @patch("team_challenges.services.notify_challenge_status")
+    @patch("team_challenges.services.notify_challenge_decision")
+    @patch("team_challenges.services.notify_challenge_received")
     def test_either_captain_can_attach_the_agreed_plan_first_booking(self, _received, _decision, _status):
         challenge = create_challenge(self.challenge_data(request_id="challenged-booking-owner"), self.host)
         decide_challenge(challenge.pk, self.opponent, "ACCEPT")

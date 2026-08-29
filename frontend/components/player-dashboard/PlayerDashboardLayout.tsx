@@ -16,7 +16,7 @@ export default function PlayerDashboardLayout({ children }: { children: ReactNod
 
   return (
     <RoleGate allowedRoles={["PLAYER"]} workspace="player">
-      <div className="sport-page-shell">
+      <div className="sport-page-shell player-dashboard-theme">
         <div className="border-b border-slate-200/80 bg-white px-4 py-3 lg:hidden">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
             <div className="min-w-0">
@@ -29,7 +29,7 @@ export default function PlayerDashboardLayout({ children }: { children: ReactNod
             <button
               aria-controls="player-dashboard-mobile-menu"
               aria-expanded={isDrawerOpen}
-              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-black text-sportNavy shadow-sm outline-none hover:border-green-200 hover:text-sportGreen focus-visible:ring-2 focus-visible:ring-sportGreen"
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-sportNavy shadow-sm outline-none hover:border-green-200 hover:text-sportGreen focus-visible:ring-2 focus-visible:ring-sportGreen"
               onClick={() => setIsDrawerOpen(true)}
               type="button"
             >
@@ -41,7 +41,7 @@ export default function PlayerDashboardLayout({ children }: { children: ReactNod
 
         <div className="flex min-w-0">
           <PlayerSidebar />
-          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+          <main className="player-dashboard-main min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-7">
             <DashboardContentContainer>{children}</DashboardContentContainer>
           </main>
         </div>

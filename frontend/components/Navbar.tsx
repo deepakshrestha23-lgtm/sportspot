@@ -9,7 +9,7 @@ import NotificationCenter from "@/components/NotificationCenter";
 import { api } from "@/lib/api";
 import { clearAuthSession, getCurrentUser } from "@/lib/auth";
 import type { User } from "@/types/auth";
-import type { Venue, VenueStatus } from "@/types/venue";
+import type { Booking, Venue, VenueStatus } from "@/types/venue";
 
 export default function Navbar() {
   const router = useRouter();
@@ -21,6 +21,9 @@ export default function Navbar() {
   const [notificationToast, setNotificationToast] = useState("");
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const [ownerVenueStatus, setOwnerVenueStatus] = useState<VenueStatus | "NONE">("NONE");
+  const [pendingReservation, setPendingReservation] = useState<Booking | null>(null);
+  const [dismissedReservationId, setDismissedReservationId] = useState<number | null>(null);
+  const [now, setNow] = useState<Date | null>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -37,6 +40,54 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
+    if (user?.role !== "PLAYER") {
+      setPendingReservation(null);
+      return;
+    }
+
+    let isActive = true;
+    api
+      .get<{ bookings: Booking[] }>("/api/venues/bookings/my/")
+      .then((response) => {
+        if (isActive) {
+          const nextReservation = findPendingReservation(response.data.bookings);
+          setPendingReservation(nextReservation);
+          setDismissedReservationId((currentId) => currentId !== nextReservation?.id ? null : currentId);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setPendingReservation(null);
+          setDismissedReservationId(null);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [pathname, user?.role]);
+
+  useEffect(() => {
+    if (!pendingReservation) {
+      setNow(null);
+      return;
+    }
+    const reservation = pendingReservation;
+
+    function updateReservationClock() {
+      const currentTime = new Date();
+      setNow(currentTime);
+      if (new Date(reservation.reserved_until).getTime() <= currentTime.getTime()) {
+        setPendingReservation(null);
+      }
+    }
+
+    updateReservationClock();
+    const timer = window.setInterval(updateReservationClock, 1000);
+    return () => window.clearInterval(timer);
+  }, [pendingReservation]);
+
+  useEffect(() => {
     setIsProfileOpen(false);
     setIsNotificationsOpen(false);
   }, [pathname]);
@@ -47,6 +98,9 @@ export default function Navbar() {
     setIsProfileOpen(false);
     setIsNotificationsOpen(false);
     setUnseenNotificationsCount(0);
+    setPendingReservation(null);
+    setDismissedReservationId(null);
+    setNow(null);
     router.push("/");
   }
 
@@ -163,7 +217,35 @@ export default function Navbar() {
           <p className="mt-1 text-sm font-bold text-sportNavy">{notificationToast}</p>
         </div>
       ) : null}
+      {user?.role === "PLAYER" && pendingReservation && now && dismissedReservationId !== pendingReservation.id && !pathname.startsWith("/dashboard/player/bookings/payment/") ? (
+        <PendingReservationBanner booking={pendingReservation} now={now} onDismiss={() => setDismissedReservationId(pendingReservation.id)} />
+      ) : null}
     </>
+  );
+}
+
+function PendingReservationBanner({ booking, now, onDismiss }: { booking: Booking; now: Date; onDismiss: () => void }) {
+  const secondsLeft = Math.max(0, Math.floor((new Date(booking.reserved_until).getTime() - now.getTime()) / 1000));
+  if (secondsLeft <= 0) return null;
+
+  return (
+    <div className="border-b border-amber-200 bg-amber-50">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-start gap-3">
+          <span aria-hidden="true" className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-amber-700 shadow-sm"><ClockIcon /></span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-amber-950">Finish your court reservation</p>
+            <p className="truncate text-xs font-semibold text-amber-900/80">{booking.venue_name} · {booking.court_name} · {booking.booking_display_time || booking.slot_display_time}</p>
+          </div>
+          <span aria-hidden="true" className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-bold tabular-nums text-amber-800 shadow-sm">Expires in {formatReservationCountdown(secondsLeft)}</span>
+        </div>
+        <div className="flex shrink-0 gap-2 pl-11 sm:pl-0">
+          <Link className="inline-flex min-h-10 items-center justify-center rounded-md bg-sportGreen px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2" href={`/dashboard/player/bookings/payment/${booking.id}`}>Continue payment</Link>
+          <Link className="inline-flex min-h-10 items-center justify-center rounded-md border border-amber-300 bg-white px-3.5 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2" href="/dashboard/player/bookings">My bookings</Link>
+          <button aria-label="Dismiss reservation reminder" className="inline-flex min-h-10 w-10 items-center justify-center rounded-md border border-transparent text-amber-800 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2" onClick={onDismiss} title="Dismiss reminder" type="button"><CloseIcon /></button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -226,6 +308,7 @@ function getProfileLinks(user: User) {
   if (user.role === "PLAYER") {
     return [
       { label: "Dashboard", href: "/dashboard/player" },
+      { label: "My Bookings", href: "/dashboard/player/bookings" },
       { label: "My Profile", href: "/dashboard/player/profile" },
       { label: "Settings", href: "/dashboard/player/settings" },
     ];
@@ -265,4 +348,36 @@ function ChevronDownIcon() {
       <path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
     </svg>
   );
+}
+
+function ClockIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 7v5l3 2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function findPendingReservation(bookings: Booking[]) {
+  const currentTime = Date.now();
+  return bookings
+    .filter((booking) => booking.status === "RESERVED" && booking.payment_status === "PENDING")
+    .filter((booking) => Boolean(booking.reserved_until) && new Date(booking.reserved_until).getTime() > currentTime)
+    .sort((first, second) => new Date(first.reserved_until).getTime() - new Date(second.reserved_until).getTime())[0] || null;
+}
+
+function formatReservationCountdown(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`;
 }

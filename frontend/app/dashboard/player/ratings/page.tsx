@@ -55,7 +55,7 @@ export default function PlayerRatingsPage() {
       setRatingTarget(null);
       await loadSummary();
     } catch (requestError) {
-      getApiErrorMessage(requestError, "We could not submit this rating. Please try again.");
+      emitToast({ message: getApiErrorMessage(requestError, "We could not submit this rating. Please try again."), type: "error", dedupeKey: `rating-submit-error-${target.id}` });
     } finally {
       setIsSubmittingRating(false);
     }

@@ -58,12 +58,12 @@ export function MobileDashboardDrawer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 lg:hidden">
-      <button aria-label="Close dashboard menu" className="absolute inset-0 bg-slate-950/45" onClick={onClose} type="button" />
+    <div className="player-dashboard-drawer fixed inset-0 z-50 lg:hidden">
+      <button aria-label="Close dashboard menu" className="player-dashboard-drawer-backdrop absolute inset-0 bg-slate-950/45" onClick={onClose} type="button" />
       <aside
         aria-label="Player dashboard menu"
         aria-modal="true"
-        className="absolute inset-y-0 left-0 flex w-full max-w-[340px] flex-col bg-white p-4 shadow-2xl outline-none"
+        className="player-dashboard-drawer-panel absolute inset-y-0 left-0 flex w-full max-w-[340px] flex-col bg-white p-4 shadow-2xl outline-none"
         id="player-dashboard-mobile-menu"
         onKeyDown={handleKeyDown}
         ref={drawerRef}

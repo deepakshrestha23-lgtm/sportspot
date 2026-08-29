@@ -25,7 +25,7 @@ export function DashboardSummaryCard({
 }) {
   return (
     <Link
-      className="group flex min-h-[118px] flex-col justify-between rounded-lg border border-green-100 bg-white p-4 shadow-sm outline-none transition hover:-translate-y-0.5 hover:border-green-300 hover:shadow-md focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2"
+      className="sport-dashboard-stat group flex min-h-[118px] flex-col justify-between rounded-lg border border-green-100 bg-white p-4 shadow-sm outline-none transition hover:-translate-y-0.5 hover:border-green-300 hover:shadow-md focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2"
       href={href}
     >
       <div className="flex items-start justify-between gap-3">
@@ -55,7 +55,7 @@ export function QuickAction({
 }) {
   return (
     <Link
-      className={`group flex min-h-[78px] items-center gap-3 rounded-lg border p-3.5 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${
+      className={`sport-dashboard-action group flex min-h-[78px] items-center gap-3 rounded-lg border p-3.5 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${
         primary
           ? "border-green-700 bg-sportGreen text-white hover:bg-green-700"
           : "border-slate-200 bg-white text-sportNavy hover:border-green-300 hover:bg-green-50"
@@ -76,7 +76,7 @@ export function QuickAction({
 export function NextActivityCard({ activity }: { activity: PlayerNextActivity | null }) {
   if (!activity) {
     return (
-      <section className="flex min-h-[250px] flex-col justify-center rounded-lg border border-dashed border-green-200 bg-white p-5 text-center shadow-sm">
+      <section className="sport-dashboard-empty flex min-h-[250px] flex-col justify-center rounded-lg border border-dashed border-green-200 bg-white p-5 text-center shadow-sm">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-sportGreen">
           <CalendarIcon />
         </div>
@@ -91,7 +91,7 @@ export function NextActivityCard({ activity }: { activity: PlayerNextActivity | 
   }
 
   return (
-    <section className="min-h-[255px] rounded-lg bg-sportGreen p-5 text-white shadow-sm sm:p-6">
+    <section className="sport-dashboard-feature min-h-[255px] rounded-lg bg-sportGreen p-5 text-white shadow-sm sm:p-6">
       <div className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 text-xs font-black uppercase tracking-wide text-green-50">
         <SparkIcon /> Next Activity • {formatStatus(activity.status)}
       </div>
@@ -112,7 +112,7 @@ export function NextActivityCard({ activity }: { activity: PlayerNextActivity | 
 
 export function PendingActionsCard({ actions }: { actions: PlayerPendingAction[] }) {
   return (
-    <section className="rounded-lg border border-green-100 bg-white p-4 shadow-sm sm:p-5">
+    <section className="sport-dashboard-panel rounded-lg border border-green-100 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-black text-sportNavy">Pending Actions</h2>
         {actions.length > 0 ? <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-black text-red-600">{actions.length} new</span> : null}
@@ -145,7 +145,7 @@ export function PendingActionsCard({ actions }: { actions: PlayerPendingAction[]
 
 export function RecentActivityList({ activities }: { activities: PlayerRecentActivity[] }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-green-100 bg-white shadow-sm">
+    <section className="sport-dashboard-panel overflow-hidden rounded-lg border border-green-100 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-green-100 px-4 py-3.5 sm:px-5">
         <h2 className="text-lg font-black text-sportNavy">Recent Activity</h2>
       </div>

@@ -331,8 +331,9 @@ function formatChoice(value?: string) {
 }
 
 function formatRating(value?: string) {
-  const numberValue = Number(value || 0);
-  return Number.isFinite(numberValue) ? numberValue.toFixed(1) : "0.0";
+  if (!value) return "Not rated yet";
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue.toFixed(1) : "Not rated yet";
 }
 
 function formatDate(value?: string) {

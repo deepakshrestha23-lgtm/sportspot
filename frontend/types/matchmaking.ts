@@ -225,5 +225,40 @@ export type MyGamesResponse = {
   incoming_requests: JoinRequest[];
   completed: MatchmakingGame[];
   cancelled: MatchmakingGame[];
+  team_matches?: {
+    upcoming: MyTeamMatch[];
+    completed: MyTeamMatch[];
+    cancelled: MyTeamMatch[];
+  };
+};
+
+export type MyTeamMatch = {
+  id: number;
+  challenge_id: number;
+  status: string;
+  status_label: string;
+  room_access: "NONE" | "RECONFIRMATION" | "CONFIRMED" | "IN_PROGRESS" | "READ_ONLY";
+  is_captain: boolean;
+  is_participant: boolean;
+  team_name: string;
+  team_photo: string;
+  opponent_team_name: string;
+  opponent_team_photo: string;
+  booking_summary: {
+    id: number;
+    booking_code: string;
+    venue_name: string;
+    venue_area: string;
+    venue_city: string;
+    court_name: string;
+    start_at: string | null;
+    end_at: string | null;
+    amount: string;
+    status: string;
+    payment_status: string;
+  } | null;
+  result: string;
+  created_at: string;
+  updated_at: string;
 };
 

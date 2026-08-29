@@ -200,16 +200,16 @@ export default function PlayerProfilePage() {
               <div className="mt-4 flex flex-wrap justify-center gap-2"><Pill label="Cricksal" tone="green" /><Pill label={profile?.is_profile_complete ? "Profile complete" : `${completion}% complete`} tone="slate" /></div>
             </div>
             <div className="my-5 border-t border-slate-200" />
-            <div className="grid grid-cols-2 gap-3"><Metric label="Reliability" value={profile && profile.completed_matches_count >= 3 ? `${profile.reliability_score}%` : "New Player"} /><Metric label="Avg rating" value={`${rating}/5`} /><Metric label="Matches" value={profile?.completed_matches_count ?? 0} /><Metric label="No-shows" value={profile?.no_show_count ?? 0} /></div>
+            <div className="grid grid-cols-2 gap-3"><Metric label="Reliability" value={profile && profile.completed_matches_count >= 3 ? `${profile.reliability_score}%` : "New Player"} /><Metric label="Avg rating" value={formatRatingMetric(rating)} /><Metric label="Matches" value={profile?.completed_matches_count ?? 0} /><Metric label="No-shows" value={profile?.no_show_count ?? 0} /></div>
             {profile && profile.completed_matches_count < 3 ? <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-600">Reliability becomes meaningful after a few completed matches.</p> : null}
           </section>
           <section className="sport-card">
             <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Trust summary</p><h3 className="mt-1 text-lg font-black text-sportNavy">Match behaviour</h3></div><span className="rounded-full bg-green-50 px-3 py-1 text-xs font-black text-sportGreen">Read only</span></div>
-            <div className="mt-4 space-y-3"><TrustRow label="Reliability score" value={profile ? `${profile.reliability_score}/100` : "Not available"} /><TrustRow label="Average rating" value={`${rating}/5`} /><TrustRow label="Completed matches" value={profile?.completed_matches_count ?? 0} /><TrustRow label="Late cancellations" value={profile?.late_cancellation_count ?? 0} /></div>
+            <div className="mt-4 space-y-3"><TrustRow label="Reliability score" value={profile ? `${profile.reliability_score}/100` : "Not available"} /><TrustRow label="Average rating" value={formatRatingMetric(rating)} /><TrustRow label="Completed matches" value={profile?.completed_matches_count ?? 0} /><TrustRow label="Late cancellations" value={profile?.late_cancellation_count ?? 0} /></div>
           </section>
         </aside>
 
-        <main className="space-y-5">
+        <div className="space-y-5">
           <section className="sport-card sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Public visibility</p><h2 className="mt-1 text-xl font-black text-sportNavy">Player information</h2></div>
@@ -232,7 +232,7 @@ export default function PlayerProfilePage() {
             <section className="sport-card border-l-4 border-sportGreen"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Primary team</p><h3 className="mt-2 text-lg font-black text-sportNavy">Team details live in My Teams</h3><p className="mt-2 text-sm leading-6 text-slate-600">Manage memberships, invitations, guests, and captain actions from the dedicated teams section.</p><Link className="mt-4 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/player/teams">Open My Teams</Link></section>
             <section className="sport-card border-l-4 border-slate-500"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Ratings & reliability</p><h3 className="mt-2 text-lg font-black text-sportNavy">Detailed trust history</h3><p className="mt-2 text-sm leading-6 text-slate-600">Match ratings, attendance, and reliability history belong in the ratings section.</p><Link className="mt-4 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/player/ratings">View Ratings</Link></section>
           </div>
-        </main>
+        </div>
       </div>
 
       {isEditorOpen ? (
@@ -286,7 +286,9 @@ function formatSkill(value?: SkillLevel) { return skills.find((item) => item.val
 function formatRole(value?: CricksalRole) { return roles.find((item) => item.value === value)?.label || "Not set"; }
 function formatDay(value: AvailabilityDay) { return days.find((item) => item.value === value)?.label || value; }
 function formatPeriod(value: AvailabilityTimePeriod) { return periods.find((item) => item.value === value)?.label || value; }
-function formatRating(value?: string) { const numberValue = Number(value || 0); return Number.isFinite(numberValue) ? numberValue.toFixed(1) : "0.0"; }
+function formatRating(value?: string | null) { if (!value) return "Not rated yet"; const numberValue = Number(value); return Number.isFinite(numberValue) && numberValue > 0 ? numberValue.toFixed(1) : "Not rated yet"; }
+
+function formatRatingMetric(value: string) { return value === "Not rated yet" ? value : `${value}/5`; }
 function getProfilePhotoSrc(value: string) { if (!value) return ""; if (value.startsWith("blob:") || value.startsWith("http")) return value; const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"; return `${apiBaseUrl}${value}`; }
 
 const inputClassName = "sport-input mt-2";

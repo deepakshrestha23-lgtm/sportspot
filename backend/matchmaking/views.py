@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from datetime import time as datetime_time
 
-from django.db.models import Count, ExpressionWrapper, F, IntegerField, Q
+from django.db.models import Count, ExpressionWrapper, F, IntegerField, Prefetch, Q
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.exceptions import ValidationError
@@ -13,6 +13,9 @@ from rest_framework.views import APIView
 
 from players.models import PlayerProfile
 from teams.models import TeamMember
+from team_challenges.models import TeamFixture, TeamFixtureParticipant
+from team_challenges.serializers import MyTeamFixtureSerializer
+from team_challenges.services import synchronize_confirmed_team_challenges
 from teams.serializers import TeamMemberSerializer
 from venues.models import Booking
 from venues.permissions import IsPlayer
@@ -187,6 +190,10 @@ class MyGamesView(APIView):
 
     def get(self, request):
         user = request.user
+        # Keep a read of My Games current when the scheduler has not yet run.
+        # The service only changes fixtures whose booking or clock requires it;
+        # the database remains the source of truth for the returned feed.
+        synchronize_confirmed_team_challenges(notify=True)
         hosted = base_game_queryset().filter(
             Q(host=user)
             | Q(
@@ -218,6 +225,66 @@ class MyGamesView(APIView):
         ])
         completed = participating.filter(status=Game.Status.COMPLETED)
         cancelled = participating.filter(status=Game.Status.CANCELLED)
+
+        team_fixture_participant_statuses = [
+            TeamFixtureParticipant.Status.SELECTED,
+            TeamFixtureParticipant.Status.ATTENDED,
+            TeamFixtureParticipant.Status.ABSENT,
+        ]
+        viewer_fixture_participants = TeamFixtureParticipant.objects.filter(
+            player=user,
+            status__in=team_fixture_participant_statuses,
+        ).select_related("team")
+        captain_membership = Q(
+            challenge__challenger_team__captain_id=user.id,
+            challenge__challenger_team__members__user_id=user.id,
+            challenge__challenger_team__members__member_type=TeamMember.MemberType.REGISTERED,
+            challenge__challenger_team__members__status=TeamMember.MemberStatus.ACTIVE,
+        ) | Q(
+            challenge__challenged_team__captain_id=user.id,
+            challenge__challenged_team__members__user_id=user.id,
+            challenge__challenged_team__members__member_type=TeamMember.MemberType.REGISTERED,
+            challenge__challenged_team__members__status=TeamMember.MemberStatus.ACTIVE,
+        )
+        participant_access = Q(
+            participants__player=user,
+            participants__status__in=team_fixture_participant_statuses,
+        )
+        team_fixtures = (
+            TeamFixture.objects.select_related(
+                "challenge",
+                "challenge__challenger_team",
+                "challenge__challenged_team",
+                "booking",
+                "booking__venue",
+                "booking__court",
+            )
+            .prefetch_related(
+                "booking__slot_items__slot",
+                Prefetch(
+                    "participants",
+                    queryset=viewer_fixture_participants,
+                    to_attr="_viewer_fixture_participants",
+                ),
+            )
+            .filter(captain_membership | participant_access)
+            .filter(booking__isnull=False)
+            .distinct()
+        )
+        team_upcoming = team_fixtures.filter(
+            status__in=[
+                TeamFixture.Status.SCHEDULED,
+                TeamFixture.Status.RECONFIRMATION_REQUIRED,
+                TeamFixture.Status.IN_PROGRESS,
+            ],
+            booking__status=Booking.BookingStatus.CONFIRMED,
+        ).order_by("booking__slot__date", "booking__slot__start_time", "id")
+        team_completed = team_fixtures.filter(status=TeamFixture.Status.COMPLETED).order_by(
+            "-booking__slot__date", "-booking__slot__start_time", "-id"
+        )
+        team_cancelled = team_fixtures.filter(status=TeamFixture.Status.CANCELLED).order_by(
+            "-updated_at", "-id"
+        )
         return Response(
             {
                 "upcoming": GameSerializer(upcoming, many=True, context={"request": request}).data,
@@ -226,6 +293,11 @@ class MyGamesView(APIView):
                 "incoming_requests": JoinRequestSerializer(incoming_requests, many=True).data,
                 "completed": GameSerializer(completed, many=True, context={"request": request}).data,
                 "cancelled": GameSerializer(cancelled, many=True, context={"request": request}).data,
+                "team_matches": {
+                    "upcoming": MyTeamFixtureSerializer(team_upcoming, many=True, context={"request": request}).data,
+                    "completed": MyTeamFixtureSerializer(team_completed, many=True, context={"request": request}).data,
+                    "cancelled": MyTeamFixtureSerializer(team_cancelled, many=True, context={"request": request}).data,
+                },
             }
         )
 

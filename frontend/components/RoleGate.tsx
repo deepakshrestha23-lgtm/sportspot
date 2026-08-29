@@ -39,7 +39,7 @@ export default function RoleGate({ allowedRoles, children, workspace }: { allowe
 
 function RoleGateSkeleton({ workspace }: { workspace?: "player" | "owner" }) {
   return (
-    <div aria-busy="true" aria-label="Loading workspace" className="sport-page-shell">
+    <div aria-busy="true" aria-label="Loading workspace" className={`sport-page-shell ${workspace === "player" ? "player-dashboard-theme" : ""}`}>
       <div className="flex min-w-0">
         <aside className="hidden w-[252px] shrink-0 border-r border-slate-200/80 bg-white lg:block">
           <div className="space-y-3 px-5 py-6">
@@ -50,7 +50,7 @@ function RoleGateSkeleton({ workspace }: { workspace?: "player" | "owner" }) {
             </div>
           </div>
         </aside>
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-7">
           <div className="mx-auto w-full max-w-7xl space-y-5">
             <div className="h-8 w-56 animate-pulse rounded-md bg-white" />
             <div className="h-4 w-80 max-w-full animate-pulse rounded bg-white" />

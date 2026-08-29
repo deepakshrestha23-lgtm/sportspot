@@ -9,7 +9,7 @@ const config: Config = {
     extend: {
       colors: {
         sportNavy: "#0B1220",
-        sportGreen: "#16A34A",
+        sportGreen: "#087A3E",
         sportOrange: "#F97316",
       },
     },

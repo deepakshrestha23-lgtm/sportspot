@@ -25,7 +25,7 @@ export function DashboardPageHeader({
         <h1 className="sport-page-title">{title}</h1>
         <p className="sport-page-description">{description}</p>
       </div>
-      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="player-header-actions flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
   );
 }

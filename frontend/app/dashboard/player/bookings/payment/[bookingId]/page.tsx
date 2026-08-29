@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateOnly, formatDateTimeInNepal } from "@/lib/dates";
 import { emitToast } from "@/lib/toast";
+import BackButton from "@/components/BackButton";
 import type { Booking } from "@/types/venue";
 
 export default function PaymentPage() {
@@ -132,15 +133,25 @@ export default function PaymentPage() {
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="h-5 w-40 animate-pulse rounded bg-slate-200" />
-        <div className="mt-4 h-24 animate-pulse rounded bg-slate-100" />
+      <div aria-label="Loading reservation" className="space-y-5" role="status">
+        <div className="h-5 w-32 animate-pulse rounded bg-slate-200" />
+        <div className="h-28 animate-pulse rounded-xl bg-white" />
+        <div className="grid gap-6 lg:grid-cols-[1fr_350px]"><div className="h-96 animate-pulse rounded-xl bg-white" /><div className="h-72 animate-pulse rounded-xl bg-white" /></div>
       </div>
     );
   }
 
   if (!booking) {
-    return <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">Booking not found.</div>;
+    return (
+      <div className="space-y-5">
+        <BackButton href="/dashboard/player/bookings" label="Back to bookings" />
+        <div className="sport-error-state" role="alert">
+          <p className="font-bold">{error || "Booking not found."}</p>
+          <p className="mt-1 text-sm">We could not load this reservation. It may have expired or may no longer be available.</p>
+          <button className="sport-secondary-button mt-4" onClick={() => void loadBooking()} type="button">Try again</button>
+        </div>
+      </div>
+    );
   }
 
   const safeRemainingSeconds = remainingSeconds ?? getRemainingSeconds(booking.reserved_until);
@@ -148,62 +159,64 @@ export default function PaymentPage() {
   const progressWidth = booking.status === "RESERVED" ? Math.max(0, Math.min(100, (safeRemainingSeconds / reservationWindowSeconds) * 100)) : 0;
   const isExpired = booking.status === "EXPIRED" || (booking.status === "RESERVED" && safeRemainingSeconds <= 0);
   const canPay = booking.status === "RESERVED" && safeRemainingSeconds > 0 && !isStartingKhalti;
-  const timerTone = safeRemainingSeconds <= 120 ? "text-red-600" : safeRemainingSeconds <= 300 ? "text-amber-600" : "text-sportGreen";
+  const timerTone = safeRemainingSeconds <= 120 ? "text-red-700" : safeRemainingSeconds <= 300 ? "text-amber-700" : "text-sportGreen";
 
   return (
     <div className="space-y-6">
+      <BackButton href="/dashboard/player/bookings" label="Back to bookings" />
+
+      <header className="flex flex-col gap-2 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div><p className="sport-eyebrow">Court reservation</p><h1 className="mt-1 text-2xl font-bold text-sportNavy sm:text-3xl">Complete your booking</h1><p className="mt-1 text-sm text-slate-600">Review the details below, then continue securely to Khalti.</p></div>
+        <span className="text-xs font-semibold text-slate-500">Nepal Time (NPT)</span>
+      </header>
+
       {matchmakingGameId || booking.matchmaking_game ? (
-        <section className="rounded-xl border border-green-200 bg-green-50 p-4 shadow-sm">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-sportGreen">Game Booking Handoff</p>
-          <p className="mt-1 text-sm font-semibold text-green-900">After Khalti confirms payment, SportSpot will attach this court booking to {booking.matchmaking_game_title || "your game plan"} automatically.</p>
+        <section className="rounded-xl border border-green-200 bg-green-50/80 p-4">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-sportGreen">Game booking handoff</p>
+          <p className="mt-1 text-sm font-semibold text-green-950">After Khalti confirms payment, SportSpot will attach this booking to {booking.matchmaking_game_title || "your game plan"} automatically.</p>
         </section>
       ) : null}
 
-      {notice ? <div className={`rounded-lg border p-4 text-sm font-semibold ${noticeTone === "warning" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-900"}`}>{notice}</div> : null}
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">{error}</div> : null}
+      {notice ? <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${noticeTone === "warning" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-green-200 bg-green-50 text-green-950"}`} role="status">{notice}</div> : null}
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-950" role="alert">{error}</div> : null}
 
-      <section className="overflow-hidden rounded-xl bg-sportNavy text-white shadow-sm">
-        <div className="grid gap-6 p-6 lg:grid-cols-[1fr_340px]">
+      <section className="sport-surface p-5 sm:p-6">
+        <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_260px] sm:items-center">
           <div>
-            <p className="text-sm font-black uppercase tracking-wide text-green-300">Payment</p>
-            <h1 className="mt-2 text-3xl font-black">Complete your reservation</h1>
-            <p className="mt-3 max-w-2xl text-slate-300">
-              Your selected Cricksal slot is held for a short time while you complete payment. The booking is confirmed only after payment succeeds.
-            </p>
+            <p className="sport-eyebrow">Reservation hold</p>
+            <p className="mt-2 text-lg font-bold text-sportNavy">Your selected time is temporarily held</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Complete payment before the timer ends. The booking is confirmed only after payment is verified.</p>
           </div>
 
-          <div className="rounded-lg border border-white/10 bg-white p-5 text-sportNavy shadow-lg">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Reservation timer</p>
-                <p className={`mt-2 text-4xl font-black tabular-nums ${isExpired ? "text-red-600" : timerTone}`}>
-                  {booking.status === "RESERVED" ? formatCountdown(safeRemainingSeconds) : booking.status}
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Time remaining</p>
+                <p aria-live="polite" className={`mt-1 text-3xl font-bold tabular-nums ${isExpired ? "text-red-700" : timerTone}`}>
+                  {booking.status === "RESERVED" ? formatCountdown(safeRemainingSeconds) : formatStatus(booking.status)}
                 </p>
               </div>
-              <StatusBadge label={isExpired ? "Expired" : booking.status === "RESERVED" ? "Held" : booking.status} tone={isExpired ? "danger" : booking.status === "RESERVED" ? "success" : "neutral"} />
+              <StatusBadge label={isExpired ? "Expired" : booking.status === "RESERVED" ? "Held" : formatStatus(booking.status)} tone={isExpired ? "danger" : booking.status === "RESERVED" ? "success" : "neutral"} />
             </div>
-            <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className={`h-full rounded-full transition-all duration-500 ${safeRemainingSeconds <= 120 ? "bg-red-500" : "bg-sportGreen"}`} style={{ width: `${progressWidth}%` }} />
+            <div aria-hidden="true" className="mt-4 h-2 overflow-hidden rounded-full bg-white">
+              <div className={`h-full rounded-full transition-all duration-500 ${safeRemainingSeconds <= 120 ? "bg-red-600" : "bg-sportGreen"}`} style={{ width: `${progressWidth}%` }} />
             </div>
-            <p className="mt-3 text-xs font-semibold text-slate-500">
-              Reserved until {formatDateTime(booking.reserved_until)}
-            </p>
+            <p className="mt-2 text-xs font-semibold text-slate-500">Reserved until {formatDateTime(booking.reserved_until)}</p>
           </div>
         </div>
       </section>
 
-
-      <section className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_350px]">
         <div className="space-y-6">
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="sport-surface p-5 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Booking Code</p>
-                <h2 className="mt-1 text-2xl font-black text-sportNavy">{booking.booking_code}</h2>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Booking code</p>
+                <h2 className="mt-1 text-xl font-bold text-sportNavy">{booking.booking_code}</h2>
               </div>
               <div className="flex gap-2">
-                <StatusBadge label={booking.status} tone={isExpired ? "danger" : booking.status === "RESERVED" ? "success" : "neutral"} />
-                <StatusBadge label={booking.payment_status} tone={booking.payment_status === "PAID" ? "success" : booking.payment_status === "FAILED" ? "danger" : "warning"} />
+                <StatusBadge label={isExpired ? "Expired" : formatStatus(booking.status)} tone={isExpired ? "danger" : booking.status === "RESERVED" ? "success" : "neutral"} />
+                <StatusBadge label={formatStatus(booking.payment_status)} tone={booking.payment_status === "PAID" ? "success" : booking.payment_status === "FAILED" ? "danger" : "warning"} />
               </div>
             </div>
 
@@ -213,20 +226,20 @@ export default function PaymentPage() {
               <Info label="Date" value={formatDate(booking.slot_date)} />
               <Info label="Time" value={booking.booking_display_time || booking.slot_display_time} />
               <Info label="Duration" value={`${formatDuration(booking.total_duration_minutes)} · ${booking.slots_count} slot${booking.slots_count === 1 ? "" : "s"}`} />
-              <Info label="Amount" value={`Rs ${Number(booking.amount).toLocaleString()}`} />
+              <Info label="Amount" value={formatNpr(booking.amount)} />
             </div>
 
             {booking.slots.length ? (
-              <div className="mt-6 rounded-lg border border-slate-200">
-                <div className="border-b border-slate-200 px-4 py-3">
-                  <p className="text-sm font-black text-sportNavy">Reserved slot{booking.slots.length === 1 ? "" : "s"}</p>
+              <div className="mt-6 border-t border-slate-200 pt-5">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-sportNavy">Reserved slot{booking.slots.length === 1 ? "" : "s"}</p>
+                  <span className="text-xs font-semibold text-slate-500">{booking.slots.length} selected</span>
                 </div>
-                <div className="divide-y divide-slate-100">
-                  {booking.slots.map((slot, index) => (
+                <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                  {booking.slots.map((slot) => (
                     <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm" key={slot.id}>
-                      <span className="font-bold text-slate-600">Slot {index + 1}</span>
-                      <span className="font-black text-sportNavy">{slot.display_time}</span>
-                      <span className="font-bold text-slate-600">Rs {Number(slot.price).toLocaleString()}</span>
+                      <span className="font-semibold text-slate-600">{slot.display_time}</span>
+                      <span className="font-bold text-sportNavy">{formatNpr(slot.price)}</span>
                     </div>
                   ))}
                 </div>
@@ -234,48 +247,41 @@ export default function PaymentPage() {
             ) : null}
           </div>
 
-          <div className="rounded-lg border border-purple-100 bg-white p-6 shadow-sm">
+          <div className="sport-surface p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-wide text-purple-600">Khalti</p>
-                <p className="mt-1 text-lg font-black text-sportNavy">Pay securely with Khalti</p>
+                <p className="sport-eyebrow">Payment</p>
+                <p className="mt-1 text-lg font-bold text-sportNavy">Pay securely with Khalti</p>
                 <p className="mt-2 text-sm text-slate-600">
                   Continue to Khalti to complete payment. SportSpot will confirm your booking after the payment is verified.
                 </p>
               </div>
-              <StatusBadge label="Secure Payment" tone="success" />
+              <StatusBadge label="Secure checkout" tone="success" />
             </div>
 
             {isExpired ? (
-              <div className="mt-5 rounded-lg border border-red-100 bg-red-50 p-4 text-sm font-semibold text-red-700">
+              <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">
                 This reservation expired before payment was completed. Please return to the venue page and select an available slot again.
               </div>
             ) : null}
 
-            <button
-              className="mt-6 w-full rounded-md bg-[#5d2e8e] px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-[#4c2378] disabled:cursor-not-allowed disabled:bg-slate-300"
-              disabled={!canPay || isStartingKhalti}
-              onClick={payWithKhalti}
-              type="button"
-            >
-              {isStartingKhalti ? "Opening Khalti..." : "Pay with Khalti"}
-            </button>
+            <button className="sport-primary-button mt-6 w-full" disabled={!canPay || isStartingKhalti} onClick={payWithKhalti} type="button">{isStartingKhalti ? "Opening Khalti..." : `Pay ${formatNpr(booking.amount)} with Khalti`}</button>
 
             {booking.status === "RESERVED" ? (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="mt-4 border-t border-slate-200 pt-4">
                 {!showCancelConfirmation ? (
-                  <button className="text-sm font-black text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-red-700" disabled={isCancelling} onClick={() => setShowCancelConfirmation(true)} type="button">
+                  <button className="text-sm font-semibold text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-red-700" disabled={isCancelling} onClick={() => setShowCancelConfirmation(true)} type="button">
                     Cancel reservation
                   </button>
                 ) : (
                   <div>
-                    <p className="text-sm font-black text-sportNavy">Release this held time?</p>
+                    <p className="text-sm font-bold text-sportNavy">Release this held time?</p>
                     <p className="mt-1 text-xs leading-5 text-slate-600">No payment has been completed. The reservation will be cancelled and the time made available again.</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button className="rounded-md bg-red-600 px-4 py-2.5 text-sm font-black text-white hover:bg-red-700 disabled:opacity-60" disabled={isCancelling} onClick={cancelReservation} type="button">
+                      <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60" disabled={isCancelling} onClick={cancelReservation} type="button">
                         {isCancelling ? "Cancelling..." : "Release Reservation"}
                       </button>
-                      <button className="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-100" disabled={isCancelling} onClick={() => setShowCancelConfirmation(false)} type="button">
+                      <button className="sport-secondary-button" disabled={isCancelling} onClick={() => setShowCancelConfirmation(false)} type="button">
                         Keep Reservation
                       </button>
                     </div>
@@ -285,19 +291,19 @@ export default function PaymentPage() {
             ) : null}
 
             {booking.status === "CANCELLED" || booking.status === "EXPIRED" ? (
-              <Link className="mt-4 block text-center text-sm font-black text-sportGreen hover:text-green-700" href={`/courts/${booking.court}`}>
+              <Link className="mt-4 block text-center text-sm font-bold text-sportGreen hover:text-green-700" href={`/courts/${booking.court}`}>
                 Choose another time
               </Link>
             ) : null}
 
-            <div className="mt-4 rounded-lg bg-purple-50 p-4 text-xs font-semibold leading-relaxed text-purple-900">
+            <div className="mt-4 rounded-lg bg-slate-50 p-4 text-xs font-semibold leading-relaxed text-slate-600">
               Your booking will remain reserved until the countdown ends. If payment is not completed in time, the slot will be released.
             </div>
           </div>
         </div>
 
-        <div className="h-fit rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-24">
-          <p className="text-lg font-black text-sportNavy">Payment summary</p>
+        <div className="sport-surface h-fit p-5 lg:sticky lg:top-24">
+          <p className="text-lg font-bold text-sportNavy">Payment summary</p>
           <div className="mt-5 space-y-3 text-sm">
             <SummaryRow label="Court" value={booking.court_name} />
             <SummaryRow label="Date" value={formatDate(booking.slot_date)} />
@@ -305,7 +311,7 @@ export default function PaymentPage() {
             <SummaryRow label="Duration" value={formatDuration(booking.total_duration_minutes)} />
             <SummaryRow label="Slots" value={`${booking.slots_count}`} />
             <div className="border-t border-slate-200 pt-3">
-              <SummaryRow label="Total" value={`Rs ${Number(booking.amount).toLocaleString()}`} strong />
+              <SummaryRow label="Total" value={formatNpr(booking.amount)} strong />
             </div>
           </div>
 
@@ -345,6 +351,14 @@ function formatDuration(minutes: number) {
   return `${hours} hour${hours === 1 ? "" : "s"}`;
 }
 
+function formatNpr(value: string | number) {
+  return `NPR ${Number(value).toLocaleString("en-NP")}`;
+}
+
+function formatStatus(value: string) {
+  return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
 function formatDate(dateValue: string) {
   return formatDateOnly(dateValue, {
     weekday: "short",
@@ -366,8 +380,8 @@ function formatDateTime(dateValue: string | null) {
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md bg-slate-50 p-4">
-      <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 font-black text-sportNavy">{value}</p>
+      <p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-500">{label}</p>
+      <p className="mt-2 font-bold text-sportNavy">{value}</p>
     </div>
   );
 }
@@ -376,7 +390,7 @@ function SummaryRow({ label, value, strong = false }: { label: string; value: st
   return (
     <div className="flex items-center justify-between gap-4">
       <span className="font-semibold text-slate-500">{label}</span>
-      <span className={strong ? "text-lg font-black text-sportNavy" : "font-black text-sportNavy"}>{value}</span>
+      <span className={strong ? "text-lg font-bold text-sportNavy" : "font-bold text-sportNavy"}>{value}</span>
     </div>
   );
 }
@@ -389,5 +403,5 @@ function StatusBadge({ label, tone }: { label: string; tone: "success" | "warnin
     neutral: "bg-slate-100 text-slate-700",
   };
 
-  return <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${toneClasses[tone]}`}>{label}</span>;
+  return <span className={`rounded-full px-3 py-1 text-xs font-bold ${toneClasses[tone]}`}>{label}</span>;
 }

@@ -14,14 +14,14 @@ export function PlayerSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-[252px] shrink-0 border-r border-slate-200/80 bg-white lg:block">
-      <div className="sticky top-[68px] flex h-[calc(100vh-68px)] flex-col px-4 py-5">
-        <div className="border-b border-slate-100 px-2 pb-4">
+    <aside className="hidden w-[248px] shrink-0 border-r border-slate-200/80 bg-white lg:block">
+      <div className="sticky top-[64px] flex h-[calc(100vh-64px)] flex-col px-3 py-5">
+        <div className="border-b border-slate-100 px-3 pb-5">
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sportGreen">SportSpot</p>
-          <p className="mt-1 text-sm font-semibold text-sportNavy">Player Dashboard</p>
+          <p className="mt-1 text-sm font-semibold text-slate-600">Player Dashboard</p>
         </div>
 
-        <nav aria-label="Player dashboard" className="mt-5 space-y-1">
+        <nav aria-label="Player dashboard" className="mt-5 space-y-1.5">
           {playerDashboardNavItems.map((item) => (
             <PlayerSidebarItem isActive={isPlayerDashboardItemActive(pathname, item)} item={item} key={item.href} />
           ))}
@@ -29,7 +29,7 @@ export function PlayerSidebar() {
 
         <div className="flex-1" />
 
-        <nav aria-label="Player dashboard support" className="border-t border-slate-100 pt-3">
+        <nav aria-label="Player dashboard support" className="border-t border-slate-100 pt-4">
           <PlayerSidebarItem
             isActive={isPlayerDashboardItemActive(pathname, playerDashboardUtilityItem)}
             item={playerDashboardUtilityItem}
@@ -52,7 +52,7 @@ export function PlayerSidebarItem({
   return (
     <Link
       aria-current={isActive ? "page" : undefined}
-      className={`group relative flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${
+      className={`group relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${
         isActive
           ? "bg-green-50 text-green-800"
           : "text-slate-600 hover:bg-slate-50 hover:text-sportNavy"

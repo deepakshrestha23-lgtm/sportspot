@@ -286,7 +286,7 @@ export default function TeamDetailPage() {
 function OverviewTab({ captain, onOpenProfile, recentActivity, team }: { captain: TeamMember | null; onOpenProfile: (member: TeamMember) => void; recentActivity: TeamActivity[]; team: Team }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <main className="space-y-5">
+      <div className="space-y-5">
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Active Members" value={team.members_count} helper="Registered and guest players" />
           <SummaryCard label="Upcoming Games" value="0" helper="No team games connected yet" />
@@ -310,7 +310,7 @@ function OverviewTab({ captain, onOpenProfile, recentActivity, team }: { captain
           <SectionHeading title="Next Game" description="Confirmed team matches will appear here." />
           <EmptyPanel title="No confirmed team games yet." description="Once this team has a confirmed Cricksal game, the date, venue, court and Game Room action will appear here." />
         </section>
-      </main>
+      </div>
 
       <aside className="space-y-5">
         <section className="sport-card">
@@ -616,7 +616,7 @@ function tabLabel(tab: TeamTab) { return tab.charAt(0).toUpperCase() + tab.slice
 function normalize(value: string) { return value.trim().toLowerCase(); }
 function initials(name: string) { return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("") || "SS"; }
 function formatChoice(value?: string) { if (!value) return "Not set"; return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" "); }
-function formatRating(value?: string) { const numberValue = Number(value || 0); return Number.isFinite(numberValue) ? numberValue.toFixed(1) : "0.0"; }
+function formatRating(value?: string) { if (!value) return "Not rated yet"; const numberValue = Number(value); return Number.isFinite(numberValue) && numberValue > 0 ? numberValue.toFixed(1) : "Not rated yet"; }
 function formatDate(value?: string | null) { if (!value) return "Not set"; return formatDateOnly(value, { day: "numeric", month: "short", year: "numeric" }); }
 function formatDateTime(value?: string) { if (!value) return "Recently"; return formatDateTimeInNepal(value, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
 function getMediaSrc(value: string) { if (!value) return ""; if (value.startsWith("blob:") || value.startsWith("http")) return value; const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"; return `${apiBaseUrl}${value}`; }
