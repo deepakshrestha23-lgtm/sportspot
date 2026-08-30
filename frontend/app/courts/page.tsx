@@ -9,6 +9,8 @@ import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getCurrentUser } from "@/lib/auth";
 import { emitToast } from "@/lib/toast";
 import { buildTimeOptions, formatDateOnly, formatTimeValue, getLocalDateString } from "@/lib/dates";
+import { buildVenueDirectionsHref } from "@/lib/maps";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import TimeSelect from "@/components/TimeSelect";
 import type { VenueDiscoveryFilters, VenueDiscoveryItem, VenueDiscoveryResponse } from "@/types/venue";
 import type { WishlistSummary } from "@/types/wishlist";
@@ -275,7 +277,7 @@ function CourtDiscovery() {
 
             <ActiveFilterChips chips={activeChipList} onClear={clearAllFilters} onRemove={(chip) => updateQuery({ [chip.key]: chip.nextValue })} />
 
-            {error ? <DiscoveryErrorState message={error} onRetry={() => setReloadCounter((value) => value + 1)} /> : isLoading && !data ? <section className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, index) => <VenueCardSkeleton key={index} />)}</section> : data && data.venues.length === 0 ? <DiscoveryEmptyState hasFilters={activeChipList.length > 0 || Boolean(searchParams.get("search"))} onClear={clearAllFilters} /> : <><section className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{data?.venues.map((venue) => <VenueDiscoveryCard isWishlisted={wishlistedVenueIds.has(venue.id)} key={venue.id} onToggleWishlist={toggleVenueWishlist} queryString={queryString} venue={venue} />)}</section><Pagination currentPage={currentPage} totalPages={totalPages} updateQuery={updateQuery} /></>}
+            {error ? <DiscoveryErrorState message={error} onRetry={() => setReloadCounter((value) => value + 1)} /> : isLoading && !data ? <div className="mt-6"><LoadingIndicator label="Finding courts" size="lg" /></div> : data && data.venues.length === 0 ? <DiscoveryEmptyState hasFilters={activeChipList.length > 0 || Boolean(searchParams.get("search"))} onClear={clearAllFilters} /> : <><section className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{data?.venues.map((venue) => <VenueDiscoveryCard isWishlisted={wishlistedVenueIds.has(venue.id)} key={venue.id} onToggleWishlist={toggleVenueWishlist} queryString={queryString} venue={venue} />)}</section><Pagination currentPage={currentPage} totalPages={totalPages} updateQuery={updateQuery} /></>}
           </section>
         </div>
       </section>
@@ -446,6 +448,7 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
   const courtAvailabilityLabel = hasAvailability ? `${venue.available_court_count} court${venue.available_court_count === 1 ? "" : "s"} available` : `${venue.court_count} court${venue.court_count === 1 ? "" : "s"}`;
   const availabilityLabel = venue.next_available_time ? `Available from ${formatTime(venue.next_available_time)}` : venue.availability_label;
   const facilityLabels = venue.important_facilities.slice(0, 2);
+  const mapHref = buildVenueDirectionsHref(venue.latitude, venue.longitude, venue.map_location);
 
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_2px_8px_rgba(16,32,22,0.04)] transition duration-200 hover:border-green-300 hover:shadow-[0_8px_20px_rgba(16,32,22,0.08)]">
@@ -483,10 +486,13 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
           {hasRating ? <span className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-sportNavy"><StarIcon /> {Number(venue.average_rating).toFixed(1)} <span className="font-medium text-slate-400">({venue.review_count})</span></span> : null}
         </div>
 
-        <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-500">
-          <LocationIcon />
-          <span className="line-clamp-1">{location || "Location available in details"}</span>
-        </p>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-500">
+            <LocationIcon />
+            <span className="line-clamp-1">{location || "Location available in details"}</span>
+          </p>
+          {mapHref ? <a className="shrink-0 text-xs font-bold text-sportGreen hover:text-green-800" href={mapHref} onClick={(event) => event.stopPropagation()} rel="noreferrer" target="_blank">Map</a> : null}
+        </div>
 
         <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-600">
           <span className="inline-flex items-center gap-1.5"><VenueTypeIcon /> {primaryType}</span>
@@ -654,29 +660,10 @@ function MobileFilterDrawer({ children, isOpen, onClose }: { children: React.Rea
   );
 }
 
-function VenueCardSkeleton() {
-  return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="aspect-[16/9] animate-pulse bg-slate-200" />
-      <div className="space-y-4 p-5">
-        <div className="h-5 w-2/3 animate-pulse rounded bg-slate-200" />
-        <div className="h-4 w-1/2 animate-pulse rounded bg-slate-100" />
-        <div className="grid grid-cols-2 gap-3 border-y border-slate-100 py-4">
-          {Array.from({ length: 4 }).map((_, index) => <div className="h-10 animate-pulse rounded bg-slate-100" key={index} />)}
-        </div>
-        <div className="h-11 animate-pulse rounded bg-slate-200" />
-      </div>
-    </div>
-  );
-}
-
 function DiscoveryShellSkeleton() {
   return (
     <main className="min-h-[calc(100vh-68px)] bg-[#f6f8f7] px-4 py-8">
-      <div className="mx-auto max-w-[1280px]">
-        <div className="h-40 animate-pulse rounded-xl bg-slate-200" />
-        <div className="mt-7 grid gap-5 lg:grid-cols-[272px_1fr]"><div className="hidden h-[620px] animate-pulse rounded-xl bg-white lg:block" /><div className="h-[620px] animate-pulse rounded-xl bg-white" /></div>
-      </div>
+      <div className="mx-auto max-w-[1280px]"><div className="sport-loading-inline-panel min-h-[22rem]"><LoadingIndicator label="Loading courts" size="lg" /></div></div>
     </main>
   );
 }

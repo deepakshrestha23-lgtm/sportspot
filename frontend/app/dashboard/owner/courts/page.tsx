@@ -68,73 +68,80 @@ export default function OwnerCourtsPage() {
     }
   }
 
+  const activeCourts = courts.filter((court) => court.is_active);
+  const totalBookings = courts.reduce((total, court) => total + court.bookings_count, 0);
+
   return (
-    <div className="space-y-6">
+    <div className="owner-courts-page space-y-6">
       <FeedbackToast message={feedbackMessage} onClose={() => { setMessage(""); setError(""); }} type={feedbackType} />
 
-      <OwnerPageHeader actions={<Link className="sport-primary-button" href="/dashboard/owner/courts/create">Add Court</Link>} description="Manage the Cricksal courts inside your venue. Active courts become visible to players after approval." eyebrow="Venue Manager" title="Venue & Courts" />
+      <OwnerPageHeader
+        actions={venue ? <Link className="owner-primary-button" href="/dashboard/owner/courts/create">Add court</Link> : null}
+        description="Manage each physical Cricksal court, its public visibility, photos, and bookable availability."
+        eyebrow="Venue Manager"
+        title="Courts"
+      />
 
-
-      {!isLoading ? (
-        <section className="grid gap-4 md:grid-cols-3">
-          <InfoCard label="Venue Status" value={venue ? formatChoice(venue.status) : "No Venue"} />
-          <InfoCard label="Player Visibility" value={venue?.status === "APPROVED" ? "Approved active courts appear on /courts" : "Hidden until admin approval"} />
-          <InfoCard label="How Slots Work" value="Slots are the exact times players select and pay for." />
+      {!isLoading && venue ? (
+        <section className="owner-court-context">
+          <div className="min-w-0">
+            <p className="owner-section-kicker">Venue inventory</p>
+            <h2>{venue.name || "Your venue"}</h2>
+            <p>{venue.area || "Area not set"}, {venue.city || "District not set"} · {venue.status === "APPROVED" && venue.is_active ? "Players can discover active courts" : "Courts stay hidden until the venue is approved"}</p>
+          </div>
+          <div className="owner-court-context-stats">
+            <Stat label="Active courts" value={activeCourts.length} />
+            <Stat label="Total courts" value={courts.length} />
+            <Stat label="Booking records" value={totalBookings} />
+          </div>
         </section>
       ) : null}
 
       {isLoading ? (
-        <div className="sport-surface p-6">Loading courts...</div>
+        <div className="owner-panel owner-courts-loading">Loading courts...</div>
+      ) : !venue ? (
+        <section className="sport-empty-state">
+          <p className="owner-section-kicker">Venue setup required</p>
+          <h2 className="mt-2 text-xl font-black text-sportNavy">Create your venue before adding courts</h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">Courts belong to one venue and inherit its location, operating hours, and player visibility rules.</p>
+          <Link className="owner-primary-button mt-5" href="/dashboard/owner/venue-setup">Complete venue setup</Link>
+        </section>
       ) : courts.length === 0 ? (
         <div className="sport-empty-state">
-          <h2 className="text-xl font-black text-sportNavy">No courts added yet</h2>
-          <p className="mt-2 text-sm text-slate-600">Add your first Cricksal court to generate bookable slots.</p>
-          <Link className="sport-primary-button mt-5" href="/dashboard/owner/courts/create">
-            Add Court
+          <p className="owner-section-kicker">Start your inventory</p>
+          <h2 className="mt-2 text-xl font-black text-sportNavy">No courts added yet</h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600">Add each physical play area separately. You can then publish slots and prices for each court.</p>
+          <Link className="owner-primary-button mt-5" href="/dashboard/owner/courts/create">
+            Add your first court
           </Link>
         </div>
       ) : (
-        <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="owner-court-grid" aria-label="Courts at this venue">
           {courts.map((court) => (
-            <article className="sport-card" key={court.id}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-black text-sportNavy">{court.name}</h2>
-                  <p className="mt-1 text-sm text-slate-600">{formatChoice(court.court_type)} · {formatChoice(court.surface_type)}</p>
-                </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-black ${court.is_active ? "bg-green-100 text-green-800" : "bg-slate-100 text-slate-600"}`}>
-                  {court.is_active ? "Active" : "Inactive"}
-                </span>
+            <article className="owner-court-card" key={court.id}>
+              <div className="owner-court-card-media">
+                {court.court_photo ? <img alt={`${court.name} court`} src={getMediaUrl(court.court_photo)} /> : <div className="owner-court-placeholder"><span>{formatChoice(court.court_type)}</span><strong>{court.name}</strong></div>}
+                <span className={`owner-status ${court.is_active ? "owner-status-success" : "owner-status-neutral"}`}>{court.is_active ? "Active" : "Inactive"}</span>
               </div>
-              <p className="mt-3 line-clamp-3 text-sm text-slate-600">{court.description || "No description added."}</p>
-              <div className="mt-4 rounded-md bg-slate-50 p-3 text-sm text-slate-600">
-                {venue?.status === "APPROVED" && court.is_active
-                  ? "Visible to players. Generate available slots so players can book it."
-                  : "Not visible to players yet. Venue must be approved and court must be active."}
-              </div>
-              {!court.can_delete ? (
-                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-900">
-                  {court.delete_block_reason}
+              <div className="owner-court-card-body">
+                <div className="owner-court-card-heading">
+                  <div className="min-w-0"><h2>{court.name}</h2><p>{formatChoice(court.court_type)} · {formatChoice(court.surface_type)}</p></div>
+                  {court.lowest_price ? <strong className="owner-court-price">From NPR {Number(court.lowest_price).toLocaleString()}</strong> : null}
                 </div>
-              ) : null}
-              <div className="mt-5 flex flex-wrap gap-2">
-                <Link className="sport-secondary-button" href={`/dashboard/owner/courts/${court.id}/slots`}>
-                  Manage Slots
-                </Link>
-                {venue?.status === "APPROVED" && court.is_active ? (
-                  <Link className="sport-secondary-button" href={`/courts/${venue.id}`}>
-                    View Venue Page
-                  </Link>
-                ) : null}
-                {court.can_delete ? (
-                    <button className="sport-secondary-button border-red-200 text-red-700 hover:bg-red-50" onClick={() => setPendingAction({ court, type: "delete" })} type="button">
-                    Delete Court
-                  </button>
-                ) : court.is_active ? (
-                    <button className="sport-secondary-button border-amber-200 text-amber-700 hover:bg-amber-50" onClick={() => setPendingAction({ court, type: "deactivate" })} type="button">
-                    Deactivate Court
-                  </button>
-                ) : null}
+                <p className="owner-court-description">{court.description || "Add a short description to help players choose this court."}</p>
+                <div className="owner-court-meta"><span>{court.bookings_count} booking record{court.bookings_count === 1 ? "" : "s"}</span><span>{venue.status === "APPROVED" && court.is_active && venue.is_active ? "Player visible" : "Not player visible"}</span></div>
+                <div className="owner-court-visibility">
+                  {venue.is_active && venue.status === "APPROVED" && court.is_active
+                    ? "Visible to players after slots are published."
+                    : "Hidden until both the venue and this court are active."}
+                </div>
+                {!court.can_delete ? <p className="owner-court-warning">{court.delete_block_reason}</p> : null}
+                <div className="owner-court-card-actions">
+                  <Link className="owner-primary-button" href={`/dashboard/owner/courts/${court.id}/slots`}>Manage slots</Link>
+                  <Link className="owner-secondary-button" href={`/dashboard/owner/courts/${court.id}/edit`}>Edit court</Link>
+                  {venue?.status === "APPROVED" && court.is_active && venue.is_active ? <Link className="owner-court-preview" href={`/courts/${venue.id}`}>Preview venue</Link> : null}
+                  {court.can_delete ? <button className="owner-court-danger" onClick={() => setPendingAction({ court, type: "delete" })} type="button">Delete</button> : court.is_active ? <button className="owner-court-warning-action" onClick={() => setPendingAction({ court, type: "deactivate" })} type="button">Deactivate</button> : null}
+                </div>
               </div>
             </article>
           ))}
@@ -160,13 +167,20 @@ export default function OwnerCourtsPage() {
   );
 }
 
-function InfoCard({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-sm font-black text-sportNavy">{value}</p>
+    <div className="owner-court-stat">
+      <p>{label}</p>
+      <strong>{value}</strong>
     </div>
   );
+}
+
+function getMediaUrl(path: string) {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  return `${baseUrl}${path}`;
 }
 
 function formatChoice(value: string) {

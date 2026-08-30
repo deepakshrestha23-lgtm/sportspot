@@ -13,6 +13,7 @@ import type { Booking, BookingStatus, RefundStatus } from "@/types/venue";
 
 type BookingTab = "upcoming" | "past" | "cancelled";
 type SortMode = "soonest" | "latest";
+type BookingViewMode = "list" | "grid";
 
 type Filters = {
   from: string;
@@ -43,6 +44,7 @@ export default function PlayerBookingsPage() {
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState<Date | null>(null);
+  const [viewMode, setViewMode] = useState<BookingViewMode>("list");
 
   useEffect(() => {
     const state = readQueryState();
@@ -65,6 +67,16 @@ export default function PlayerBookingsPage() {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const savedView = window.localStorage.getItem("sportspot-bookings-view");
+    if (savedView === "list" || savedView === "grid") setViewMode(savedView);
+  }, []);
+
+  function changeViewMode(nextView: BookingViewMode) {
+    setViewMode(nextView);
+    window.localStorage.setItem("sportspot-bookings-view", nextView);
+  }
 
   function updateRoute(nextTab: BookingTab, nextFilters: Filters) {
     if (typeof window === "undefined") return;
@@ -164,36 +176,39 @@ export default function PlayerBookingsPage() {
               <TabButton active={activeTab === tab.key} count={tabCounts[tab.key]} key={tab.key} label={tab.label} onClick={() => changeTab(tab.key)} />
             ))}
           </div>
-          <div className="grid gap-2 pb-4 sm:grid-cols-2 lg:min-w-[360px] lg:pb-3">
-            <label className="block">
-              <span className="sr-only">Booking status</span>
-              <select className={selectClassName} onChange={(event) => updateFilters({ ...filters, status: event.target.value })} value={filters.status}>
-                {getStatusOptions(activeTab).map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="sr-only">Sort bookings</span>
-              <select className={selectClassName} onChange={(event) => updateFilters({ ...filters, sort: event.target.value as SortMode })} value={filters.sort}>
-                {getSortOptions(activeTab).map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
+          <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:items-center lg:pb-3">
+            <ViewSwitcher mode={viewMode} onChange={changeViewMode} />
+            <div className="grid flex-1 gap-2 sm:grid-cols-2 lg:min-w-[360px]">
+              <label className="block">
+                <span className="sr-only">Booking status</span>
+                <select className={selectClassName} onChange={(event) => updateFilters({ ...filters, status: event.target.value })} value={filters.status}>
+                  {getStatusOptions(activeTab).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="sr-only">Sort bookings</span>
+                <select className={selectClassName} onChange={(event) => updateFilters({ ...filters, sort: event.target.value as SortMode })} value={filters.sort}>
+                  {getSortOptions(activeTab).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 
         {isLoading ? (
-          <BookingsSkeleton />
+          <BookingsSkeleton view={viewMode} />
         ) : error ? (
           <ErrorState message={error} onRetry={loadBookings} />
         ) : filteredBookings.length === 0 ? (
           <EmptyState activeTab={activeTab} hasFilters={hasActiveFilters(activeTab, filters)} onClear={() => updateFilters(getFiltersForTab(activeTab, defaultFilters))} />
         ) : (
-          <div className="grid gap-4 p-4 sm:p-5 md:grid-cols-2 2xl:grid-cols-3">
+          <div className={viewMode === "list" ? "space-y-3 p-4 sm:p-5" : "grid gap-4 p-4 sm:p-5 md:grid-cols-2 xl:grid-cols-3"}>
             {filteredBookings.map((booking) => (
-              <BookingCard booking={booking} key={booking.id} onCancel={() => setBookingToCancel(booking)} />
+              <BookingCard booking={booking} key={booking.id} onCancel={() => setBookingToCancel(booking)} view={viewMode} />
             ))}
           </div>
         )}
@@ -228,6 +243,36 @@ function DateFilter({ filters, onChange }: { filters: Filters; onChange: (filter
         </button>
       </div>
     </details>
+  );
+}
+
+function ViewSwitcher({ mode, onChange }: { mode: BookingViewMode; onChange: (mode: BookingViewMode) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="hidden text-xs font-bold uppercase tracking-[0.12em] text-slate-500 sm:inline">View</span>
+      <div className="inline-flex h-11 items-center rounded-md border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Booking view">
+        <button
+          aria-label="Use list view"
+          aria-pressed={mode === "list"}
+          className={`inline-flex h-9 items-center justify-center gap-1.5 rounded px-2.5 text-xs font-bold transition sm:px-3 ${mode === "list" ? "bg-white text-sportGreen shadow-sm" : "text-slate-600 hover:text-sportNavy"}`}
+          onClick={() => onChange("list")}
+          title="List view"
+          type="button"
+        >
+          <ListViewIcon /> <span className="hidden sm:inline">List</span>
+        </button>
+        <button
+          aria-label="Use card view"
+          aria-pressed={mode === "grid"}
+          className={`inline-flex h-9 items-center justify-center gap-1.5 rounded px-2.5 text-xs font-bold transition sm:px-3 ${mode === "grid" ? "bg-white text-sportGreen shadow-sm" : "text-slate-600 hover:text-sportNavy"}`}
+          onClick={() => onChange("grid")}
+          title="Card view"
+          type="button"
+        >
+          <GridViewIcon /> <span className="hidden sm:inline">Cards</span>
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -280,74 +325,87 @@ function NextBookingTracker({ booking, now }: { booking: Booking; now: Date }) {
   );
 }
 
-function BookingCard({ booking, onCancel }: { booking: Booking; onCancel: () => void }) {
+function BookingCard({ booking, onCancel, view }: { booking: Booking; onCancel: () => void; view: BookingViewMode }) {
   const imageSrc = getMediaSrc(booking.venue_primary_image || booking.court_photo);
   const time = booking.booking_display_time || booking.slot_display_time;
   const isReserved = booking.status === "RESERVED" && booking.payment_status === "PENDING";
   const isConfirmed = booking.status === "CONFIRMED" && booking.payment_status === "PAID";
   const isCompleted = booking.status === "COMPLETED";
   const isCancelled = booking.status === "CANCELLED" || booking.status === "EXPIRED";
+  const isGrid = view === "grid";
 
   return (
-    <article className="sport-surface group flex h-full flex-col overflow-hidden transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md">
-      <div className="relative h-40 overflow-hidden bg-slate-100">
+    <article className={`group overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-green-300 hover:shadow-sm ${isGrid ? "flex h-full flex-col" : "grid md:grid-cols-[176px_minmax(0,1fr)]"}`}>
+      <div className={isGrid ? "relative h-28 w-full shrink-0 overflow-hidden bg-slate-100 sm:h-32" : "relative h-28 w-full shrink-0 overflow-hidden bg-slate-100 md:h-full md:min-h-[164px] md:w-auto"}>
         {imageSrc ? (
           <img alt={`${booking.venue_name} court`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" src={imageSrc} />
         ) : (
-          <div className="flex h-full items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-green-900 text-sm font-black uppercase tracking-[0.16em] text-white">SportSpot</div>
+          <div className="flex h-full items-center justify-center bg-slate-900 text-green-200"><CourtIcon /></div>
         )}
-        <div className="absolute right-3 top-3"><StatusBadge status={booking.status} /></div>
+        <div className="absolute left-3 top-3"><StatusBadge status={booking.status} /></div>
       </div>
-      <div className="flex flex-1 flex-col p-4">
-        <div className="flex items-start justify-between gap-3">
+      <div className={isGrid ? "flex flex-1 flex-col p-4" : "flex min-w-0 flex-col p-4 sm:p-5"}>
+        <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-sportGreen">{booking.booking_code}</p>
-            <h2 className="mt-1 line-clamp-2 text-xl font-black leading-tight text-sportNavy">{booking.venue_name}</h2>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-sportGreen">{booking.booking_code}</p>
+            <h2 className="mt-1 line-clamp-2 text-lg font-bold leading-tight text-sportNavy sm:text-xl">{booking.venue_name}</h2>
+            <p className="mt-1 flex items-start gap-2 text-sm font-semibold text-slate-600">
+              <span className="mt-0.5 shrink-0 text-sportGreen"><LocationIcon /></span>
+              <span className="min-w-0">{booking.court_name} · {booking.venue_area}, {booking.venue_city}</span>
+            </p>
           </div>
-          <p className="shrink-0 text-right text-lg font-black text-sportGreen">NPR<br />{formatMoney(booking.amount)}</p>
+          <p className="max-w-[8rem] shrink-0 text-right text-sm font-semibold text-slate-500"><span className="block text-[11px] uppercase tracking-[0.14em]">Total</span><span className="mt-0.5 block text-lg font-bold text-sportGreen">NPR {formatMoney(booking.amount)}</span></p>
         </div>
-        <div className="mt-4 space-y-2.5 text-sm font-semibold text-slate-600">
-          <IconLine icon={<CourtIcon />} text={`${booking.court_name} · ${booking.venue_area}, ${booking.venue_city}`} />
-          <IconLine icon={<CalendarIcon />} text={`${formatDateOnly(booking.slot_date)} · ${time}`} />
-          <IconLine icon={<ClockIcon />} text={`${formatDuration(booking.total_duration_minutes)} · ${booking.slots_count} slot${booking.slots_count === 1 ? "" : "s"}`} />
-        </div>
+
+        {isGrid ? (
+          <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-sm">
+            <BookingMeta icon={<CalendarIcon />} label="When" value={`${formatDateOnly(booking.slot_date)} · ${time}`} />
+            <BookingMeta icon={<ClockIcon />} label="Duration" value={`${formatDuration(booking.total_duration_minutes)} · ${booking.slots_count} slot${booking.slots_count === 1 ? "" : "s"}`} />
+          </div>
+        ) : (
+          <div className="mt-3 grid gap-3 border-t border-slate-100 pt-3 text-sm sm:grid-cols-3">
+            <BookingMeta icon={<CalendarIcon />} label="When" value={`${formatDateOnly(booking.slot_date)} · ${time}`} />
+            <BookingMeta icon={<ClockIcon />} label="Duration" value={`${formatDuration(booking.total_duration_minutes)} · ${booking.slots_count} slot${booking.slots_count === 1 ? "" : "s"}`} />
+            <BookingMeta icon={<CourtIcon />} label="Booking status" value={isConfirmed ? "Paid and confirmed" : isReserved ? "Payment required" : formatBookingStatus(booking.status)} />
+          </div>
+        )}
+
         {isCancelled ? (
-          <div className="mt-4 rounded-xl bg-slate-50 p-3">
-            <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Refund status</p>
-            <p className="mt-1 text-sm font-black text-sportNavy">{formatRefundStatus(booking.refund_status)}</p>
+          <div className="mt-4 border-l-2 border-slate-300 bg-slate-50 px-3 py-2.5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Refund status</p>
+            <p className="mt-0.5 text-sm font-bold text-sportNavy">{formatRefundStatus(booking.refund_status)}</p>
             {booking.refund_reason ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{booking.refund_reason}</p> : null}
           </div>
         ) : null}
-        <div className="mt-auto pt-5">
-          <div className="mb-4 h-px bg-slate-100" />
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-black text-sportNavy hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-green-200" href={`/dashboard/player/bookings/${booking.id}`}>
-              View Booking
+
+        <div className={`${isGrid ? "mt-auto grid grid-cols-2" : "mt-3 flex flex-wrap"} gap-2 border-t border-slate-100 pt-3`}>
+          <Link className={`inline-flex min-h-10 items-center justify-center rounded-md bg-slate-100 px-3.5 text-sm font-bold text-sportNavy hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-green-200 ${isGrid ? "w-full" : ""}`} href={`/dashboard/player/bookings/${booking.id}`}>
+            View Booking
+          </Link>
+          {isReserved ? (
+            <Link className={`inline-flex min-h-10 items-center justify-center rounded-md bg-sportGreen px-3.5 text-sm font-bold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 ${isGrid ? "w-full" : ""}`} href={`/dashboard/player/bookings/payment/${booking.id}`}>
+              Continue Payment
             </Link>
-            {isReserved ? (
-              <Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" href={`/dashboard/player/bookings/payment/${booking.id}`}>
-                Continue Payment
-              </Link>
-            ) : isConfirmed ? (
-              <Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" href={`/dashboard/player/bookings/${booking.id}`}>
-                View Booking Pass
-              </Link>
-            ) : isCompleted ? (
-              <Link className="inline-flex min-h-11 items-center justify-center rounded-xl border border-green-200 px-4 text-sm font-black text-sportGreen hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200" href={`/courts/${booking.venue}`}>
-                Book Again
-              </Link>
-            ) : null}
-            {buildVenueDirectionsHref(booking.venue_latitude, booking.venue_longitude, booking.venue_map_location) ? (
-              <a className="inline-flex min-h-11 items-center justify-center rounded-xl border border-green-200 px-4 text-sm font-black text-sportGreen hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200" href={buildVenueDirectionsHref(booking.venue_latitude, booking.venue_longitude, booking.venue_map_location)} rel="noreferrer" target="_blank">
-                Get Directions
-              </a>
-            ) : null}
-            {booking.can_cancel ? (
-              <button className="inline-flex min-h-11 items-center justify-center rounded-xl border border-red-200 px-4 text-sm font-black text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200" onClick={onCancel} type="button">
-                Cancel Booking
-              </button>
-            ) : null}
-          </div>
+          ) : isConfirmed ? (
+            <Link className={`inline-flex min-h-10 items-center justify-center rounded-md bg-sportGreen px-3.5 text-sm font-bold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 ${isGrid ? "w-full" : ""}`} href={`/dashboard/player/bookings/${booking.id}`}>
+              View Booking Pass
+            </Link>
+          ) : isCompleted ? (
+            <Link className={`inline-flex min-h-10 items-center justify-center rounded-md border border-green-200 px-3.5 text-sm font-bold text-sportGreen hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200 ${isGrid ? "w-full" : ""}`} href={`/courts/${booking.venue}`}>
+              Book Again
+            </Link>
+          ) : null}
+          {buildVenueDirectionsHref(booking.venue_latitude, booking.venue_longitude, booking.venue_map_location) ? (
+            <a className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-slate-200 px-3.5 text-sm font-bold text-slate-700 hover:border-green-300 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 ${isGrid ? "col-span-2 w-full" : ""}`} href={buildVenueDirectionsHref(booking.venue_latitude, booking.venue_longitude, booking.venue_map_location)} rel="noreferrer" target="_blank">
+              <DirectionIcon />
+              Get Directions
+            </a>
+          ) : null}
+          {booking.can_cancel ? (
+            <button className={`inline-flex min-h-10 items-center justify-center rounded-md border border-red-200 px-3.5 text-sm font-bold text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 ${isGrid ? "col-span-2 w-full" : ""}`} onClick={onCancel} type="button">
+              Cancel Booking
+            </button>
+          ) : null}
         </div>
       </div>
     </article>
@@ -392,10 +450,14 @@ function EmptyState({ activeTab, hasFilters, onClear }: { activeTab: BookingTab;
   );
 }
 
-function BookingsSkeleton() {
-  return (
-    <div className="grid gap-4 p-4 sm:p-5 md:grid-cols-2 2xl:grid-cols-3">
-      {[0, 1, 2].map((item) => <div className="sport-surface h-[420px] animate-pulse bg-slate-100" key={item} />)}
+function BookingsSkeleton({ view }: { view: BookingViewMode }) {
+  return view === "list" ? (
+    <div className="space-y-3 p-4 sm:p-5">
+      {[0, 1, 2].map((item) => <div className="h-44 animate-pulse rounded-xl bg-slate-100" key={item} />)}
+    </div>
+  ) : (
+    <div className="grid gap-4 p-4 sm:p-5 md:grid-cols-2 xl:grid-cols-3">
+      {[0, 1, 2].map((item) => <div className="h-[360px] animate-pulse rounded-xl bg-slate-100" key={item} />)}
     </div>
   );
 }
@@ -440,8 +502,16 @@ function CountdownUnit({ label, value }: { label: string; value: number }) {
   return <div><p className="text-4xl font-black tabular-nums sm:text-5xl">{String(value).padStart(2, "0")}</p><p className="mt-1 text-xs font-black uppercase text-slate-400">{label}</p></div>;
 }
 
-function IconLine({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return <p className="flex items-start gap-2"><span className="mt-0.5 text-sportGreen">{icon}</span><span className="min-w-0">{text}</span></p>;
+function BookingMeta({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-start gap-2.5">
+      <span className="mt-0.5 shrink-0 text-sportGreen">{icon}</span>
+      <span className="min-w-0">
+        <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</span>
+        <span className="mt-0.5 block truncate font-semibold text-slate-700" title={value}>{value}</span>
+      </span>
+    </div>
+  );
 }
 
 function getDateFilterLabel(filters: Filters) {
@@ -667,3 +737,5 @@ function LocationIcon() { return <svg aria-hidden="true" className="h-5 w-5" fil
 function DirectionIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="m12 3 9 9-9 9-9-9 9-9Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" /><path d="M9 12h6m0 0-2-2m2 2-2 2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>; }
 function CourtIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M4 6h16v12H4V6Zm8 0v12M4 12h16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>; }
 function ClockIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>; }
+function ListViewIcon() { return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" stroke="currentColor" strokeLinecap="round" strokeWidth="2.4" /></svg>; }
+function GridViewIcon() { return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h6v6h-6v-6Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" /></svg>; }

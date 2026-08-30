@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 
 from .models import (
@@ -10,6 +12,10 @@ from .models import (
     BookingMessage,
     Court,
     CourtSlot,
+    CourtFeedbackReport,
+    CourtFeedbackReaction,
+    CourtReview,
+    CourtReviewComment,
     Venue,
     VenuePhoto,
 )
@@ -21,6 +27,7 @@ from .policies import (
     normalize_cancellation_policy_snapshot,
 )
 from .reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
+from .services import generate_booking_check_in_token, get_booking_check_in_state
 
 
 class VenuePhotoSerializer(serializers.ModelSerializer):
@@ -365,6 +372,16 @@ class VenueSerializer(serializers.ModelSerializer):
     def validate_verification_document_type(self, value):
         return value.strip() if isinstance(value, str) else value
 
+    def validate_map_location(self, value):
+        value = value.strip() if isinstance(value, str) else value
+        if not value:
+            return ""
+        try:
+            URLValidator(schemes=["http", "https"])(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError("Enter a valid http or https map link.") from exc
+        return value
+
     def validate(self, attrs):
         latitude = attrs.get("latitude", getattr(self.instance, "latitude", None))
         longitude = attrs.get("longitude", getattr(self.instance, "longitude", None))
@@ -440,6 +457,159 @@ class PublicCourtDetailSerializer(CourtSerializer):
             data["latitude"] = None
             data["longitude"] = None
         return data
+
+
+class CourtReviewSerializer(serializers.ModelSerializer):
+    reviewer_name = serializers.CharField(source="reviewer.full_name", read_only=True)
+    court_name = serializers.CharField(source="court.name", read_only=True)
+    is_author = serializers.SerializerMethodField()
+    like_count = serializers.SerializerMethodField()
+    dislike_count = serializers.SerializerMethodField()
+    my_reaction = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CourtReview
+        fields = (
+            "id",
+            "court",
+            "court_name",
+            "booking",
+            "reviewer",
+            "reviewer_name",
+            "rating",
+            "comment",
+            "is_author",
+            "like_count",
+            "dislike_count",
+            "my_reaction",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "court",
+            "court_name",
+            "booking",
+            "reviewer",
+            "reviewer_name",
+            "is_author",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_is_author(self, review):
+        request = self.context.get("request")
+        return bool(request and request.user.is_authenticated and review.reviewer_id == request.user.id)
+
+    def get_like_count(self, review):
+        count = getattr(review, "like_count", None)
+        return count if count is not None else review.feedback_reactions.filter(reaction=CourtFeedbackReaction.Reaction.LIKE).count()
+
+    def get_dislike_count(self, review):
+        count = getattr(review, "dislike_count", None)
+        return count if count is not None else review.feedback_reactions.filter(reaction=CourtFeedbackReaction.Reaction.DISLIKE).count()
+
+    def get_my_reaction(self, review):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return None
+        reactions = getattr(review, "_viewer_feedback_reactions", None)
+        if reactions is None:
+            reaction = review.feedback_reactions.filter(reviewer=request.user).first()
+        else:
+            reaction = reactions[0] if reactions else None
+        return reaction.reaction if reaction else None
+
+    def validate_rating(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError("Choose a rating from 1 to 5 stars.")
+        return value
+
+    def validate_comment(self, value):
+        return value.strip()
+
+
+class CourtReviewCommentSerializer(serializers.ModelSerializer):
+    reviewer_name = serializers.CharField(source="reviewer.full_name", read_only=True)
+    court_name = serializers.CharField(source="court.name", read_only=True)
+    is_author = serializers.SerializerMethodField()
+    like_count = serializers.SerializerMethodField()
+    dislike_count = serializers.SerializerMethodField()
+    my_reaction = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CourtReviewComment
+        fields = (
+            "id",
+            "court",
+            "court_name",
+            "booking",
+            "reviewer",
+            "reviewer_name",
+            "comment",
+            "is_author",
+            "like_count",
+            "dislike_count",
+            "my_reaction",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "court",
+            "court_name",
+            "booking",
+            "reviewer",
+            "reviewer_name",
+            "is_author",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_is_author(self, comment):
+        request = self.context.get("request")
+        return bool(request and request.user.is_authenticated and comment.reviewer_id == request.user.id)
+
+    def get_like_count(self, comment):
+        count = getattr(comment, "like_count", None)
+        return count if count is not None else comment.feedback_reactions.filter(reaction=CourtFeedbackReaction.Reaction.LIKE).count()
+
+    def get_dislike_count(self, comment):
+        count = getattr(comment, "dislike_count", None)
+        return count if count is not None else comment.feedback_reactions.filter(reaction=CourtFeedbackReaction.Reaction.DISLIKE).count()
+
+    def get_my_reaction(self, comment):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return None
+        reactions = getattr(comment, "_viewer_feedback_reactions", None)
+        if reactions is None:
+            reaction = comment.feedback_reactions.filter(reviewer=request.user).first()
+        else:
+            reaction = reactions[0] if reactions else None
+        return reaction.reaction if reaction else None
+
+    def validate_comment(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Write a comment before publishing.")
+        return value
+
+
+class CourtFeedbackReactionInputSerializer(serializers.Serializer):
+    target_type = serializers.ChoiceField(choices=("review", "comment"))
+    target_id = serializers.IntegerField(min_value=1)
+    reaction = serializers.ChoiceField(choices=CourtFeedbackReaction.Reaction.values)
+
+
+class CourtFeedbackReportInputSerializer(serializers.Serializer):
+    target_type = serializers.ChoiceField(choices=("review", "comment"))
+    target_id = serializers.IntegerField(min_value=1)
+    reason = serializers.ChoiceField(choices=CourtFeedbackReport.Reason.values)
+    details = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
+    def validate_details(self, value):
+        return value.strip()
 
 
 class PublicVenueSerializer(serializers.ModelSerializer):
@@ -570,6 +740,7 @@ class BookingSerializer(serializers.ModelSerializer):
     cancellation_policy_details = serializers.SerializerMethodField()
     venue_messages = BookingMessageSerializer(many=True, read_only=True)
     matchmaking_game_title = serializers.SerializerMethodField()
+    check_in = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -639,6 +810,7 @@ class BookingSerializer(serializers.ModelSerializer):
             "refund_percentage",
             "refund_amount",
             "venue_messages",
+            "check_in",
             "created_at",
             "updated_at",
         )
@@ -646,6 +818,32 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def get_matchmaking_game_title(self, booking):
         return booking.matchmaking_game.title if booking.matchmaking_game_id else ""
+
+    def get_check_in(self, booking):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return None
+        if user.role == "PLAYER" and booking.player_id != user.id:
+            return None
+        if user.role == "COURT_OWNER" and booking.venue.owner_id != user.id:
+            return None
+        if user.role not in ["PLAYER", "COURT_OWNER", "ADMIN"]:
+            return None
+
+        state = get_booking_check_in_state(booking)
+        check_in = state["check_in"]
+        return {
+            "status": state["status"],
+            "message": state["message"],
+            "window_start": state["window_start"].isoformat() if state["window_start"] else None,
+            "window_end": state["window_end"].isoformat() if state["window_end"] else None,
+            "checked_in_at": check_in.checked_in_at.isoformat() if check_in else None,
+            "checked_in_by_name": getattr(check_in.checked_in_by, "full_name", "") if check_in and check_in.checked_in_by_id else "",
+            "scan_count": check_in.scan_count if check_in else 0,
+            "qr_token": generate_booking_check_in_token(booking) if user.role == "PLAYER" and booking.player_id == user.id and state["status"] in ["NOT_YET_OPEN", "READY", "CHECKED_IN"] else None,
+        }
+
 
     def get_venue_latitude(self, booking):
         venue = booking.venue
@@ -730,6 +928,44 @@ class BookingSerializer(serializers.ModelSerializer):
         if snapshot["additional_notes"]:
             details.append(snapshot["additional_notes"])
         return "\n".join(details)
+
+
+class BookingVerificationSerializer(serializers.ModelSerializer):
+    player_name = serializers.CharField(source="player.full_name", read_only=True)
+    venue_name = serializers.CharField(source="venue.name", read_only=True)
+    venue_area = serializers.CharField(source="venue.area", read_only=True)
+    venue_city = serializers.CharField(source="venue.city", read_only=True)
+    court_name = serializers.CharField(source="court.name", read_only=True)
+    slot_date = serializers.DateField(source="slot.date", read_only=True)
+    booking_display_time = serializers.SerializerMethodField()
+    matchmaking_game_title = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Booking
+        fields = (
+            "id",
+            "booking_code",
+            "player_name",
+            "venue_name",
+            "venue_area",
+            "venue_city",
+            "court_name",
+            "slot_date",
+            "booking_display_time",
+            "amount",
+            "status",
+            "payment_status",
+            "matchmaking_game_title",
+        )
+
+    def get_booking_display_time(self, booking):
+        slots = get_booking_slots(booking)
+        if not slots:
+            return ""
+        return f"{slots[0].start_time.strftime('%I:%M %p').lstrip('0')} - {slots[-1].end_time.strftime('%I:%M %p').lstrip('0')}"
+
+    def get_matchmaking_game_title(self, booking):
+        return booking.matchmaking_game.title if booking.matchmaking_game_id else ""
 
 
 class BookingSlotSerializer(serializers.ModelSerializer):

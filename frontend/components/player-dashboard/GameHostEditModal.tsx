@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import LoadingIndicator from "@/components/LoadingIndicator";
 import TimeSelect from "@/components/TimeSelect";
 import { buildTimeOptions, formatDateTimeInNepal, joinDateTimeInput, parseDateTimeInput, splitDateTimeInput, toDateTimeInput, toNepalDate } from "@/lib/dates";
 import type { GameRole, GameRoleRequirement, GameSkillLevel, MatchmakingGame } from "@/types/matchmaking";
@@ -81,13 +82,26 @@ export default function GameHostEditModal({ game, isSaving, onClose, onSave }: G
     setValues(initialValues(game));
   }, [game]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSaving) onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isSaving, onClose]);
+
   const isPlanFirst = game.creation_mode === "PLAN_FIRST" && !game.is_booking_verified;
   const setValue = <K extends keyof GameHostEditValues>(key: K, value: GameHostEditValues[K]) => setValues((current) => ({ ...current, [key]: value }));
   const setRoleCount = (role: GameRole, value: number) => setValues((current) => ({
     ...current,
     role_requirements: current.role_requirements.map((item) => item.role === role ? { ...item, required_count: Math.max(0, Math.min(30, value)) } : item),
   }));
-  const inputClass = "mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-sportGreen focus:ring-2 focus:ring-green-100";
+  const inputClass = "mt-2 min-h-11 w-full rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-sportGreen focus:ring-2 focus:ring-green-100";
   const recruitmentDeadline = parseDateTimeInput(values.recruitment_deadline);
   const bookingDeadline = parseDateTimeInput(values.booking_deadline);
   const scheduleError = isPlanFirst && recruitmentDeadline && bookingDeadline && bookingDeadline.getTime() - recruitmentDeadline.getTime() < 30 * 60 * 1000
@@ -106,78 +120,118 @@ export default function GameHostEditModal({ game, isSaving, onClose, onSave }: G
     });
   }
 
+  const sectionLabels = [
+    ["details", "Details", "Listing basics"],
+    ["schedule", "Schedule", "Timing and location"],
+    ["roles", "Roles", "Squad balance"],
+  ] as const;
+  const activeSectionIndex = sectionLabels.findIndex(([key]) => key === activeSection) + 1;
+
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-4" role="presentation">
-      <section aria-labelledby="edit-game-title" aria-modal="true" className="max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-6" role="dialog">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-sportGreen">Host controls</p>
-            <h2 className="mt-1 text-2xl font-black text-sportNavy" id="edit-game-title">Edit game details</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Update the listing while protecting confirmed players and booking details.</p>
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-sportNavy/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" role="presentation">
+      <section aria-describedby="edit-game-description" aria-labelledby="edit-game-title" aria-modal="true" className="flex max-h-[100dvh] min-h-0 w-full max-w-4xl flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[min(900px,calc(100dvh-2.5rem))] sm:rounded-2xl sm:border sm:border-slate-200" role="dialog">
+        <header className="flex shrink-0 items-start justify-between gap-5 border-b border-slate-200 px-5 py-5 sm:px-7 sm:py-6">
+          <div className="min-w-0">
+            <p className="sport-eyebrow">Host controls</p>
+            <h2 className="mt-1 text-2xl font-black text-sportNavy sm:text-[1.75rem]" id="edit-game-title">Edit game details</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600" id="edit-game-description">Update the listing while protecting confirmed players and booking details.</p>
           </div>
-          <button aria-label="Close edit game dialog" className="rounded-full p-2 text-xl text-slate-500 hover:bg-slate-100" onClick={onClose} type="button">×</button>
-        </div>
+          <button aria-label="Close edit game dialog" className="sport-icon-button shrink-0" disabled={isSaving} onClick={onClose} title="Close" type="button"><CloseIcon /></button>
+        </header>
 
-        <div className="mt-5 flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
-          {([['details', 'Details'], ['schedule', 'Schedule'], ['roles', 'Roles']] as const).map(([key, label]) => (
-            <button className={`min-h-10 whitespace-nowrap rounded-lg px-4 text-sm font-black ${activeSection === key ? "bg-white text-sportGreen shadow-sm" : "text-slate-500"}`} key={key} onClick={() => setActiveSection(key)} type="button">{label}</button>
-          ))}
-        </div>
-
-        <form className="mt-5" onSubmit={submit}>
-          {activeSection === "details" ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="sm:col-span-2 text-sm font-black text-slate-700">Game title<input className={inputClass} maxLength={120} required value={values.title} onChange={(event) => setValue("title", event.target.value)} /></label>
-              <label className="text-sm font-black text-slate-700">Game format<select className={inputClass} value={values.game_intensity} onChange={(event) => setValue("game_intensity", event.target.value as MatchmakingGame["game_intensity"])}><option value="CASUAL">Casual</option><option value="COMPETITIVE">Competitive</option><option value="PRACTICE">Practice / Friendly</option></select></label>
-              <label className="text-sm font-black text-slate-700">Skill level<select className={inputClass} value={values.min_skill_level} onChange={(event) => setValue("min_skill_level", event.target.value as GameSkillLevel)}><option value="OPEN">Open to all</option><option value="BEGINNER">Beginner+</option><option value="INTERMEDIATE">Intermediate+</option><option value="ADVANCED">Advanced only</option></select></label>
-              <label className="sm:col-span-2 text-sm font-black text-slate-700">Description<textarea className={`${inputClass} h-24 py-3`} maxLength={800} value={values.description} onChange={(event) => setValue("description", event.target.value)} /></label>
-              <label className="text-sm font-black text-slate-700">Total player spots<input className={inputClass} max={30} min={2} type="number" value={values.total_capacity} onChange={(event) => setValue("total_capacity", Number(event.target.value))} /></label>
-              <label className="text-sm font-black text-slate-700">Minimum to proceed<input className={inputClass} max={values.total_capacity} min={2} type="number" value={values.minimum_players_to_proceed} onChange={(event) => setValue("minimum_players_to_proceed", Number(event.target.value))} /></label>
-              <label className="sm:col-span-2 text-sm font-black text-slate-700">Reporting instructions<textarea className={`${inputClass} h-20 py-3`} maxLength={500} placeholder="Where and when players should report" value={values.reporting_instructions} onChange={(event) => setValue("reporting_instructions", event.target.value)} /></label>
-              <label className="text-sm font-black text-slate-700">Host notes <span className="font-semibold text-slate-400">private</span><textarea className={`${inputClass} h-20 py-3`} maxLength={500} placeholder="Notes for your own planning" value={values.host_notes} onChange={(event) => setValue("host_notes", event.target.value)} /></label>
-              <label className="text-sm font-black text-slate-700">Equipment instructions<textarea className={`${inputClass} h-20 py-3`} maxLength={500} placeholder="What players should bring" value={values.equipment_instructions} onChange={(event) => setValue("equipment_instructions", event.target.value)} /></label>
-              <label className="sm:col-span-2 flex min-h-11 items-center gap-3 rounded-xl bg-slate-50 px-3 text-sm font-bold text-slate-700"><input checked={values.waitlist_enabled} className="h-4 w-4 accent-green-700" onChange={(event) => setValue("waitlist_enabled", event.target.checked)} type="checkbox" /> Allow a waitlist when all player spots are filled</label>
-            </div>
-          ) : null}
-
-          {activeSection === "schedule" ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <DateTimeField helper="Players can request to join until this time. This must come first." inputClass={inputClass} label="Recruitment closes" onChange={(value) => setValue("recruitment_deadline", value)} value={values.recruitment_deadline} />
-              {isPlanFirst ? <DateTimeField helper="Secure and pay for the court by this time, at least 1 hour before the game." inputClass={inputClass} label="Court booking deadline" onChange={(value) => setValue("booking_deadline", value)} value={values.booking_deadline} /> : null}
-              {scheduleError ? <p className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-900">{scheduleError}</p> : null}
-              {isPlanFirst ? <>
-                <label className="text-sm font-black text-slate-700">Proposed date<input className={inputClass} required type="date" value={values.proposed_date} onChange={(event) => setValue("proposed_date", event.target.value)} /></label>
-                <label className="text-sm font-black text-slate-700">Preferred district<input className={inputClass} value={values.preferred_district} onChange={(event) => setValue("preferred_district", event.target.value)} /></label>
-                <label className="text-sm font-black text-slate-700">Start time<TimeSelect ariaLabel="Proposed start time" className={inputClass} options={buildTimeOptions()} required value={values.proposed_start_time} onChange={(value) => setValue("proposed_start_time", value)} /></label>
-                <label className="text-sm font-black text-slate-700">End time<TimeSelect ariaLabel="Proposed end time" className={inputClass} options={buildTimeOptions()} required value={values.proposed_end_time} onChange={(value) => setValue("proposed_end_time", value)} /></label>
-                <label className="text-sm font-black text-slate-700">Preferred area<input className={inputClass} required value={values.preferred_area} onChange={(event) => setValue("preferred_area", event.target.value)} /></label>
-                <label className="text-sm font-black text-slate-700">Preferred venue <span className="font-semibold text-slate-400">optional</span><input className={inputClass} value={values.preferred_venue_name} onChange={(event) => setValue("preferred_venue_name", event.target.value)} /></label>
-                <label className="sm:col-span-2 text-sm font-black text-slate-700">Alternative area or time <span className="font-semibold text-slate-400">optional</span><input className={inputClass} value={values.alternative_details} onChange={(event) => setValue("alternative_details", event.target.value)} /></label>
-                <p className="sm:col-span-2 rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold leading-6 text-blue-800">Changing the proposed date, time, or area will ask existing players to reconfirm their spot.</p>
-              </> : <p className="sm:col-span-2 rounded-xl bg-slate-50 px-4 py-3 text-sm font-semibold leading-6 text-slate-600">Your confirmed booking controls the venue, court, date, and time. You can extend or bring forward recruitment within the booking time.</p>}
-            </div>
-          ) : null}
-
-          {activeSection === "roles" ? (
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50/80 px-5 py-4 sm:px-7">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold leading-6 text-slate-600">Adjust which Cricksal roles you are still recruiting. A role cannot be reduced below players already accepted into it.</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {roles.map((role) => {
-                  const current = values.role_requirements.find((item) => item.role === role.value)?.required_count || 0;
-                  return <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-4" key={role.value}><div><p className="font-black text-slate-800">{role.label}</p><p className="text-xs font-semibold text-slate-500">Temporary or guest spots</p></div><div className="flex items-center gap-2"><button aria-label={`Decrease ${role.label} spots`} className="h-9 w-9 rounded-lg border border-slate-200 font-black text-slate-600 hover:border-green-300" onClick={() => setRoleCount(role.value, current - 1)} type="button">−</button><span className="w-7 text-center font-black text-sportNavy">{current}</span><button aria-label={`Increase ${role.label} spots`} className="h-9 w-9 rounded-lg border border-slate-200 font-black text-slate-600 hover:border-green-300" onClick={() => setRoleCount(role.value, current + 1)} type="button">+</button></div></div>;
-                })}
-              </div>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Edit listing</p>
+              <p className="mt-1 text-sm font-semibold text-slate-700">Step {activeSectionIndex} of {sectionLabels.length}</p>
             </div>
-          ) : null}
-
-          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
-            <button className="min-h-11 rounded-xl border border-slate-200 px-5 text-sm font-black text-slate-600 hover:bg-slate-50" disabled={isSaving} onClick={onClose} type="button">Cancel</button>
-            <button className="min-h-11 rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={isSaving} type="submit">{isSaving ? "Saving changes..." : "Save changes"}</button>
+            <span className="hidden text-xs font-bold text-slate-500 sm:block">Changes save to this game</span>
           </div>
+          <div aria-label="Edit game sections" className="mt-3 grid grid-cols-3 gap-2" role="tablist">
+            {sectionLabels.map(([key, label, description]) => (
+              <button aria-controls={`edit-game-panel-${key}`} aria-selected={activeSection === key} className={`min-h-12 rounded-md border px-3 py-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-1 ${activeSection === key ? "border-green-200 bg-white text-sportGreen shadow-sm" : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-white"}`} key={key} onClick={() => setActiveSection(key)} role="tab" type="button"><span className="block text-sm font-black">{label}</span><span className="mt-0.5 hidden text-xs font-semibold text-slate-500 sm:block">{description}</span></button>
+            ))}
+          </div>
+        </div>
+
+        <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-7 sm:py-7">
+            {activeSection === "details" ? (
+              <div aria-labelledby="edit-game-panel-details-heading" className="space-y-6" id="edit-game-panel-details" role="tabpanel">
+                <PanelHeading eyebrow="Listing basics" heading="What players see" text="Keep the public game information clear, accurate, and easy to scan." id="edit-game-panel-details-heading" />
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <label className="block text-sm font-black text-slate-700 sm:col-span-2">Game title<input className={inputClass} maxLength={120} required value={values.title} onChange={(event) => setValue("title", event.target.value)} /></label>
+                  <label className="block text-sm font-black text-slate-700">Game format<select className={inputClass} value={values.game_intensity} onChange={(event) => setValue("game_intensity", event.target.value as MatchmakingGame["game_intensity"])}><option value="CASUAL">Casual</option><option value="COMPETITIVE">Competitive</option><option value="PRACTICE">Practice / Friendly</option></select></label>
+                  <label className="block text-sm font-black text-slate-700">Skill level<select className={inputClass} value={values.min_skill_level} onChange={(event) => setValue("min_skill_level", event.target.value as GameSkillLevel)}><option value="OPEN">Open to all</option><option value="BEGINNER">Beginner+</option><option value="INTERMEDIATE">Intermediate+</option><option value="ADVANCED">Advanced only</option></select></label>
+                  <label className="block text-sm font-black text-slate-700 sm:col-span-2">Description<textarea className={`${inputClass} min-h-28 resize-y`} maxLength={800} value={values.description} onChange={(event) => setValue("description", event.target.value)} /></label>
+                  <label className="block text-sm font-black text-slate-700">Total player spots<input className={inputClass} max={30} min={2} type="number" value={values.total_capacity} onChange={(event) => setValue("total_capacity", Number(event.target.value))} /></label>
+                  <label className="block text-sm font-black text-slate-700">Minimum to proceed<input className={inputClass} max={values.total_capacity} min={2} type="number" value={values.minimum_players_to_proceed} onChange={(event) => setValue("minimum_players_to_proceed", Number(event.target.value))} /></label>
+                </div>
+                <div className="border-t border-slate-200 pt-6">
+                  <PanelHeading eyebrow="Match-day notes" heading="Help players arrive prepared" text="These instructions are shown in the game room." />
+                  <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                    <label className="block text-sm font-black text-slate-700 sm:col-span-2">Reporting instructions<textarea className={`${inputClass} min-h-24 resize-y`} maxLength={500} placeholder="Where and when players should report" value={values.reporting_instructions} onChange={(event) => setValue("reporting_instructions", event.target.value)} /></label>
+                    <label className="block text-sm font-black text-slate-700">Host notes <span className="font-semibold text-slate-400">Private</span><textarea className={`${inputClass} min-h-24 resize-y`} maxLength={500} placeholder="Notes for your own planning" value={values.host_notes} onChange={(event) => setValue("host_notes", event.target.value)} /></label>
+                    <label className="block text-sm font-black text-slate-700">Equipment instructions<textarea className={`${inputClass} min-h-24 resize-y`} maxLength={500} placeholder="What players should bring" value={values.equipment_instructions} onChange={(event) => setValue("equipment_instructions", event.target.value)} /></label>
+                  </div>
+                </div>
+                <label className="flex min-h-12 items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-700"><input checked={values.waitlist_enabled} className="h-4 w-4 accent-green-700" onChange={(event) => setValue("waitlist_enabled", event.target.checked)} type="checkbox" /> Allow a waitlist when all player spots are filled</label>
+              </div>
+            ) : null}
+
+            {activeSection === "schedule" ? (
+              <div aria-labelledby="edit-game-panel-schedule-heading" className="space-y-6" id="edit-game-panel-schedule" role="tabpanel">
+                <PanelHeading eyebrow="Timing and location" heading="Set the planning window" text="Recruitment closes before the host must finalize a court booking." id="edit-game-panel-schedule-heading" />
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <DateTimeField helper="Players can request to join until this time. This must come first." inputClass={inputClass} label="Recruitment closes" onChange={(value) => setValue("recruitment_deadline", value)} value={values.recruitment_deadline} />
+                  {isPlanFirst ? <DateTimeField helper="Secure and pay for the court by this time, at least 1 hour before the game." inputClass={inputClass} label="Court booking deadline" onChange={(value) => setValue("booking_deadline", value)} value={values.booking_deadline} /> : null}
+                  {scheduleError ? <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-900 sm:col-span-2" role="alert">{scheduleError}</p> : null}
+                  {isPlanFirst ? <>
+                    <label className="block text-sm font-black text-slate-700">Proposed date<input className={inputClass} required type="date" value={values.proposed_date} onChange={(event) => setValue("proposed_date", event.target.value)} /></label>
+                    <label className="block text-sm font-black text-slate-700">Preferred district<input className={inputClass} value={values.preferred_district} onChange={(event) => setValue("preferred_district", event.target.value)} /></label>
+                    <label className="block text-sm font-black text-slate-700">Start time<TimeSelect ariaLabel="Proposed start time" className={inputClass} options={buildTimeOptions()} required value={values.proposed_start_time} onChange={(value) => setValue("proposed_start_time", value)} /></label>
+                    <label className="block text-sm font-black text-slate-700">End time<TimeSelect ariaLabel="Proposed end time" className={inputClass} options={buildTimeOptions()} required value={values.proposed_end_time} onChange={(value) => setValue("proposed_end_time", value)} /></label>
+                    <label className="block text-sm font-black text-slate-700">Preferred area<input className={inputClass} required value={values.preferred_area} onChange={(event) => setValue("preferred_area", event.target.value)} /></label>
+                    <label className="block text-sm font-black text-slate-700">Preferred venue <span className="font-semibold text-slate-400">Optional</span><input className={inputClass} value={values.preferred_venue_name} onChange={(event) => setValue("preferred_venue_name", event.target.value)} /></label>
+                    <label className="block text-sm font-black text-slate-700 sm:col-span-2">Alternative area or time <span className="font-semibold text-slate-400">Optional</span><input className={inputClass} value={values.alternative_details} onChange={(event) => setValue("alternative_details", event.target.value)} /></label>
+                    <p className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold leading-6 text-blue-800 sm:col-span-2">Changing the proposed date, time, or area will ask existing players to reconfirm their spot.</p>
+                  </> : <p className="rounded-md bg-slate-50 px-4 py-3 text-sm font-semibold leading-6 text-slate-600 sm:col-span-2">Your confirmed booking controls the venue, court, date, and time. You can extend or bring forward recruitment within the booking time.</p>}
+                </div>
+              </div>
+            ) : null}
+
+            {activeSection === "roles" ? (
+              <div aria-labelledby="edit-game-panel-roles-heading" className="space-y-6" id="edit-game-panel-roles" role="tabpanel">
+                <PanelHeading eyebrow="Squad balance" heading="Choose the roles you need" text="Adjust recruitment targets without reducing a role below players already accepted into it." id="edit-game-panel-roles-heading" />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {roles.map((role) => {
+                    const current = values.role_requirements.find((item) => item.role === role.value)?.required_count || 0;
+                    return <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-4" key={role.value}><div><p className="font-black text-slate-800">{role.label}</p><p className="mt-0.5 text-xs font-semibold text-slate-500">Temporary or guest spots</p></div><div className="flex items-center gap-2"><button aria-label={`Decrease ${role.label} spots`} className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-lg font-black text-slate-600 hover:border-green-300 hover:text-sportGreen" onClick={() => setRoleCount(role.value, current - 1)} type="button">−</button><span className="w-7 text-center font-black text-sportNavy">{current}</span><button aria-label={`Increase ${role.label} spots`} className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-lg font-black text-slate-600 hover:border-green-300 hover:text-sportGreen" onClick={() => setRoleCount(role.value, current + 1)} type="button">+</button></div></div>;
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <footer className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-4 sm:px-7">
+            <p className="text-xs font-semibold leading-5 text-slate-500">Changes may notify players when the schedule or roles are affected.</p>
+            <div className="mt-3 flex flex-col-reverse gap-2 sm:mt-0 sm:flex-row">
+              <button className="sport-secondary-button w-full sm:w-auto" disabled={isSaving} onClick={onClose} type="button">Cancel</button>
+              <button aria-busy={isSaving} className="sport-primary-button w-full sm:w-auto" disabled={isSaving} type="submit">{isSaving ? <LoadingIndicator label="Saving changes" size="sm" tone="inverse" /> : "Save changes"}</button>
+            </div>
+          </footer>
         </form>
       </section>
     </div>
   );
+}
+
+function PanelHeading({ eyebrow, heading, id, text }: { eyebrow: string; heading: string; id?: string; text: string }) {
+  return <div><p className="sport-eyebrow">{eyebrow}</p><h3 className="mt-1 text-xl font-black text-sportNavy" id={id}>{heading}</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">{text}</p></div>;
+}
+
+function CloseIcon() {
+  return <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
 }
 
 function DateTimeField({ helper, inputClass, label, onChange, value }: { helper: string; inputClass: string; label: string; onChange: (value: string) => void; value: string }) {

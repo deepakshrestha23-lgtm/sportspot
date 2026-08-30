@@ -59,7 +59,7 @@ export default function VenueLocationPickerMap({
       maxBounds={[[26.3, 80.0], [30.5, 88.3]]}
       maxBoundsViscosity={0.85}
       minZoom={6}
-      scrollWheelZoom
+      scrollWheelZoom={Boolean(onPositionChange)}
       zoom={position ? 16 : 12}
     >
       <TileLayer attribution={attribution} url={tileUrl} />

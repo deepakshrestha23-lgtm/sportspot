@@ -4,6 +4,7 @@ from django.core.management import call_command
 from django.utils import timezone
 
 from matchmaking.services import expire_matchmaking_deadlines
+from players.services import finalize_pending_attendance
 from team_challenges.services import expire_team_challenges
 from venues.services import (
     complete_finished_bookings,
@@ -24,6 +25,7 @@ def run_platform_maintenance(*, limit=100, notify=True, run_reminders=True, now=
     completion_result = complete_finished_bookings(now=now, limit=limit, notify=notify)
     matchmaking_result = expire_matchmaking_deadlines(now=now, limit=limit, notify=notify)
     team_challenge_result = expire_team_challenges(now=now, limit=limit, notify=notify)
+    attendance_result = finalize_pending_attendance(now=now, limit=limit)
 
     reminder_output = ""
     reminders_enabled = bool(run_reminders and notify)
@@ -39,6 +41,7 @@ def run_platform_maintenance(*, limit=100, notify=True, run_reminders=True, now=
         "booking_completion": completion_result,
         "matchmaking": matchmaking_result,
         "team_challenges": team_challenge_result,
+        "attendance": attendance_result,
         "reminders_enabled": reminders_enabled,
         "reminder_output": reminder_output,
     }
@@ -50,6 +53,7 @@ def format_maintenance_summary(result):
     completion = result["booking_completion"]
     matchmaking = result["matchmaking"]
     team_challenges = result.get("team_challenges", 0)
+    attendance = result.get("attendance", 0)
     reminder_summary = result["reminder_output"] or "Booking reminders skipped."
     return (
         "Platform maintenance complete. "
@@ -60,6 +64,6 @@ def format_maintenance_summary(result):
         f"Matchmaking: closed {matchmaking['games_closed']}, cancelled {matchmaking['games_cancelled']}, "
         f"in progress {matchmaking['games_in_progress']}, completed {matchmaking['games_completed']}, "
         f"expired {matchmaking['requests_expired']} request(s). "
-        f"Team challenges expired {team_challenges}. "
+        f"Team challenges expired {team_challenges}. Finalized {attendance} attendance review(s). "
         f"{reminder_summary}"
     )

@@ -9,8 +9,14 @@ from django.utils import timezone
 from matchmaking.services import booking_end_at
 from notifications.models import Notification
 from notifications.services import create_notification, mark_related_action_state
-from players.models import ReliabilityEvent
-from players.services import create_rating_eligibility, record_reliability_event
+from players.models import ParticipationCommitment
+from players.services import (
+    create_participation_commitment,
+    create_rating_eligibility,
+    dispute_commitment,
+    record_commitment_attendance,
+    resolve_commitment_dispute,
+)
 from teams.models import Team, TeamMember
 from venues.models import Booking
 from venues.policies import get_booking_start_at
@@ -757,6 +763,9 @@ def reschedule_challenge(challenge_id, actor, data):
         challenge=challenge,
         defaults={"booking": replacement, "status": TeamFixture.Status.RECONFIRMATION_REQUIRED},
     )
+    fixture = TeamFixture.objects.get(challenge=challenge)
+    for participant in fixture.participants.filter(status=TeamFixtureParticipant.Status.SELECTED).select_related("player", "fixture"):
+        ensure_fixture_participation_commitment(participant, created_by=actor)
     record_event(
         challenge,
         ChallengeEvent.EventType.RECONFIRMATION_REQUIRED,
@@ -782,6 +791,9 @@ def _expire_challenge_reconfirmation_locked(challenge, *, now=None, notify=True)
         status=TeamFixture.Status.CANCELLED,
         updated_at=now,
     )
+    fixture_id = TeamFixture.objects.filter(challenge=challenge).values_list("id", flat=True).first()
+    if fixture_id:
+        void_fixture_participation_commitments(fixture_id, actor=None, reason="challenge_reconfirmation_expired")
     record_event(
         challenge,
         ChallengeEvent.EventType.EXPIRED,
@@ -825,6 +837,9 @@ def reconfirm_challenge(challenge_id, actor, action):
         challenge.is_public = False
         challenge.save(update_fields=["status", "is_public", "updated_at"])
         TeamFixture.objects.filter(challenge=challenge).update(status=TeamFixture.Status.CANCELLED, updated_at=now)
+        fixture_id = TeamFixture.objects.filter(challenge=challenge).values_list("id", flat=True).first()
+        if fixture_id:
+            void_fixture_participation_commitments(fixture_id, actor=actor, reason="schedule_change_declined")
         record_event(challenge, ChallengeEvent.EventType.DECLINED, actor=actor, team=acting_team, proposal=proposal)
         _mark_challenge_actions(challenge, _challenge_recipients(challenge), Notification.ActionStatus.REJECTED)
         notify_challenge_status(
@@ -929,7 +944,9 @@ def attach_booking_to_challenge(challenge_id, booking_id, actor):
     challenge.booking_owner = actor
     challenge.status = TeamChallenge.Status.CONFIRMED
     challenge.save(update_fields=["booking", "booking_owner", "status", "updated_at"])
-    TeamFixture.objects.update_or_create(challenge=challenge, defaults={"booking": booking, "status": TeamFixture.Status.SCHEDULED})
+    fixture, _created = TeamFixture.objects.update_or_create(challenge=challenge, defaults={"booking": booking, "status": TeamFixture.Status.SCHEDULED})
+    for participant in fixture.participants.filter(status=TeamFixtureParticipant.Status.SELECTED).select_related("player", "fixture"):
+        ensure_fixture_participation_commitment(participant, created_by=actor)
     record_event(challenge, ChallengeEvent.EventType.BOOKING_CONFIRMED, actor=actor, team=acting_team, metadata={"booking_id": booking.id})
     recipients = [_team_captain(challenge.challenger_team), _team_captain(challenge.challenged_team)]
     _mark_challenge_actions(challenge, recipients, Notification.ActionStatus.COMPLETED)
@@ -954,6 +971,9 @@ def _close_challenge_for_booking_locked(challenge, *, actor=None, reason="", now
         status=TeamFixture.Status.CANCELLED,
         updated_at=now,
     )
+    fixture_id = TeamFixture.objects.filter(challenge=challenge).values_list("id", flat=True).first()
+    if fixture_id:
+        void_fixture_participation_commitments(fixture_id, actor=actor, reason=reason or "linked_booking_unavailable")
     record_event(
         challenge,
         ChallengeEvent.EventType.CANCELLED,
@@ -1160,7 +1180,56 @@ def add_fixture_participant(fixture_id, actor, player_id):
     )
     participant.full_clean()
     participant.save()
+    ensure_fixture_participation_commitment(participant, created_by=actor)
     return participant
+
+
+def ensure_fixture_participation_commitment(participant, *, created_by=None):
+    """Create the shared commitment for a selected player in a booked fixture."""
+    if not participant or not participant.player_id or not participant.fixture_id:
+        return None, False
+    fixture = participant.fixture
+    start_at, end_at = _fixture_start_end(fixture)
+    if not fixture.booking_id or not start_at or not end_at:
+        return None, False
+    return create_participation_commitment(
+        player=participant.player,
+        source_type=ParticipationCommitment.SourceType.TEAM_FIXTURE,
+        source_id=fixture.id,
+        source_participant_id=participant.id,
+        start_at=start_at,
+        end_at=end_at,
+        metadata={
+            "fixture_id": fixture.id,
+            "participant_id": participant.id,
+            "team_id": participant.team_id,
+            "challenge_id": fixture.challenge_id,
+        },
+        created_by=created_by,
+    )
+
+
+def void_fixture_participation_commitments(fixture_id, *, actor=None, reason=""):
+    """Void scheduled fixture commitments when the match ends outside a player’s control."""
+    from players.services import void_participation_commitment
+
+    commitments = list(
+        ParticipationCommitment.objects.filter(
+            source_type=ParticipationCommitment.SourceType.TEAM_FIXTURE,
+            source_id=fixture_id,
+        ).values_list("id", flat=True)
+    )
+    changed = 0
+    for commitment_id in commitments:
+        _commitment, was_changed = void_participation_commitment(
+            source_type=ParticipationCommitment.SourceType.TEAM_FIXTURE,
+            source_id=fixture_id,
+            commitment_id=commitment_id,
+            actor=actor,
+            reason=reason or "fixture_cancelled",
+        )
+        changed += int(was_changed)
+    return changed
 
 
 @transaction.atomic
@@ -1208,6 +1277,15 @@ def remove_fixture_participant(fixture_id, participant_id, actor):
     if participant.status == TeamFixtureParticipant.Status.WITHDRAWN:
         participant._idempotent_replay = True
         return participant
+    from players.services import void_participation_commitment
+
+    void_participation_commitment(
+        source_type=ParticipationCommitment.SourceType.TEAM_FIXTURE,
+        source_id=fixture.id,
+        player_id=participant.player_id,
+        actor=actor,
+        reason="The team captain removed the player from the lineup before the match.",
+    )
     participant.status = TeamFixtureParticipant.Status.WITHDRAWN
     participant.save(update_fields=["status", "updated_at"])
     return participant
@@ -1234,6 +1312,13 @@ def record_fixture_attendance(fixture_id, participant_id, actor, attendance_stat
         raise ValidationError("Choose attended or absent.")
     if participant.status != TeamFixtureParticipant.Status.SELECTED:
         if participant.status == normalized:
+            commitment, _created = ensure_fixture_participation_commitment(participant, created_by=actor)
+            if commitment:
+                record_commitment_attendance(
+                    commitment_id=commitment.id,
+                    actor=actor,
+                    attended=normalized == TeamFixtureParticipant.Status.ATTENDED,
+                )
             participant._idempotent_replay = True
             return participant
         raise ValidationError("Attendance for this player has already been recorded.")
@@ -1241,33 +1326,68 @@ def record_fixture_attendance(fixture_id, participant_id, actor, attendance_stat
     participant.attendance_recorded_by = actor
     participant.attendance_recorded_at = _now()
     participant.save(update_fields=["status", "attendance_recorded_by", "attendance_recorded_at", "updated_at"])
-    if normalized == TeamFixtureParticipant.Status.ATTENDED:
-        record_reliability_event(
-            player=participant.player,
-            event_type=ReliabilityEvent.EventType.GAME_COMPLETED_ATTENDED,
-            impact=ReliabilityEvent.Impact.POSITIVE,
-            title="Attended a confirmed team match",
-            description="Verified attendance was recorded for a completed team match.",
-            related_entity_type="team_fixture",
-            related_entity_id=fixture.id,
-            dedupe_key=f"team-fixture:{fixture.id}:attendance:{participant.player_id}",
-            occurred_at=participant.attendance_recorded_at,
-            created_by=actor,
-        )
-    else:
-        record_reliability_event(
-            player=participant.player,
-            event_type=ReliabilityEvent.EventType.GAME_NO_SHOW,
-            impact=ReliabilityEvent.Impact.NEGATIVE,
-            title="Missed a confirmed team match",
-            description="A team captain recorded that the player did not attend the completed match.",
-            related_entity_type="team_fixture",
-            related_entity_id=fixture.id,
-            dedupe_key=f"team-fixture:{fixture.id}:absence:{participant.player_id}",
-            occurred_at=participant.attendance_recorded_at,
-            created_by=actor,
-        )
+    commitment, _created = ensure_fixture_participation_commitment(participant, created_by=actor)
+    if not commitment:
+        raise ValidationError("This player does not have a confirmed fixture commitment.")
+    record_commitment_attendance(
+        commitment_id=commitment.id,
+        actor=actor,
+        attended=normalized == TeamFixtureParticipant.Status.ATTENDED,
+    )
     return participant
+
+
+@transaction.atomic
+def dispute_fixture_attendance(fixture_id, participant_id, player, reason):
+    participant = TeamFixtureParticipant.objects.filter(
+        fixture_id=fixture_id,
+        id=participant_id,
+        player=player,
+    ).first()
+    if not participant:
+        raise ValidationError("You do not have an attendance record for this match.")
+    commitment = ParticipationCommitment.objects.filter(
+        player=player,
+        source_type=ParticipationCommitment.SourceType.TEAM_FIXTURE,
+        source_id=fixture_id,
+        source_participant_id=participant.id,
+    ).order_by("-source_version", "-id").first()
+    if not commitment:
+        raise ValidationError("This match does not have a reviewable attendance record.")
+    return dispute_commitment(commitment_id=commitment.id, player=player, reason=reason)
+
+
+@transaction.atomic
+def resolve_fixture_attendance_dispute(fixture_id, participant_id, actor, outcome):
+    """Resolve a staff-reviewed fixture attendance dispute and resync dependants."""
+    fixture = TeamFixture.objects.select_for_update().get(pk=fixture_id)
+    participant = TeamFixtureParticipant.objects.select_for_update().filter(
+        fixture=fixture,
+        pk=participant_id,
+    ).first()
+    if not participant:
+        raise ValidationError("That player is not listed for this match.")
+    commitment = ParticipationCommitment.objects.filter(
+        player_id=participant.player_id,
+        source_type=ParticipationCommitment.SourceType.TEAM_FIXTURE,
+        source_id=fixture.id,
+        source_participant_id=participant.id,
+    ).order_by("-source_version", "-id").first()
+    if not commitment:
+        raise ValidationError("This match does not have an open attendance dispute.")
+    resolved = resolve_commitment_dispute(commitment_id=commitment.id, actor=actor, outcome=outcome)
+    normalized = str(outcome or "").upper()
+    if normalized == "ATTENDED":
+        participant.status = TeamFixtureParticipant.Status.ATTENDED
+        participant.attendance_recorded_by = actor
+        participant.attendance_recorded_at = resolved.resolved_at
+        participant.save(update_fields=["status", "attendance_recorded_by", "attendance_recorded_at"])
+        if fixture.result_confirmed_at:
+            _create_fixture_rating_eligibilities(fixture)
+    elif normalized in {"NO_SHOW", "EXCUSED"}:
+        participant.status = TeamFixtureParticipant.Status.ABSENT
+        participant.save(update_fields=["status"])
+    return resolved
 
 
 @transaction.atomic
@@ -1351,7 +1471,7 @@ def _create_fixture_rating_eligibilities(fixture):
                     notification_type=Notification.NotificationType.RATING_REQUIRED,
                     title="Share feedback on your team match",
                     message="Your completed team match is ready for verified player feedback.",
-                    action_url="/dashboard/ratings",
+                    action_url="/dashboard/player/ratings",
                     related_entity_type="team_fixture",
                     related_entity_id=fixture.id,
                     action_required=True,
@@ -1374,6 +1494,9 @@ def cancel_challenge(challenge_id, actor):
     challenge.is_public = False
     challenge.save(update_fields=["status", "is_public", "updated_at"])
     TeamFixture.objects.filter(challenge=challenge).update(status=TeamFixture.Status.CANCELLED, updated_at=_now())
+    fixture_id = TeamFixture.objects.filter(challenge=challenge).values_list("id", flat=True).first()
+    if fixture_id:
+        void_fixture_participation_commitments(fixture_id, actor=actor, reason="challenge_cancelled")
     record_event(challenge, ChallengeEvent.EventType.CANCELLED, actor=actor)
     _mark_challenge_actions(challenge, _challenge_recipients(challenge), Notification.ActionStatus.CANCELLED)
     other = _opponent_captain(challenge, actor)
@@ -1460,6 +1583,9 @@ def _close_challenge_for_captain_continuity_locked(challenge, *, invalid_team_id
         status=TeamFixture.Status.CANCELLED,
         updated_at=now,
     )
+    fixture_id = TeamFixture.objects.filter(challenge=challenge).values_list("id", flat=True).first()
+    if fixture_id:
+        void_fixture_participation_commitments(fixture_id, actor=None, reason="team_captain_unavailable")
     OpenChallengeResponse.objects.filter(
         challenge=challenge,
         status=OpenChallengeResponse.Status.PENDING,
@@ -1581,6 +1707,9 @@ def expire_team_challenges(*, now=None, limit=100, notify=True):
             challenge.is_public = False
             challenge.save(update_fields=["status", "is_public", "updated_at"])
             TeamFixture.objects.filter(challenge=challenge).update(status=TeamFixture.Status.CANCELLED, updated_at=now)
+            fixture_id = TeamFixture.objects.filter(challenge=challenge).values_list("id", flat=True).first()
+            if fixture_id:
+                void_fixture_participation_commitments(fixture_id, actor=None, reason="booking_deadline_expired")
             record_event(challenge, ChallengeEvent.EventType.EXPIRED, metadata={"reason": "booking_deadline"})
             _mark_challenge_actions(challenge, _challenge_recipients(challenge), Notification.ActionStatus.EXPIRED)
             if notify:

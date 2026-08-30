@@ -19,6 +19,7 @@ export default function CreateOwnerCourtPage() {
     surface_type: "TURF",
     is_active: true,
   });
+  const [photo, setPhoto] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -27,7 +28,10 @@ export default function CreateOwnerCourtPage() {
     setIsSaving(true);
     setError("");
     try {
-      const response = await api.post<{ court: Court }>("/api/venues/owner/courts/", form);
+      const payload = new FormData();
+      Object.entries(form).forEach(([key, value]) => payload.append(key, String(value)));
+      if (photo) payload.append("court_photo", photo);
+      const response = await api.post<{ court: Court }>("/api/venues/owner/courts/", payload);
       router.push(`/dashboard/owner/courts/${response.data.court.id}/slots`);
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, "Could not create court."));
@@ -39,8 +43,8 @@ export default function CreateOwnerCourtPage() {
   return (
     <div className="space-y-6">
       <OwnerPageHeader backHref="/dashboard/owner/courts" backLabel="Back to courts" description="Add a physical Cricksal court to your venue, then configure its bookable slots." eyebrow="Venue Manager" title="Add Court" />
-      <section className="sport-card max-w-3xl">
-        <p className="text-sm text-slate-600">Every court in SportSpot is Cricksal-only for now.</p>
+      <section className="owner-court-create-card max-w-3xl">
+        <div className="owner-court-create-intro"><p className="owner-section-kicker">Court profile</p><h2>Add a physical play area</h2><p>Give players enough detail to choose the right court. Slots and pricing are configured next.</p></div>
         <FeedbackToast message={error} onClose={() => setError("")} type="error" />
 
         <form className="mt-6 space-y-4" onSubmit={submit}>
@@ -50,6 +54,7 @@ export default function CreateOwnerCourtPage() {
             <Select label="Court Type" value={form.court_type} onChange={(value) => setForm({ ...form, court_type: value })} options={["INDOOR", "OUTDOOR", "COVERED"]} />
             <Select label="Surface Type" value={form.surface_type} onChange={(value) => setForm({ ...form, surface_type: value })} options={["TURF", "MAT", "CEMENT", "ARTIFICIAL_TURF"]} />
           </div>
+          <label className="owner-court-create-upload"><span><strong>Court photo</strong><small>Optional. JPG, JPEG or PNG, up to 3 MB.</small></span><input accept=".jpg,.jpeg,.png" onChange={(event) => setPhoto(event.target.files?.[0] || null)} type="file" />{photo ? <em>{photo.name}</em> : null}</label>
           <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <input checked={form.is_active} onChange={(event) => setForm({ ...form, is_active: event.target.checked })} type="checkbox" />
             Court is active

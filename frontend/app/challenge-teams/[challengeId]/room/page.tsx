@@ -19,6 +19,9 @@ export default function TeamChallengeRoomPage() {
   const [eligiblePlayers, setEligiblePlayers] = useState<FixtureEligiblePlayer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [action, setAction] = useState<"add" | "remove" | "attendance" | "result" | "confirm" | null>(null);
+  const [disputeParticipant, setDisputeParticipant] = useState<TeamFixtureParticipant | null>(null);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [isDisputing, setIsDisputing] = useState(false);
   const [resultDraft, setResultDraft] = useState("");
   const [error, setError] = useState("");
 
@@ -51,6 +54,33 @@ export default function TeamChallengeRoomPage() {
       setEligiblePlayers(response.data.players);
     } catch {
       setEligiblePlayers([]);
+    }
+  }
+
+  async function submitAttendanceDispute() {
+    if (!data || !disputeParticipant || disputeReason.trim().length < 5 || isDisputing) return;
+    setIsDisputing(true);
+    try {
+      await api.post(
+        `/api/team-challenges/fixtures/${data.fixture.id}/participants/${disputeParticipant.id}/attendance/dispute/`,
+        { reason: disputeReason.trim() },
+      );
+      setData((current) => current ? {
+        ...current,
+        fixture: {
+          ...current.fixture,
+          participants: current.fixture.participants.map((participant) => participant.id === disputeParticipant.id
+            ? { ...participant, attendance: { ...participant.attendance, status: "DISPUTED", can_dispute: false, review_deadline_at: participant.attendance?.review_deadline_at || null } }
+            : participant),
+        },
+      } : current);
+      setDisputeParticipant(null);
+      setDisputeReason("");
+      emitToast({ message: "Your attendance dispute has been submitted for review.", type: "success", dedupeKey: `fixture-attendance-dispute-${data.fixture.id}-${disputeParticipant.id}` });
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not submit the attendance dispute."), type: "error", dedupeKey: `fixture-attendance-dispute-error-${data.fixture.id}-${disputeParticipant.id}` });
+    } finally {
+      setIsDisputing(false);
     }
   }
 
@@ -131,7 +161,7 @@ export default function TeamChallengeRoomPage() {
               {fixture.result ? <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-xs font-black uppercase tracking-[0.12em] text-green-800">Match result</p><p className="mt-1 font-bold text-green-950">{fixture.result}</p><p className="mt-1 text-sm text-green-800">{fixture.result_confirmed_at ? "Confirmed by both team captains." : "Waiting for the other captain to confirm."}</p></div> : null}
             </section>
             {canManage && fixture.permissions.can_manage_lineup ? <section className="sport-surface p-5 sm:p-6"><SectionHeading title="Manage your lineup" description="Select active registered members who are playing for your team." /><div className="mt-4 space-y-2">{eligiblePlayers.length ? eligiblePlayers.map((player) => <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between" key={player.player_id}><div className="min-w-0"><p className="truncate font-bold text-sportNavy">{player.player_name}</p><p className="mt-1 text-xs font-semibold text-slate-500">{formatStatus(player.cricksal_role)}{player.sportspot_id ? ` · ${player.sportspot_id}` : ""}</p></div><button className="sport-secondary-button shrink-0" disabled={Boolean(action)} onClick={() => void updateFixture("add", `/api/team-challenges/fixtures/${fixture.id}/participants/`, { player_id: player.player_id }, "The player has been added to the lineup.")} type="button">{action === "add" ? "Adding..." : "Add to lineup"}</button></div>) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">All available members are already listed, or no active members are available.</p>}</div></section> : null}
-            {fixture.permissions.can_record_attendance ? <section className="sport-surface p-5 sm:p-6"><SectionHeading title="Attendance" description="Record attendance for your team after the match has finished." /><div className="mt-4 space-y-2">{ownParticipants.length ? ownParticipants.map((participant) => <AttendanceRow key={participant.id} action={action} participant={participant} onAttendance={(attendanceStatus) => void updateFixture("attendance", `/api/team-challenges/fixtures/${fixture.id}/participants/${participant.id}/attendance/`, { status: attendanceStatus }, `${participant.player_name}'s attendance has been recorded.`)} />) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No players from your team have been selected yet.</p>}</div></section> : null}
+            {fixture.permissions.can_record_attendance ? <section className="sport-surface p-5 sm:p-6"><SectionHeading title="Attendance" description="Record attendance for your team after the match has finished. A no-show report remains reviewable for 24 hours." /><div className="mt-4 space-y-2">{ownParticipants.length ? ownParticipants.map((participant) => <AttendanceRow key={participant.id} action={action} participant={participant} onAttendance={(attendanceStatus) => void updateFixture("attendance", `/api/team-challenges/fixtures/${fixture.id}/participants/${participant.id}/attendance/`, { status: attendanceStatus }, `${participant.player_name}'s attendance has been recorded.`)} onDispute={(target) => { setDisputeParticipant(target); setDisputeReason(""); }} />) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No players from your team have been selected yet.</p>}{disputeParticipant ? <AttendanceDisputeForm isSubmitting={isDisputing} onCancel={() => setDisputeParticipant(null)} onChange={setDisputeReason} onSubmit={() => void submitAttendanceDispute()} reason={disputeReason} /> : null}</div></section> : null}
             {fixture.status === "COMPLETED" && canManage ? <section className="sport-surface p-5 sm:p-6"><SectionHeading title="Match result" description="One captain submits the result and the other captain confirms it." />{!fixture.result_confirmed_at ? <textarea className="sport-field mt-4 min-h-24 w-full" disabled={!fixture.permissions.can_submit_result || Boolean(action)} maxLength={200} onChange={(event) => setResultDraft(event.target.value)} placeholder="For example: Kathmandu Kings won by 4 wickets" value={resultDraft} /> : null}<div className="mt-3 flex flex-wrap gap-2">{fixture.permissions.can_submit_result && !fixture.result_confirmed_at ? <button className="sport-primary-button" disabled={!resultDraft.trim() || Boolean(action)} onClick={() => void updateFixture("result", `/api/team-challenges/fixtures/${fixture.id}/result/`, { result: resultDraft.trim() }, "The match result has been submitted.")} type="button">{action === "result" ? "Submitting..." : fixture.result ? "Update result" : "Submit result"}</button> : null}{fixture.permissions.can_confirm_result ? <button className="sport-primary-button" disabled={Boolean(action)} onClick={() => void updateFixture("confirm", `/api/team-challenges/fixtures/${fixture.id}/result/confirm/`, undefined, "The match result has been confirmed.")} type="button">{action === "confirm" ? "Confirming..." : "Confirm result"}</button> : null}</div>{fixture.result && !fixture.result_confirmed_at && !fixture.permissions.can_confirm_result ? <p className="mt-3 text-sm text-slate-600">The other captain must confirm this result before ratings become available.</p> : null}</section> : null}
             <section className="sport-surface p-5 sm:p-6">
               <SectionHeading title={isReadOnly ? "Match record" : "Before you play"} description="Keep the agreed schedule and team information close at hand." />
@@ -169,11 +199,15 @@ function Info({ label, value }: { label: string; value: string }) {
   return <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">{label}</p><p className="mt-1 font-bold text-sportNavy">{value}</p></div>;
 }
 
-function AttendanceRow({ action, onAttendance, participant }: { action: "add" | "remove" | "attendance" | "result" | "confirm" | null; onAttendance: (status: "ATTENDED" | "ABSENT") => void; participant: TeamFixtureParticipant }) {
+function AttendanceRow({ action, onAttendance, onDispute, participant }: { action: "add" | "remove" | "attendance" | "result" | "confirm" | null; onAttendance: (status: "ATTENDED" | "ABSENT") => void; onDispute: (participant: TeamFixtureParticipant) => void; participant: TeamFixtureParticipant }) {
   if (participant.status !== "SELECTED") {
-    return <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3"><span className="font-bold text-sportNavy">{participant.player_name}</span><span className="text-xs font-bold text-slate-600">{participant.status_label}</span></div>;
+    return <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between"><span className="font-bold text-sportNavy">{participant.player_name}</span><div className="flex items-center gap-3"><span className="text-xs font-bold text-slate-600">{participant.attendance?.status ? formatStatus(participant.attendance.status) : participant.status_label}</span>{participant.attendance?.can_dispute ? <button className="text-xs font-black text-amber-800 underline underline-offset-2" onClick={() => onDispute(participant)} type="button">Dispute report</button> : null}</div></div>;
   }
   return <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between"><span className="font-bold text-sportNavy">{participant.player_name}</span><div className="flex gap-2"><button className="sport-secondary-button min-h-9 px-3 text-xs" disabled={Boolean(action)} onClick={() => onAttendance("ATTENDED")} type="button">Attended</button><button className="sport-secondary-button min-h-9 border-red-200 px-3 text-xs text-red-700 hover:bg-red-50" disabled={Boolean(action)} onClick={() => onAttendance("ABSENT")} type="button">Absent</button></div></div>;
+}
+
+function AttendanceDisputeForm({ isSubmitting, onCancel, onChange, onSubmit, reason }: { isSubmitting: boolean; onCancel: () => void; onChange: (value: string) => void; onSubmit: () => void; reason: string }) {
+  return <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-black text-amber-950">Why is this report incorrect?</p><p className="mt-1 text-xs leading-5 text-amber-800">SportSpot will keep the report neutral while staff review it. Please include at least five characters.</p><textarea className="sport-field mt-3 min-h-20 w-full bg-white" maxLength={500} onChange={(event) => onChange(event.target.value)} placeholder="For example: I attended the match and checked in with both captains." value={reason} /><div className="mt-3 flex flex-wrap gap-2"><button className="sport-secondary-button" disabled={isSubmitting} onClick={onCancel} type="button">Cancel</button><button className="sport-primary-button" disabled={isSubmitting || reason.trim().length < 5} onClick={onSubmit} type="button">{isSubmitting ? "Submitting..." : "Submit dispute"}</button></div></div>;
 }
 
 function formatDate(value: string | null) {

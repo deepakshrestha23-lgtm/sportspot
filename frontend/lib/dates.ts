@@ -54,10 +54,13 @@ export function formatDateTimeInNepal(dateValue: string | null | undefined, opti
   if (!dateValue) return "Not set";
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return "Not set";
-  const hasDateTimeStyle = Boolean(options?.dateStyle || options?.timeStyle);
+  // An explicit set of date/time fields should be respected as-is. The old
+  // check only recognised dateStyle/timeStyle and accidentally appended the
+  // default timestamp to calls requesting a single date part.
+  const hasExplicitFormat = Boolean(options && Object.keys(options).length > 0);
 
   return new Intl.DateTimeFormat(APP_LOCALE, {
-    ...(hasDateTimeStyle
+    ...(hasExplicitFormat
       ? {}
       : {
           month: "short",

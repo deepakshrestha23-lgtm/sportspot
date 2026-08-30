@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import BackButton from "@/components/BackButton";
 
 export function OwnerDashboardContent({ children }: { children: ReactNode }) {
-  return <div className="sport-page-content">{children}</div>;
+  return <div className="sport-page-content owner-page-content">{children}</div>;
 }
 
 export function OwnerPageHeader({
@@ -22,7 +22,7 @@ export function OwnerPageHeader({
   title: string;
 }) {
   return (
-    <header className="sport-page-header">
+    <header className="sport-page-header owner-page-header">
       <div className="min-w-0">
         {backHref ? <BackButton href={backHref} label={backLabel} /> : null}
         <p className="sport-eyebrow">{eyebrow}</p>

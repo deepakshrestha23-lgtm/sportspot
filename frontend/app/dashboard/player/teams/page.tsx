@@ -91,7 +91,7 @@ export default function PlayerTeamsPage() {
         description="View your teams, manage captain responsibilities, and respond to invitations from one place."
       />
 
-      <section className="sport-surface overflow-hidden">
+      <section className="sport-surface overflow-visible">
         <div className="flex flex-col gap-4 border-b border-slate-200 px-4 pt-4 sm:px-5 sm:pt-5">
           <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Team sections">
             <TabButton active={activeTab === "teams"} count={teams.length} label="My Teams" onClick={() => setActiveTab("teams")} />
@@ -198,7 +198,9 @@ function TeamCard({ openMenuId, setOpenMenuId, team }: { openMenuId: number | nu
       <div className="mt-4 flex items-center gap-2">
         <Link className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" href={`/dashboard/player/teams/${team.id}`}>View Team</Link>
         <div className="relative">
-          <button aria-expanded={menuOpen} aria-label={`More actions for ${team.name}`} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-lg font-black text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-200" onClick={() => setOpenMenuId(menuOpen ? null : team.id)} type="button">...</button>
+          <button aria-controls={`team-actions-${team.id}`} aria-expanded={menuOpen} aria-haspopup="menu" aria-label={`More actions for ${team.name}`} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-200" onClick={() => setOpenMenuId(menuOpen ? null : team.id)} type="button">
+            <MoreIcon />
+          </button>
           {menuOpen ? <TeamActionMenu isCaptain={team.is_captain} teamId={team.id} /> : null}
         </div>
       </div>
@@ -208,7 +210,7 @@ function TeamCard({ openMenuId, setOpenMenuId, team }: { openMenuId: number | nu
 
 function TeamActionMenu({ isCaptain, teamId }: { isCaptain: boolean; teamId: number }) {
   return (
-    <div className="absolute right-0 top-12 z-10 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+    <div className="absolute right-0 top-12 z-30 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-xl" id={`team-actions-${teamId}`} role="menu">
       <MenuLink href={`/dashboard/player/teams/${teamId}`} label={isCaptain ? "Manage Team" : "Team Details"} />
       {isCaptain ? (
         <>
@@ -322,7 +324,7 @@ function InfoRow({ label, value }: { label: string; value: string | number }) {
 }
 
 function MenuLink({ href, label }: { href: string; label: string }) {
-  return <Link className="block rounded-lg px-3 py-2 text-sm font-black text-slate-700 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200" href={href}>{label}</Link>;
+  return <Link className="block rounded-lg px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200" href={href} role="menuitem">{label}</Link>;
 }
 
 function formatChoice(value?: string) {
@@ -352,4 +354,8 @@ function getTeamPhotoSrc(value: string) {
 
 function getTeamInitials(name: string) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("") || "SS";
+}
+
+function MoreIcon() {
+  return <svg aria-hidden="true" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>;
 }

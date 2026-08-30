@@ -552,4 +552,40 @@ class JoinRequestEvent(models.Model):
         return f"{self.join_request_id} - {self.event_type}"
 
 
+class GameChatMessage(models.Model):
+    """Durable, room-scoped conversation messages for registered players."""
+
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="chat_messages")
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="game_chat_messages",
+        blank=True,
+        null=True,
+    )
+    sender_name = models.CharField(max_length=120)
+    body = models.TextField(max_length=1000)
+    client_message_id = models.CharField(max_length=64, blank=True)
+    edited_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "sender", "client_message_id"],
+                condition=Q(client_message_id__gt=""),
+                name="unique_game_chat_client_message",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["game", "-created_at", "-id"], name="game_chat_history_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.game_id} - {self.sender_name} - {self.created_at.isoformat()}"
+
+
 

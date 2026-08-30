@@ -21,8 +21,11 @@ export interface RatingSummary {
 export interface ReliabilityMetrics {
   completed_games: number;
   attendance_rate: number | null;
+  commitments_honoured_rate: number | null;
+  accountable_commitments: number;
   late_cancellations: number;
   no_shows: number;
+  pending_attendance_reviews: number;
 }
 
 export interface ReliabilityBreakdownItem {
@@ -58,6 +61,19 @@ export interface PendingRatingItem {
   related_entity_id: number;
 }
 
+export interface PendingAttendanceReview {
+  id: number;
+  title: string;
+  source_type: "MATCHMAKING_GAME" | "TEAM_FIXTURE";
+  source_id: number;
+  source_participant_id: number;
+  start_at: string;
+  status: "NO_SHOW_REPORTED" | "DISPUTED";
+  review_deadline_at: string | null;
+  action_url: string;
+  can_dispute: boolean;
+}
+
 export interface RecentRatingItem {
   id: number;
   value: string;
@@ -76,6 +92,7 @@ export interface PlayerRatingsReliabilityResponse {
   breakdown: ReliabilityBreakdownItem[];
   activity: ReliabilityActivityItem[];
   pending_ratings: PendingRatingItem[];
+  pending_attendance_reviews: PendingAttendanceReview[];
   recent_ratings: RecentRatingItem[];
   improvement_guidance: string;
 }

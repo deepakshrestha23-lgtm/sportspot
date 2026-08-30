@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateTimeInNepal } from "@/lib/dates";
 import { emitToast } from "@/lib/toast";
 import type {
+  PendingAttendanceReview,
   PendingRatingItem,
   PlayerRatingsReliabilityResponse,
   RatingSummary,
@@ -25,6 +27,8 @@ export default function PlayerRatingsPage() {
   const [error, setError] = useState("");
   const [ratingTarget, setRatingTarget] = useState<PendingRatingItem | null>(null);
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+  const [attendanceTarget, setAttendanceTarget] = useState<PendingAttendanceReview | null>(null);
+  const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
 
   useEffect(() => {
     loadSummary();
@@ -80,6 +84,23 @@ export default function PlayerRatingsPage() {
     );
   }
 
+  async function submitAttendanceDispute(target: PendingAttendanceReview, reason: string) {
+    setIsSubmittingAttendance(true);
+    try {
+      const prefix = target.source_type === "TEAM_FIXTURE"
+        ? `/api/team-challenges/fixtures/${target.source_id}/participants/${target.source_participant_id}/attendance/dispute/`
+        : `/api/matchmaking/games/${target.source_id}/participants/${target.source_participant_id}/attendance/dispute/`;
+      await api.post(prefix, { reason });
+      emitToast({ message: "Your attendance dispute has been submitted for review.", type: "success", dedupeKey: `attendance-dispute-${target.id}` });
+      setAttendanceTarget(null);
+      await loadSummary();
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not submit the attendance dispute."), type: "error", dedupeKey: `attendance-dispute-error-${target.id}` });
+    } finally {
+      setIsSubmittingAttendance(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <DashboardPageHeader
@@ -116,6 +137,7 @@ export default function PlayerRatingsPage() {
         </div>
         <div className="space-y-4">
           <RatingSummaryCard rating={summary.rating} />
+          <PendingAttendanceReviews items={summary.pending_attendance_reviews} onReview={setAttendanceTarget} />
           <PendingRatings items={summary.pending_ratings} onRate={setRatingTarget} />
           <GuidanceCard message={summary.improvement_guidance} />
         </div>
@@ -129,6 +151,14 @@ export default function PlayerRatingsPage() {
           onClose={() => setRatingTarget(null)}
           onSubmit={submitRating}
           target={ratingTarget}
+        />
+      ) : null}
+      {attendanceTarget ? (
+        <AttendanceDisputeModal
+          isSubmitting={isSubmittingAttendance}
+          onClose={() => setAttendanceTarget(null)}
+          onSubmit={(reason) => void submitAttendanceDispute(attendanceTarget, reason)}
+          target={attendanceTarget}
         />
       ) : null}
     </div>
@@ -194,8 +224,8 @@ function RatingCard({ rating }: { rating: RatingSummary }) {
 
 function MetricGrid({ metrics }: { metrics: ReliabilityMetrics }) {
   const cards = [
-    { label: "Matches", value: String(metrics.completed_games), helper: "Verified games", icon: <BallIcon />, tone: "green" },
-    { label: "Attendance", value: metrics.attendance_rate === null ? "--" : `${metrics.attendance_rate}%`, helper: metrics.attendance_rate === null ? "Not enough data" : "Confirmed commitments", icon: <CheckIcon />, tone: "slate" },
+    { label: "Attended games", value: String(metrics.completed_games), helper: "Verified commitments", icon: <BallIcon />, tone: "green" },
+    { label: "Commitments fulfilled", value: metrics.commitments_honoured_rate === null ? "--" : `${metrics.commitments_honoured_rate}%`, helper: metrics.commitments_honoured_rate === null ? "Not enough data" : "Attendance and on-time follow-through", icon: <CheckIcon />, tone: "slate" },
     { label: "Late Cancels", value: String(metrics.late_cancellations), helper: "After deadline", icon: <ClockIcon />, tone: "slate" },
     { label: "No-Shows", value: String(metrics.no_shows), helper: "Missed games", icon: <WarningIcon />, tone: "red" },
   ];
@@ -309,6 +339,54 @@ function RatingSummaryCard({ rating }: { rating: RatingSummary }) {
         </div>
       )}
     </section>
+  );
+}
+
+function PendingAttendanceReviews({ items, onReview }: { items: PendingAttendanceReview[]; onReview: (item: PendingAttendanceReview) => void }) {
+  if (!items.length) return null;
+  return (
+    <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm sm:p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-700">!</span>
+        <div>
+          <h2 className="text-lg font-black text-amber-950">Attendance reviews</h2>
+          <p className="mt-1 text-sm leading-6 text-amber-900">A host reported a missed game. Review it before the deadline; unresolved reports may affect reliability.</p>
+        </div>
+      </div>
+      <div className="mt-4 space-y-3">
+        {items.map((item) => (
+          <article className="rounded-xl border border-amber-200 bg-white p-3" key={item.id}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-black text-sportNavy">{item.title}</p>
+                <p className="mt-1 text-sm text-slate-600">{formatDate(item.start_at)} · {item.status === "DISPUTED" ? "Under staff review" : item.review_deadline_at ? `Review by ${formatDate(item.review_deadline_at)}` : "Review required"}</p>
+              </div>
+              {item.can_dispute ? <button className="min-h-10 shrink-0 rounded-lg bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700" onClick={() => onReview(item)} type="button">Review report</button> : <span className="text-xs font-black uppercase tracking-wide text-amber-800">Under review</span>}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AttendanceDisputeModal({ isSubmitting, onClose, onSubmit, target }: { isSubmitting: boolean; onClose: () => void; onSubmit: (reason: string) => void; target: PendingAttendanceReview }) {
+  const [reason, setReason] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-sportNavy/50 p-3 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="attendance-dispute-title">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">Attendance review</p>
+            <h2 className="mt-2 text-xl font-black text-sportNavy" id="attendance-dispute-title">Dispute this no-show report</h2>
+          </div>
+          <button className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label="Close attendance dispute" onClick={onClose} type="button">x</button>
+        </div>
+        <p className="mt-4 text-sm leading-6 text-slate-600">{target.title} on {formatDate(target.start_at)}. Explain briefly why the report is incorrect. Your reliability stays unchanged while SportSpot reviews the case.</p>
+        <textarea className="mt-4 min-h-28 w-full rounded-xl border border-slate-200 p-3 text-sm font-semibold text-sportNavy outline-none focus:border-sportGreen focus:ring-4 focus:ring-green-100" maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="For example: I attended and checked in with the captain." value={reason} />
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-700" disabled={isSubmitting} onClick={onClose} type="button">Cancel</button><button className="min-h-10 rounded-lg bg-sportGreen px-4 text-sm font-black text-white disabled:opacity-50" disabled={isSubmitting || reason.trim().length < 5} onClick={() => onSubmit(reason.trim())} type="button">{isSubmitting ? "Submitting..." : "Submit dispute"}</button></div>
+      </div>
+    </div>
   );
 }
 
@@ -460,7 +538,7 @@ function RatingSubmissionModal({
             Cancel
           </button>
           <button className="min-h-11 rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 disabled:cursor-not-allowed disabled:opacity-60" disabled={isSubmitting} onClick={() => onSubmit(target, rating, feedbackTags, comment)} type="button">
-            {isSubmitting ? "Submitting..." : "Submit Rating"}
+            {isSubmitting ? <LoadingIndicator label="Submitting rating" size="sm" tone="inverse" /> : "Submit Rating"}
           </button>
         </div>
       </div>

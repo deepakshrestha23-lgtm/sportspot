@@ -21,9 +21,11 @@ from venues.models import Booking
 from venues.permissions import IsPlayer
 from sportspot_api.throttling import MutationThrottleMixin
 
-from .models import ACTIVE_PARTICIPANT_STATUSES, Game, JoinRequest, JoinRequestEvent
+from .models import ACTIVE_PARTICIPANT_STATUSES, Game, GameChatMessage, JoinRequest, JoinRequestEvent
 from .serializers import (
     EligibleBookingSerializer,
+    GameChatMessageCreateSerializer,
+    GameChatMessageSerializer,
     GameCreateSerializer,
     GameParticipantSerializer,
     GameHostUpdateSerializer,
@@ -51,6 +53,8 @@ from .services import (
     invite_temporary_participant_to_team,
     leave_game,
     notify_game_cancelled,
+    record_game_attendance,
+    dispute_game_attendance,
     reconfirm_game,
     respond_game_invitation,
     synchronize_and_require_game_host,
@@ -59,6 +63,7 @@ from .services import (
     update_game_host_settings,
     update_game_participant,
 )
+from .realtime import publish_game_chat_message
 
 
 class GameListCreateView(MutationThrottleMixin, APIView):
@@ -359,6 +364,53 @@ class GameParticipantManageView(MutationThrottleMixin, APIView):
         return Response({"participant": GameParticipantSerializer(participant).data})
 
 
+class GameParticipantAttendanceView(MutationThrottleMixin, APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def post(self, request, game_id, participant_id):
+        try:
+            commitment = record_game_attendance(
+                game_id,
+                participant_id,
+                request.user,
+                request.data.get("status"),
+            )
+        except Game.DoesNotExist:
+            return Response({"detail": "This game is no longer available."}, status=status.HTTP_404_NOT_FOUND)
+        except (ValidationError, DjangoValidationError) as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            "attendance": {
+                "id": commitment.id,
+                "status": commitment.status,
+                "review_deadline_at": commitment.review_deadline_at.isoformat() if commitment.review_deadline_at else None,
+            },
+        })
+
+
+class GameParticipantAttendanceDisputeView(MutationThrottleMixin, APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def post(self, request, game_id, participant_id):
+        try:
+            commitment = dispute_game_attendance(
+                game_id,
+                participant_id,
+                request.user,
+                request.data.get("reason", ""),
+            )
+        except Game.DoesNotExist:
+            return Response({"detail": "This game is no longer available."}, status=status.HTTP_404_NOT_FOUND)
+        except (ValidationError, DjangoValidationError) as exc:
+            return Response({"detail": readable_error(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            "attendance": {
+                "id": commitment.id,
+                "status": commitment.status,
+                "disputed_at": commitment.disputed_at.isoformat() if commitment.disputed_at else None,
+            },
+        })
+
 class GameGuestParticipantView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
@@ -552,6 +604,9 @@ class GameCancelView(MutationThrottleMixin, APIView):
             "status", "is_public", "cancelled_at", "cancellation_reason",
             "booking_handoff_was_public", "updated_at",
         ])
+        from .services import void_game_participation_commitments
+
+        void_game_participation_commitments(game, actor=request.user, reason=reason)
         if game.status == Game.Status.CANCELLED:
             from venues.services import release_reserved_booking_for_game
 
@@ -621,6 +676,104 @@ class GameRoomView(MutationThrottleMixin, APIView):
         game.game_room_note = str(request.data.get("game_room_note", "")).strip()[:500]
         game.save(update_fields=["game_room_note", "updated_at"])
         return Response({"game": GameSerializer(game, context={"request": request}).data})
+
+
+class GameChatView(MutationThrottleMixin, APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def get(self, request, game_id):
+        game = get_game_or_none(game_id)
+        access_level = self._room_access(game, request)
+        if isinstance(access_level, Response):
+            return access_level
+
+        try:
+            limit = int(request.query_params.get("limit", "50"))
+        except (TypeError, ValueError):
+            limit = 50
+        limit = max(min(limit, 100), 1)
+
+        before = request.query_params.get("before")
+        if before:
+            try:
+                before = int(before)
+                if before <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return Response({"detail": "The message cursor is invalid."}, status=status.HTTP_400_BAD_REQUEST)
+
+        messages_query = GameChatMessage.objects.filter(game=game).select_related("sender")
+        if before:
+            messages_query = messages_query.filter(id__lt=before)
+        rows = list(messages_query.order_by("-created_at", "-id")[: limit + 1])
+        has_more = len(rows) > limit
+        messages = list(reversed(rows[:limit]))
+        return Response({
+            "messages": GameChatMessageSerializer(messages, many=True, context={"request": request}).data,
+            "has_more": has_more,
+            "next_before": messages[0].id if has_more and messages else None,
+            "room_access": access_level,
+        })
+
+    def post(self, request, game_id):
+        game = get_game_or_none(game_id)
+        access_level = self._room_access(game, request)
+        if isinstance(access_level, Response):
+            return access_level
+        if access_level == "READ_ONLY":
+            return Response({"detail": "This game room is read-only."}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload_serializer = GameChatMessageCreateSerializer(data=request.data)
+        payload_serializer.is_valid(raise_exception=True)
+        body = payload_serializer.validated_data["body"]
+        client_message_id = payload_serializer.validated_data.get("client_message_id", "")
+        message = None
+        created = False
+
+        try:
+            with transaction.atomic():
+                if client_message_id:
+                    message = GameChatMessage.objects.filter(
+                        game=game,
+                        sender=request.user,
+                        client_message_id=client_message_id,
+                    ).select_related("sender").first()
+                if message:
+                    if message.body != body:
+                        return Response({"detail": "This message retry does not match the original message."}, status=status.HTTP_409_CONFLICT)
+                else:
+                    sender_name = (request.user.full_name or request.user.email).strip()[:120]
+                    message = GameChatMessage.objects.create(
+                        game=game,
+                        sender=request.user,
+                        sender_name=sender_name,
+                        body=body,
+                        client_message_id=client_message_id,
+                    )
+                    created = True
+                    transaction.on_commit(lambda created_message=message: publish_game_chat_message(created_message))
+        except IntegrityError:
+            message = GameChatMessage.objects.filter(
+                game=game,
+                sender=request.user,
+                client_message_id=client_message_id,
+            ).select_related("sender").first()
+            if not message or message.body != body:
+                return Response({"detail": "We could not save that message. Please try again."}, status=status.HTTP_409_CONFLICT)
+
+        return Response({
+            "message": GameChatMessageSerializer(message, context={"request": request}).data,
+            "created": created,
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    def _room_access(self, game, request):
+        if not game:
+            return Response({"detail": "Game not found."}, status=status.HTTP_404_NOT_FOUND)
+        synchronize_game_lifecycle(game, expire_requests=True)
+        access_level = game_room_access_level(game, request.user)
+        if access_level == "NONE":
+            return Response({"detail": "You do not have access to this game chat."}, status=status.HTTP_403_FORBIDDEN)
+        return access_level
 
 
 def base_game_queryset():

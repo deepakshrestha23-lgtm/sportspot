@@ -41,7 +41,7 @@ export type Venue = {
   area: string;
   latitude: number | string | null;
   longitude: number | string | null;
-  location_source: "MANUAL_PIN" | "GEOCODED" | "LEGACY_LINK" | "";
+  location_source: "MANUAL_PIN" | "GEOCODED" | "DEVICE_LOCATION" | "LEGACY_LINK" | "";
   location_confirmed: boolean;
   location_updated_at: string | null;
   map_location: string;
@@ -113,6 +113,63 @@ export type Court = {
 
 export type PublicCourt = Court & {
   venue: Venue;
+};
+
+export type CourtReview = {
+  id: number;
+  court: number;
+  court_name: string;
+  booking: number;
+  reviewer: number;
+  reviewer_name: string;
+  rating: number;
+  comment: string;
+  is_author: boolean;
+  like_count: number;
+  dislike_count: number;
+  my_reaction: "LIKE" | "DISLIKE" | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CourtReviewsResponse = {
+  court: {
+    id: number;
+    name: string;
+  };
+  summary: {
+    average_rating: string | null;
+    review_count: number;
+    comment_count: number;
+    distribution: Array<{ rating: number; count: number }>;
+  };
+  reviews: CourtReview[];
+  comments: CourtReviewComment[];
+  my_review: CourtReview | null;
+  my_comments: CourtReviewComment[];
+  eligibility: {
+    can_review: boolean;
+    can_comment: boolean;
+    reason: string;
+    booking_id: number | null;
+    booking_code: string;
+  };
+};
+
+export type CourtReviewComment = {
+  id: number;
+  court: number;
+  court_name: string;
+  booking: number;
+  reviewer: number;
+  reviewer_name: string;
+  comment: string;
+  is_author: boolean;
+  like_count: number;
+  dislike_count: number;
+  my_reaction: "LIKE" | "DISLIKE" | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type PublicVenue = Venue & {
@@ -284,8 +341,20 @@ export type Booking = {
   refund_percentage: number;
   refund_amount: string;
   venue_messages: BookingMessage[];
+  check_in: BookingCheckIn | null;
   created_at: string;
   updated_at: string;
+};
+
+export type BookingCheckIn = {
+  status: "NOT_AVAILABLE" | "NOT_YET_OPEN" | "READY" | "CHECKED_IN" | "CLOSED";
+  message: string;
+  window_start: string | null;
+  window_end: string | null;
+  checked_in_at: string | null;
+  checked_in_by_name: string;
+  scan_count: number;
+  qr_token: string | null;
 };
 
 export type BookingMessage = {
@@ -429,6 +498,60 @@ export type OwnerCalendarResponse = {
   opening_time: string | null;
   closing_time: string | null;
   stats: OwnerCalendarStats;
+};
+
+export type OwnerReportSummary = {
+  booking_count: number;
+  confirmed_booking_count: number;
+  completed_booking_count: number;
+  cancelled_booking_count: number;
+  expired_booking_count: number;
+  paid_booking_count: number;
+  paid_value: string;
+  processed_refund_value: string;
+  pending_refund_count: number;
+  pending_refund_value: string;
+  check_in_count: number;
+  published_slot_count: number;
+  booked_slot_count: number;
+  reserved_slot_count: number;
+  blocked_slot_count: number;
+  utilization_percent: number;
+};
+
+export type OwnerReportCourt = {
+  id: number;
+  name: string;
+  is_active: boolean;
+  booking_count: number;
+  paid_booking_count: number;
+  paid_value: string;
+  processed_refund_value: string;
+  check_in_count: number;
+  published_slot_count: number;
+  booked_slot_count: number;
+  reserved_slot_count: number;
+  blocked_slot_count: number;
+  utilization_percent: number;
+};
+
+export type OwnerReportDay = {
+  date: string;
+  booking_count: number;
+  paid_booking_count: number;
+  paid_value: string;
+  booked_slot_count: number;
+  published_slot_count: number;
+  utilization_percent: number;
+};
+
+export type OwnerReportsResponse = {
+  server_now: string;
+  venue: { id: number; name: string; area: string; city: string; status: VenueStatus } | null;
+  period: { days: number; start_date: string; end_date: string; mode: "preset" | "custom" };
+  summary: OwnerReportSummary;
+  courts: OwnerReportCourt[];
+  trend: OwnerReportDay[];
 };
 
 export type OwnerCalendarBlockConflict = {

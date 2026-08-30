@@ -12,11 +12,13 @@ from .models import (
     ACTIVE_PARTICIPANT_STATUSES,
     RECONFIRMATION_PENDING_STATUSES,
     Game,
+    GameChatMessage,
     GameParticipant,
     GameRoleRequirement,
     JoinRequest,
     JoinRequestEvent,
 )
+from players.models import ParticipationCommitment
 from .services import (
     add_initial_participants,
     booking_end_at,
@@ -29,6 +31,47 @@ from .services import (
     validate_join_request,
     validate_role_plan,
 )
+
+
+class GameChatMessageSerializer(serializers.ModelSerializer):
+    sender_id = serializers.IntegerField(source="sender.id", read_only=True, allow_null=True)
+    is_mine = serializers.SerializerMethodField()
+    is_deleted = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GameChatMessage
+        fields = (
+            "id",
+            "sender_id",
+            "sender_name",
+            "body",
+            "created_at",
+            "edited_at",
+            "is_deleted",
+            "is_mine",
+        )
+        read_only_fields = fields
+
+    def get_is_mine(self, message):
+        request = self.context.get("request")
+        return bool(request and request.user.is_authenticated and message.sender_id == request.user.id)
+
+    def get_is_deleted(self, message):
+        return message.deleted_at is not None
+
+
+class GameChatMessageCreateSerializer(serializers.Serializer):
+    body = serializers.CharField(max_length=1000)
+    client_message_id = serializers.CharField(max_length=64, required=False, allow_blank=True)
+
+    def validate_body(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Message cannot be empty.")
+        return value
+
+    def validate_client_message_id(self, value):
+        return value.strip()
 
 
 def default_deadline_before(start_at, hours):
@@ -94,6 +137,7 @@ class GameParticipantSerializer(serializers.ModelSerializer):
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     reconfirmation_required = serializers.SerializerMethodField()
     reconfirmation_kind = serializers.SerializerMethodField()
+    attendance = serializers.SerializerMethodField()
 
     class Meta:
         model = GameParticipant
@@ -115,6 +159,7 @@ class GameParticipantSerializer(serializers.ModelSerializer):
             "status_label",
             "reconfirmation_required",
             "reconfirmation_kind",
+            "attendance",
             "joined_at",
         )
 
@@ -153,6 +198,32 @@ class GameParticipantSerializer(serializers.ModelSerializer):
         if profile and profile.profile_photo:
             return profile.profile_photo.url
         return ""
+
+    def get_attendance(self, participant):
+        if not participant.user_id or participant.participant_type == GameParticipant.ParticipantType.GUEST:
+            return {"status": "NOT_TRACKED", "review_deadline_at": None, "can_dispute": False}
+        commitment = ParticipationCommitment.objects.filter(
+            player_id=participant.user_id,
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=participant.game_id,
+            source_participant_id=participant.id,
+        ).order_by("-source_version", "-id").first()
+        if not commitment:
+            return {"status": "NOT_CREATED", "review_deadline_at": None, "can_dispute": False}
+        request = self.context.get("request")
+        viewer = getattr(request, "user", None)
+        return {
+            "id": commitment.id,
+            "status": commitment.status,
+            "review_deadline_at": commitment.review_deadline_at.isoformat() if commitment.review_deadline_at else None,
+            "can_dispute": bool(
+                viewer
+                and viewer.is_authenticated
+                and viewer.id == participant.user_id
+                and commitment.status == ParticipationCommitment.Status.NO_SHOW_REPORTED
+                and (not commitment.review_deadline_at or commitment.review_deadline_at > timezone.now())
+            ),
+        }
 
 
 class JoinRequestSerializer(serializers.ModelSerializer):

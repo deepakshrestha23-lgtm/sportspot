@@ -1,5 +1,7 @@
 "use client";
 
+import LoadingIndicator from "@/components/LoadingIndicator";
+
 type ConfirmActionModalProps = {
   actionLabel: string;
   body: string;
@@ -35,7 +37,7 @@ export default function ConfirmActionModal({
             Cancel
           </button>
           <button className={`rounded-md px-5 py-3 text-sm font-black ${confirmClass}`} disabled={isWorking} onClick={onConfirm} type="button">
-            {isWorking ? "Working..." : actionLabel}
+            {isWorking ? <LoadingIndicator label="Working" size="sm" tone="inverse" /> : actionLabel}
           </button>
         </div>
       </section>

@@ -101,14 +101,14 @@ export default function VenueOwnerTopBar() {
               <MenuIcon />
             </button>
             <Logo href="/dashboard/owner" markClassName="h-8 max-w-[140px]" textClassName="text-[1.15rem]" />
-            <span className="hidden rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-sportGreen sm:inline-flex">
+            <span className="hidden rounded-md border border-green-100 bg-green-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-sportGreen sm:inline-flex">
               Venue Manager
             </span>
           </div>
 
           <button
             aria-expanded={isWorkspaceOpen}
-            className="hidden min-w-0 max-w-md flex-1 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-left transition-colors hover:border-green-200 hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200 md:flex lg:max-w-lg"
+            className="hidden min-w-0 max-w-md flex-1 items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-2.5 text-left transition-colors hover:border-green-200 hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200 md:flex lg:max-w-lg"
             onClick={() => setIsWorkspaceOpen((current) => !current)}
             type="button"
           >
@@ -168,14 +168,14 @@ export default function VenueOwnerTopBar() {
       </header>
 
       {isWorkspaceOpen ? (
-        <div className="fixed inset-x-3 top-20 z-40 rounded-xl border border-slate-200 bg-white p-4 shadow-2xl md:left-1/2 md:right-auto md:w-[420px] md:-translate-x-1/2" role="dialog" aria-label="Venue workspace">
+        <div className="fixed inset-x-3 top-20 z-40 rounded-lg border border-slate-200 bg-white p-4 shadow-2xl md:left-1/2 md:right-auto md:w-[420px] md:-translate-x-1/2" role="dialog" aria-label="Venue workspace">
           <VenueIdentity isLoading={isVenueLoading} venue={venue} state={venueState} expanded />
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-            <Link className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-black text-sportNavy transition hover:border-green-200 hover:text-sportGreen" href="/dashboard/owner/venue" onClick={() => setIsWorkspaceOpen(false)}>
+            <Link className="inline-flex min-h-11 flex-1 items-center justify-center rounded-md border border-slate-200 px-4 text-sm font-black text-sportNavy transition hover:border-green-200 hover:text-sportGreen" href="/dashboard/owner/venue" onClick={() => setIsWorkspaceOpen(false)}>
               Manage Venue
             </Link>
             {contextAction ? (
-              <Link className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white transition hover:bg-green-700" href={contextAction.href} onClick={() => setIsWorkspaceOpen(false)}>
+              <Link className="inline-flex min-h-11 flex-1 items-center justify-center rounded-md bg-sportGreen px-4 text-sm font-black text-white transition hover:bg-green-700" href={contextAction.href} onClick={() => setIsWorkspaceOpen(false)}>
                 {contextAction.label}
               </Link>
             ) : null}
@@ -193,7 +193,7 @@ export default function VenueOwnerTopBar() {
       />
 
       {notificationToast ? (
-        <div aria-live="polite" className="fixed right-4 top-20 z-40 max-w-sm rounded-xl border border-green-200 bg-white px-4 py-3 shadow-xl">
+        <div aria-live="polite" className="fixed right-4 top-20 z-40 max-w-sm rounded-lg border border-green-200 bg-white px-4 py-3 shadow-xl">
           <p className="text-xs font-black uppercase text-sportGreen">New notification</p>
           <p className="mt-1 text-sm font-bold text-sportNavy">{notificationToast}</p>
         </div>
@@ -230,8 +230,8 @@ function VenueStatusBadge({ state }: { state: VenueState }) {
 function VenueContextAction({ action }: { action: NonNullable<ContextAction> }) {
   const className =
     action.variant === "primary"
-      ? "hidden min-h-10 items-center justify-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 sm:inline-flex"
-      : "hidden min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 sm:inline-flex";
+      ? "hidden min-h-10 items-center justify-center rounded-md bg-sportGreen px-4 text-sm font-black text-white transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200 sm:inline-flex"
+      : "hidden min-h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-sportNavy transition hover:border-sportGreen hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 sm:inline-flex";
 
   return (
       <Link className={className} href={action.href}>

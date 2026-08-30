@@ -338,6 +338,34 @@ class PlayerSettingsSerializer(serializers.Serializer):
         }
 
 
+class OwnerSettingsSerializer(serializers.Serializer):
+    """Account-level settings that are meaningful for a court owner."""
+
+    account = serializers.SerializerMethodField()
+    notifications = serializers.SerializerMethodField()
+
+    def get_account(self, user):
+        return {
+            "full_name": user.full_name,
+            "email": user.email,
+            "phone": user.phone,
+            "role": user.role,
+            "email_verified": user.email_verified,
+            "email_verified_at": user.email_verified_at.isoformat() if user.email_verified_at else None,
+            "pending_email": user.pending_email or "",
+            "pending_email_requested_at": user.pending_email_requested_at.isoformat() if user.pending_email_requested_at else None,
+            "is_active": user.is_active,
+        }
+
+    def get_notifications(self, user):
+        settings, _ = AccountSettings.objects.get_or_create(user=user)
+        return {
+            "booking_updates": settings.notify_booking_updates,
+            "cancellation_refunds": settings.notify_cancellation_refunds,
+            "email_notifications": settings.email_notifications,
+        }
+
+
 class AccountUpdateSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150)
     email = serializers.EmailField()
@@ -432,6 +460,24 @@ class NotificationSettingsSerializer(serializers.Serializer):
             "booking_updates": "notify_booking_updates",
             "cancellation_refunds": "notify_cancellation_refunds",
             "rating_reminders": "notify_rating_reminders",
+            "email_notifications": "email_notifications",
+        }
+        for source, target in mapping.items():
+            setattr(settings, target, self.validated_data[source])
+        settings.save(update_fields=[*mapping.values(), "updated_at"])
+        return settings
+
+
+class OwnerNotificationSettingsSerializer(serializers.Serializer):
+    booking_updates = serializers.BooleanField()
+    cancellation_refunds = serializers.BooleanField()
+    email_notifications = serializers.BooleanField()
+
+    def save(self):
+        settings, _ = AccountSettings.objects.get_or_create(user=self.context["request"].user)
+        mapping = {
+            "booking_updates": "notify_booking_updates",
+            "cancellation_refunds": "notify_cancellation_refunds",
             "email_notifications": "email_notifications",
         }
         for source, target in mapping.items():

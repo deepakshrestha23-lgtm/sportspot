@@ -123,6 +123,7 @@ def get_open_action_label(notification_type):
         Notification.NotificationType.VENUE_MESSAGE: "View Booking",
         Notification.NotificationType.BOOKING_RESERVED: "View Bookings",
         Notification.NotificationType.BOOKING_CONFIRMED: "View Booking",
+        Notification.NotificationType.BOOKING_CHECKED_IN: "View Booking",
         Notification.NotificationType.BOOKING_PAYMENT_FAILED: "View Booking",
         Notification.NotificationType.BOOKING_CANCELLED_BY_PLAYER: "View Booking",
         Notification.NotificationType.BOOKING_CANCELLED_BY_OWNER: "View Reason",

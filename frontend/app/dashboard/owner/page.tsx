@@ -47,11 +47,11 @@ export default function OwnerDashboardPage() {
 
   if (error || !overview) {
     return (
-      <section className="rounded-lg border border-red-100 bg-white p-8 text-center shadow-sm">
+      <section className="owner-error-panel rounded-lg border border-red-100 bg-white p-8 text-center shadow-sm">
         <p className="text-sm font-black uppercase tracking-wide text-red-600">Overview unavailable</p>
         <h1 className="mt-2 text-2xl font-black text-sportNavy">We could not load your venue overview.</h1>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">Please try again. Your venue data has not been changed.</p>
-        <button className="mt-5 rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" onClick={loadOverview} type="button">
+        <button className="owner-primary-button mt-5" onClick={loadOverview} type="button">
           Retry
         </button>
       </section>
@@ -64,7 +64,7 @@ export default function OwnerDashboardPage() {
     <div className="space-y-6">
       <OwnerPageHeader
         actions={
-          <Link className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" href="/dashboard/owner/calendar">
+          <Link className="owner-primary-button" href="/dashboard/owner/calendar">
             <OwnerDashboardIcon name="calendar" />
             View Calendar
           </Link>
@@ -143,7 +143,7 @@ function VenueStatusBanner({ lifecycleState, overview }: { lifecycleState: Owner
 
   const item = content[lifecycleState];
   return (
-    <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm sm:flex sm:items-start sm:justify-between sm:gap-5">
+    <section className="owner-alert rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm sm:flex sm:items-start sm:justify-between sm:gap-5">
       <div className="min-w-0">
         <VenueLifecycleBadge state={lifecycleState} />
         <h2 className="mt-3 text-lg font-black text-sportNavy">{item.title}</h2>
@@ -158,7 +158,7 @@ function VenueStatusBanner({ lifecycleState, overview }: { lifecycleState: Owner
 
 function SummaryCard({ href, icon, label, tone = "default", value }: { href: string; icon: "calendar" | "payments" | "venue"; label: string; tone?: "default" | "warning"; value: string | number }) {
   return (
-    <Link className="group rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-green-200" href={href}>
+    <Link className="owner-kpi-link group rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-green-200" href={href}>
       <div className="flex items-start justify-between gap-3">
         <span className={`flex h-10 w-10 items-center justify-center rounded-lg ${tone === "warning" ? "bg-red-50 text-red-600" : "bg-green-50 text-sportGreen"}`}>
           <OwnerDashboardIcon name={icon} />
@@ -173,7 +173,7 @@ function SummaryCard({ href, icon, label, tone = "default", value }: { href: str
 
 function TodaySchedule({ items }: { items: OwnerScheduleItem[] }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <section className="owner-panel overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div>
           <h2 className="text-lg font-black text-sportNavy">Today's Schedule</h2>
@@ -208,7 +208,7 @@ function TodaySchedule({ items }: { items: OwnerScheduleItem[] }) {
 function NextBookingCard({ booking, serverNow }: { booking: OwnerNextBooking | null; serverNow: string }) {
   if (!booking) {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="owner-panel rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-black text-sportNavy">Next Booking</h2>
         <EmptyBlock compact title="No upcoming confirmed booking" description="The next confirmed booking will appear here." />
       </section>
@@ -216,7 +216,7 @@ function NextBookingCard({ booking, serverNow }: { booking: OwnerNextBooking | n
   }
 
   return (
-    <section className="rounded-xl bg-sportGreen p-5 text-white shadow-sm">
+    <section className="owner-next-booking rounded-xl bg-sportGreen p-5 text-white shadow-sm">
       <p className="text-xs font-black uppercase tracking-[0.16em] text-green-100">Up next</p>
       <h2 className="mt-3 text-2xl font-black">{booking.player_name}</h2>
       <p className="mt-1 text-sm font-semibold text-green-50">{booking.court_name} · {booking.display_time}</p>
@@ -281,7 +281,7 @@ function CountdownUnit({ label, value }: { label: string; value: number }) {
 
 function PendingActions({ actions }: { actions: OwnerPendingAction[] }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+    <section className="owner-panel rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <h2 className="text-lg font-black text-sportNavy">Pending Actions</h2>
         {actions.length ? <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-black text-red-700">{actions.length}</span> : null}
@@ -308,7 +308,7 @@ function PendingActions({ actions }: { actions: OwnerPendingAction[] }) {
 
 function CourtStatusList({ courts }: { courts: OwnerCourtStatus[] }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+    <section className="owner-panel rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 px-5 py-4">
         <h2 className="text-lg font-black text-sportNavy">Court Status</h2>
       </div>
@@ -333,7 +333,7 @@ function CourtStatusList({ courts }: { courts: OwnerCourtStatus[] }) {
 
 function RecentActivity({ items }: { items: OwnerRecentActivity[] }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+    <section className="owner-panel rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 px-5 py-4">
         <h2 className="text-lg font-black text-sportNavy">Recent Activity</h2>
       </div>

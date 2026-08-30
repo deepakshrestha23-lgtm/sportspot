@@ -1,4 +1,4 @@
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 from io import StringIO
 from unittest.mock import patch
@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core import mail
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -17,9 +18,10 @@ from notifications.services import (
     notify_booking_confirmed,
     notify_owner_venue_review,
 )
+from players.models import ParticipationCommitment, ReliabilityEvent
 from venues.policies import build_cancellation_policy_snapshot, get_cancellation_quote
 from venues.location import search_locations
-from venues.models import Booking, BookingSlot, Court, CourtSlot, Venue
+from venues.models import Booking, BookingCheckIn, BookingSlot, Court, CourtFeedbackReport, CourtFeedbackReaction, CourtReview, CourtReviewComment, CourtSlot, Venue
 
 
 class VenueLocationApiTests(APITestCase):
@@ -60,6 +62,101 @@ class VenueLocationApiTests(APITestCase):
         self.assertEqual(str(venue.longitude), "85.324000")
         self.assertTrue(venue.location_confirmed)
         self.assertIsNotNone(venue.location_updated_at)
+
+    def test_coordinate_precision_is_normalized_for_map_updates(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(
+            reverse("owner-venue"),
+            {
+                "name": "Precision Location Arena",
+                "latitude": "27.717200987",
+                "longitude": "85.324000123",
+                "location_source": "MANUAL_PIN",
+                "location_confirmed": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        venue = Venue.objects.get(owner=self.owner)
+        self.assertEqual(str(venue.latitude), "27.717201")
+        self.assertEqual(str(venue.longitude), "85.324000")
+
+    def test_owner_can_save_a_confirmed_device_location_source(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(
+            reverse("owner-venue"),
+            {
+                "name": "Device Location Arena",
+                "latitude": "27.717200",
+                "longitude": "85.324000",
+                "location_source": "DEVICE_LOCATION",
+                "location_confirmed": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        venue = Venue.objects.get(owner=self.owner)
+        self.assertEqual(venue.location_source, Venue.LocationSource.DEVICE_LOCATION)
+        self.assertTrue(venue.location_confirmed)
+
+    def test_approved_venue_map_change_requires_review_and_confirmed_pin(self):
+        venue = Venue.objects.create(
+            owner=self.owner,
+            name="Approved Location Arena",
+            city="Kathmandu",
+            area="Baneshwor",
+            latitude="27.717200",
+            longitude="85.324000",
+            location_source=Venue.LocationSource.MANUAL_PIN,
+            location_confirmed=True,
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        self.client.force_authenticate(self.owner)
+        changed_location = {
+            "latitude": "27.718000",
+            "longitude": "85.325000",
+            "location_source": Venue.LocationSource.MANUAL_PIN,
+            "location_confirmed": True,
+        }
+
+        blocked_response = self.client.post(reverse("owner-venue"), changed_location, format="json")
+        self.assertEqual(blocked_response.status_code, 400)
+        venue.refresh_from_db()
+        self.assertEqual(venue.status, Venue.Status.APPROVED)
+        self.assertEqual(str(venue.latitude), "27.717200")
+
+        unconfirmed_response = self.client.post(
+            reverse("owner-venue"),
+            {**changed_location, "location_confirmed": False, "submit_for_review": True},
+            format="json",
+        )
+        self.assertEqual(unconfirmed_response.status_code, 400)
+        self.assertIn("Confirm the new venue pin", str(unconfirmed_response.data))
+
+        submitted_response = self.client.post(
+            reverse("owner-venue"),
+            {**changed_location, "submit_for_review": True},
+            format="json",
+        )
+        self.assertEqual(submitted_response.status_code, 200)
+        venue.refresh_from_db()
+        self.assertEqual(venue.status, Venue.Status.PENDING)
+        self.assertEqual(str(venue.latitude), "27.718000")
+        self.assertTrue(venue.location_confirmed)
+
+    def test_owner_map_link_must_be_a_http_or_https_url(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(
+            reverse("owner-venue"),
+            {"name": "Invalid Link Arena", "map_location": "maps.google.com/place/arena"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("map_location", response.data)
 
     def test_coordinate_timestamp_is_saved_with_targeted_model_updates(self):
         venue = Venue.objects.create(owner=self.owner, name="Targeted Update Arena")
@@ -221,6 +318,203 @@ class VenueLocationApiTests(APITestCase):
         court_response = self.client.get(reverse("public-court-detail", args=[venue.courts.first().id]))
         self.assertIsNone(court_response.data["court"]["venue"]["latitude"])
         self.assertIsNone(court_response.data["court"]["venue"]["longitude"])
+
+    def test_owner_can_replace_and_clear_a_legacy_venue_photo(self):
+        self.client.force_authenticate(self.owner)
+        venue = Venue.objects.create(owner=self.owner, name="Photo Test Arena")
+        original = SimpleUploadedFile("original.jpg", b"original", content_type="image/jpeg")
+        upload_response = self.client.post(reverse("owner-venue"), {"front_photo": original}, format="multipart")
+
+        self.assertEqual(upload_response.status_code, 200)
+        venue.refresh_from_db()
+        original_name = venue.front_photo.name
+        replacement = SimpleUploadedFile("replacement.jpg", b"replacement", content_type="image/jpeg")
+        replace_response = self.client.post(reverse("owner-venue"), {"front_photo": replacement}, format="multipart")
+
+        self.assertEqual(replace_response.status_code, 200)
+        venue.refresh_from_db()
+        self.assertTrue(venue.front_photo.name.endswith("replacement.jpg"))
+        self.assertFalse(venue.front_photo.storage.exists(original_name))
+
+        clear_response = self.client.post(reverse("owner-venue"), {"clear_front_photo": "true"}, format="multipart")
+
+        self.assertEqual(clear_response.status_code, 200)
+        venue.refresh_from_db()
+        self.assertFalse(venue.front_photo)
+
+    def test_owner_can_clear_a_court_photo_without_touching_the_court(self):
+        self.client.force_authenticate(self.owner)
+        venue = Venue.objects.create(owner=self.owner, name="Court Photo Test Arena")
+        court = Court.objects.create(
+            venue=venue,
+            name="Court One",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+            court_photo=SimpleUploadedFile("court.jpg", b"court", content_type="image/jpeg"),
+        )
+        photo_name = court.court_photo.name
+
+        response = self.client.patch(
+            reverse("owner-court-detail", args=[court.id]),
+            {"clear_court_photo": "true"},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        court.refresh_from_db()
+        self.assertFalse(court.court_photo)
+        self.assertEqual(court.name, "Court One")
+        self.assertFalse(court.court_photo.storage.exists(photo_name))
+
+
+class OwnerReportsApiTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            email="reports-owner@example.com",
+            password="test-password",
+            full_name="Reports Owner",
+            phone="9800000090",
+            role="COURT_OWNER",
+        )
+        self.player = user_model.objects.create_user(
+            email="reports-player@example.com",
+            password="test-password",
+            full_name="Reports Player",
+            phone="9800000091",
+            role="PLAYER",
+        )
+        self.venue = Venue.objects.create(
+            owner=self.owner,
+            name="Reports Cricksal Arena",
+            city="Kathmandu",
+            area="Maitidevi",
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        self.court = Court.objects.create(
+            venue=self.venue,
+            name="Main Court",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+        )
+
+    def test_owner_report_uses_real_booking_slot_and_check_in_records(self):
+        report_date = timezone.localdate() - timedelta(days=1)
+        booked_slot = CourtSlot.objects.create(
+            court=self.court,
+            date=report_date,
+            start_time=time(9, 0),
+            end_time=time(10, 0),
+            price=Decimal("1500.00"),
+            status=CourtSlot.Status.BOOKED,
+        )
+        CourtSlot.objects.create(
+            court=self.court,
+            date=report_date,
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            price=Decimal("1800.00"),
+            status=CourtSlot.Status.AVAILABLE,
+        )
+        booking = Booking.objects.create(
+            player=self.player,
+            venue=self.venue,
+            court=self.court,
+            slot=booked_slot,
+            amount=Decimal("1500.00"),
+            status=Booking.BookingStatus.COMPLETED,
+            payment_status=Booking.PaymentStatus.PAID,
+            reserved_until=timezone.now() - timedelta(days=2),
+            confirmed_at=timezone.now() - timedelta(days=2),
+            completed_at=timezone.now() - timedelta(days=1),
+        )
+        BookingCheckIn.objects.create(
+            booking=booking,
+            checked_in_at=timezone.now() - timedelta(days=1),
+            checked_in_by=self.owner,
+            last_scanned_at=timezone.now() - timedelta(days=1),
+        )
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(reverse("owner-reports"), {"period": 7})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["summary"]["booking_count"], 1)
+        self.assertEqual(response.data["summary"]["paid_value"], "1500.00")
+        self.assertEqual(response.data["summary"]["check_in_count"], 1)
+        self.assertEqual(response.data["summary"]["published_slot_count"], 2)
+        self.assertEqual(response.data["summary"]["booked_slot_count"], 1)
+        self.assertEqual(response.data["summary"]["utilization_percent"], 50.0)
+        self.assertEqual(response.data["courts"][0]["check_in_count"], 1)
+        self.assertEqual(response.data["period"]["mode"], "preset")
+
+    def test_owner_report_accepts_a_bounded_custom_date_range(self):
+        today = timezone.localdate()
+        start_date = today - timedelta(days=4)
+        end_date = today - timedelta(days=1)
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(
+            reverse("owner-reports"),
+            {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["period"],
+            {
+                "days": 4,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "mode": "custom",
+            },
+        )
+        self.assertEqual(len(response.data["trend"]), 4)
+
+    def test_owner_report_rejects_invalid_custom_date_ranges(self):
+        today = timezone.localdate()
+        self.client.force_authenticate(self.owner)
+        invalid_ranges = [
+            ({"start_date": today.isoformat()}, "both a custom start date and end date"),
+            ({"start_date": "30-08-2026", "end_date": today.isoformat()}, "valid start and end date"),
+            (
+                {"start_date": today.isoformat(), "end_date": (today - timedelta(days=1)).isoformat()},
+                "on or before",
+            ),
+            (
+                {"start_date": today.isoformat(), "end_date": (today + timedelta(days=1)).isoformat()},
+                "future dates",
+            ),
+            (
+                {"start_date": (today - timedelta(days=365)).isoformat(), "end_date": today.isoformat()},
+                "365 days or fewer",
+            ),
+        ]
+
+        for query_params, message in invalid_ranges:
+            with self.subTest(query_params=query_params):
+                response = self.client.get(reverse("owner-reports"), query_params)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(message, response.data["detail"])
+
+    def test_report_period_is_validated_and_owner_scope_is_enforced(self):
+        self.client.force_authenticate(self.owner)
+        invalid_response = self.client.get(reverse("owner-reports"), {"period": 14})
+        self.assertEqual(invalid_response.status_code, 400)
+
+        other_owner = get_user_model().objects.create_user(
+            email="reports-other@example.com",
+            password="test-password",
+            full_name="Other Reports Owner",
+            phone="9800000092",
+            role="COURT_OWNER",
+        )
+        self.client.force_authenticate(other_owner)
+        response = self.client.get(reverse("owner-reports"), {"period": 7})
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["venue"])
+        self.assertEqual(response.data["summary"]["booking_count"], 0)
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
@@ -1397,3 +1691,430 @@ class GenerateSlotsApiTests(APITestCase):
         )
         self.assertEqual(public_response.status_code, 200)
         self.assertEqual(public_response.data["slots"], [])
+
+
+class CourtReviewApiTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            email="court-review-owner@example.com",
+            password="test-password",
+            full_name="Court Review Owner",
+            phone="9800000090",
+            role="COURT_OWNER",
+        )
+        self.player = user_model.objects.create_user(
+            email="court-review-player@example.com",
+            password="test-password",
+            full_name="Court Review Player",
+            phone="9800000091",
+            role="PLAYER",
+        )
+        self.other_player = user_model.objects.create_user(
+            email="court-review-other@example.com",
+            password="test-password",
+            full_name="Other Player",
+            phone="9800000092",
+            role="PLAYER",
+        )
+        self.venue = Venue.objects.create(
+            owner=self.owner,
+            name="Review Cricksal Arena",
+            city="Kathmandu",
+            area="Maitidevi",
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        self.court = Court.objects.create(
+            venue=self.venue,
+            name="Review Court",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+            is_active=True,
+        )
+        slot = CourtSlot.objects.create(
+            court=self.court,
+            date=timezone.localdate() - timedelta(days=2),
+            start_time=time(8, 0),
+            end_time=time(9, 0),
+            slot_duration_minutes=60,
+            price=Decimal("1200.00"),
+            status=CourtSlot.Status.BOOKED,
+        )
+        self.booking = Booking.objects.create(
+            player=self.player,
+            venue=self.venue,
+            court=self.court,
+            slot=slot,
+            amount=Decimal("1200.00"),
+            status=Booking.BookingStatus.COMPLETED,
+            payment_status=Booking.PaymentStatus.PAID,
+            reserved_until=timezone.now() - timedelta(days=3),
+            confirmed_at=timezone.now() - timedelta(days=3),
+            completed_at=timezone.now() - timedelta(days=2),
+            cancellation_policy_snapshot=build_cancellation_policy_snapshot(self.venue),
+        )
+        BookingSlot.objects.create(booking=self.booking, slot=slot, price=slot.price)
+
+    def review_url(self):
+        return reverse("court-reviews", args=[self.court.id])
+
+    def comment_url(self):
+        return reverse("court-review-comments", args=[self.court.id])
+
+    def comment_detail_url(self, comment_id):
+        return reverse("court-review-comment-detail", args=[self.court.id, comment_id])
+
+    def reaction_url(self):
+        return reverse("court-feedback-reactions", args=[self.court.id])
+
+    def report_url(self):
+        return reverse("court-feedback-reports", args=[self.court.id])
+
+    def test_completed_player_can_create_edit_and_delete_one_review(self):
+        self.client.force_authenticate(self.player)
+        response = self.client.post(
+            self.review_url(),
+            {"booking_id": self.booking.id, "rating": 5, "comment": "Clean court and helpful staff."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(CourtReview.objects.count(), 1)
+
+        response = self.client.get(self.review_url())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["summary"]["average_rating"], "5.00")
+        self.assertTrue(response.data["eligibility"]["can_review"] is False)
+        self.assertTrue(response.data["reviews"][0]["is_author"])
+
+        response = self.client.patch(
+            self.review_url(),
+            {"rating": 4, "comment": "Updated after another visit."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["review"]["rating"], 4)
+
+        response = self.client.delete(self.review_url())
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(CourtReview.objects.exists())
+
+    def test_unverified_users_and_non_players_cannot_write_reviews(self):
+        response = self.client.post(self.review_url(), {"rating": 5}, format="json")
+        self.assertEqual(response.status_code, 401)
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(self.review_url(), {"rating": 5}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_authenticate(self.other_player)
+        response = self.client.post(self.review_url(), {"rating": 5}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("paid booking", response.data["detail"])
+
+    def test_a_player_can_only_have_one_review_for_a_court(self):
+        self.client.force_authenticate(self.player)
+        first_response = self.client.post(
+            self.review_url(),
+            {"booking_id": self.booking.id, "rating": 4},
+            format="json",
+        )
+        self.assertEqual(first_response.status_code, 201)
+
+        second_response = self.client.post(
+            self.review_url(),
+            {"booking_id": self.booking.id, "rating": 2},
+            format="json",
+        )
+        self.assertEqual(second_response.status_code, 409)
+        self.assertEqual(CourtReview.objects.count(), 1)
+
+    def test_player_can_submit_multiple_comments_without_changing_rating(self):
+        self.client.force_authenticate(self.player)
+        rating_response = self.client.post(
+            self.review_url(),
+            {"booking_id": self.booking.id, "rating": 4, "comment": "Good first visit."},
+            format="json",
+        )
+        self.assertEqual(rating_response.status_code, 201)
+
+        first_response = self.client.post(
+            self.comment_url(),
+            {"comment": "The surface was clean."},
+            format="json",
+        )
+        second_response = self.client.post(
+            self.comment_url(),
+            {"comment": "Parking was easy to find."},
+            format="json",
+        )
+        self.assertEqual(first_response.status_code, 201)
+        self.assertEqual(second_response.status_code, 201)
+        self.assertEqual(CourtReviewComment.objects.count(), 2)
+
+        response = self.client.get(self.review_url())
+        self.assertEqual(response.data["summary"]["average_rating"], "4.00")
+        self.assertEqual(response.data["summary"]["review_count"], 1)
+        self.assertEqual(response.data["summary"]["comment_count"], 2)
+
+        comment_id = first_response.data["comment"]["id"]
+        response = self.client.patch(
+            self.comment_detail_url(comment_id),
+            {"comment": "The playing surface was clean."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["comment"]["comment"], "The playing surface was clean.")
+
+        response = self.client.delete(self.comment_detail_url(second_response.data["comment"]["id"]))
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(CourtReviewComment.objects.count(), 1)
+
+    def test_player_can_submit_a_comment_without_submitting_a_rating(self):
+        self.client.force_authenticate(self.player)
+        response = self.client.post(
+            self.comment_url(),
+            {"comment": "The staff explained the rules clearly."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(CourtReview.objects.exists())
+        self.assertEqual(CourtReviewComment.objects.count(), 1)
+
+    def test_only_the_comment_author_can_edit_or_delete_it(self):
+        self.client.force_authenticate(self.player)
+        response = self.client.post(self.comment_url(), {"comment": "Useful comment."}, format="json")
+        self.assertEqual(response.status_code, 201)
+        comment_id = response.data["comment"]["id"]
+
+        self.client.force_authenticate(self.other_player)
+        response = self.client.patch(
+            self.comment_detail_url(comment_id),
+            {"comment": "Changed by somebody else."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(CourtReviewComment.objects.get(pk=comment_id).comment, "Useful comment.")
+
+    def test_player_can_toggle_like_and_dislike_on_feedback(self):
+        self.client.force_authenticate(self.player)
+        review_response = self.client.post(
+            self.review_url(),
+            {"booking_id": self.booking.id, "rating": 5},
+            format="json",
+        )
+        review_id = review_response.data["review"]["id"]
+
+        response = self.client.post(
+            self.reaction_url(),
+            {"target_type": "review", "target_id": review_id, "reaction": "LIKE"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["reaction"], "LIKE")
+        self.assertEqual(response.data["like_count"], 1)
+
+        response = self.client.post(
+            self.reaction_url(),
+            {"target_type": "review", "target_id": review_id, "reaction": "LIKE"},
+            format="json",
+        )
+        self.assertEqual(response.data["reaction"], None)
+        self.assertEqual(response.data["like_count"], 0)
+
+        response = self.client.post(
+            self.reaction_url(),
+            {"target_type": "review", "target_id": review_id, "reaction": "DISLIKE"},
+            format="json",
+        )
+        self.assertEqual(response.data["reaction"], "DISLIKE")
+        self.assertEqual(response.data["dislike_count"], 1)
+        self.assertEqual(CourtFeedbackReaction.objects.count(), 1)
+
+    def test_feedback_reports_are_private_and_duplicate_reports_are_blocked(self):
+        self.client.force_authenticate(self.player)
+        comment_response = self.client.post(self.comment_url(), {"comment": "Helpful information."}, format="json")
+        comment_id = comment_response.data["comment"]["id"]
+
+        self.client.force_authenticate(self.other_player)
+        response = self.client.post(
+            self.report_url(),
+            {"target_type": "comment", "target_id": comment_id, "reason": "MISLEADING", "details": "The information looks outdated."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(CourtFeedbackReport.objects.count(), 1)
+        self.assertNotIn("status", response.data)
+
+        response = self.client.post(
+            self.report_url(),
+            {"target_type": "comment", "target_id": comment_id, "reason": "SPAM"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(CourtFeedbackReport.objects.count(), 1)
+
+
+class BookingCheckInApiTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            email="checkin-owner@example.com",
+            password="test-password",
+            full_name="Check-in Owner",
+            phone="9800000210",
+            role="COURT_OWNER",
+        )
+        self.other_owner = user_model.objects.create_user(
+            email="other-checkin-owner@example.com",
+            password="test-password",
+            full_name="Other Owner",
+            phone="9800000211",
+            role="COURT_OWNER",
+        )
+        self.player = user_model.objects.create_user(
+            email="checkin-player@example.com",
+            password="test-password",
+            full_name="Check-in Player",
+            phone="9800000212",
+            role="PLAYER",
+        )
+        self.venue = Venue.objects.create(
+            owner=self.owner,
+            name="Check-in Cricksal Arena",
+            city="Kathmandu",
+            area="Maitidevi",
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        self.other_venue = Venue.objects.create(
+            owner=self.other_owner,
+            name="Other Cricksal Arena",
+            city="Kathmandu",
+            area="Baneshwor",
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        self.court = Court.objects.create(
+            venue=self.venue,
+            name="Check-in Court",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+            is_active=True,
+        )
+        self.slot = CourtSlot.objects.create(
+            court=self.court,
+            date=timezone.localdate() + timedelta(days=1),
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            slot_duration_minutes=60,
+            price=Decimal("1500.00"),
+            status=CourtSlot.Status.BOOKED,
+        )
+        self.fake_now = timezone.make_aware(datetime.combine(self.slot.date, time(9, 0)), timezone.get_current_timezone())
+        self.booking = Booking.objects.create(
+            player=self.player,
+            venue=self.venue,
+            court=self.court,
+            slot=self.slot,
+            amount=Decimal("1500.00"),
+            status=Booking.BookingStatus.CONFIRMED,
+            payment_status=Booking.PaymentStatus.PAID,
+            reserved_until=self.fake_now + timedelta(minutes=10),
+            confirmed_at=self.fake_now - timedelta(days=1),
+            cancellation_policy_snapshot=build_cancellation_policy_snapshot(self.venue),
+        )
+
+    def test_player_receives_real_signed_pass_and_owner_can_verify_it_once(self):
+        self.client.force_authenticate(self.player)
+        with patch("venues.views.timezone.now", return_value=self.fake_now), patch("venues.services.timezone.now", return_value=self.fake_now):
+            response = self.client.get(reverse("booking-detail", args=[self.booking.id]))
+
+        self.assertEqual(response.status_code, 200)
+        qr_token = response.data["booking"]["check_in"]["qr_token"]
+        self.assertTrue(qr_token)
+        self.assertEqual(response.data["booking"]["check_in"]["status"], "READY")
+
+        self.client.force_authenticate(self.owner)
+        with patch("venues.views.timezone.now", return_value=self.fake_now), patch("venues.services.timezone.now", return_value=self.fake_now):
+            first_response = self.client.post(
+                reverse("owner-booking-verify"),
+                {"token": qr_token},
+                format="json",
+            )
+            second_response = self.client.post(
+                reverse("owner-booking-verify"),
+                {"booking_code": self.booking.booking_code.lower()},
+                format="json",
+            )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertTrue(first_response.data["valid"])
+        self.assertFalse(first_response.data["already_checked_in"])
+        self.assertEqual(second_response.status_code, 200)
+        self.assertTrue(second_response.data["already_checked_in"])
+        check_in = BookingCheckIn.objects.get(booking=self.booking)
+        self.assertEqual(check_in.scan_count, 2)
+        self.assertEqual(first_response.data["booking"]["payment_status"], Booking.PaymentStatus.PAID)
+        self.assertEqual(
+            Notification.objects.filter(
+                recipient=self.player,
+                notification_type=Notification.NotificationType.BOOKING_CHECKED_IN,
+            ).count(),
+            1,
+        )
+        self.assertFalse(
+            Notification.objects.filter(
+                recipient=self.owner,
+                notification_type=Notification.NotificationType.BOOKING_CHECKED_IN,
+            ).exists()
+        )
+        self.assertFalse(ParticipationCommitment.objects.exists())
+        self.assertFalse(ReliabilityEvent.objects.exists())
+
+    def test_tampered_or_foreign_pass_is_rejected_without_leaking_booking_details(self):
+        self.client.force_authenticate(self.player)
+        with patch("venues.views.timezone.now", return_value=self.fake_now), patch("venues.services.timezone.now", return_value=self.fake_now):
+            detail_response = self.client.get(reverse("booking-detail", args=[self.booking.id]))
+        qr_token = detail_response.data["booking"]["check_in"]["qr_token"]
+
+        self.client.force_authenticate(self.other_owner)
+        with patch("venues.views.timezone.now", return_value=self.fake_now), patch("venues.services.timezone.now", return_value=self.fake_now):
+            foreign_response = self.client.post(reverse("owner-booking-verify"), {"token": qr_token}, format="json")
+            tampered_response = self.client.post(reverse("owner-booking-verify"), {"token": f"{qr_token}x"}, format="json")
+
+        self.assertEqual(foreign_response.status_code, 404)
+        self.assertNotIn("booking", foreign_response.data)
+        self.assertEqual(tampered_response.status_code, 400)
+        self.assertNotIn("booking", tampered_response.data)
+        self.assertFalse(BookingCheckIn.objects.exists())
+
+    def test_cancelled_booking_cannot_be_checked_in(self):
+        from venues.services import generate_booking_check_in_token
+
+        token = generate_booking_check_in_token(self.booking)
+        self.booking.status = Booking.BookingStatus.CANCELLED
+        self.booking.payment_status = Booking.PaymentStatus.REFUND_PENDING
+        self.booking.save(update_fields=["status", "payment_status", "updated_at"])
+
+        self.client.force_authenticate(self.owner)
+        with patch("venues.views.timezone.now", return_value=self.fake_now), patch("venues.services.timezone.now", return_value=self.fake_now):
+            response = self.client.post(reverse("owner-booking-verify"), {"token": token}, format="json")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(response.data["valid"])
+        self.assertEqual(response.data["verification_status"], "NOT_AVAILABLE")
+        self.assertFalse(BookingCheckIn.objects.exists())
+
+    def test_check_in_is_not_open_before_the_two_hour_window(self):
+        from venues.services import generate_booking_check_in_token
+
+        token = generate_booking_check_in_token(self.booking)
+        early_now = timezone.make_aware(datetime.combine(self.slot.date, time(7, 0)), timezone.get_current_timezone())
+        self.client.force_authenticate(self.owner)
+        with patch("venues.views.timezone.now", return_value=early_now), patch("venues.services.timezone.now", return_value=early_now):
+            response = self.client.post(reverse("owner-booking-verify"), {"token": token}, format="json")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["verification_status"], "NOT_YET_OPEN")
+        self.assertFalse(BookingCheckIn.objects.exists())

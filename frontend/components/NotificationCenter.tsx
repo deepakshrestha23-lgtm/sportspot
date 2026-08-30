@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { api, refreshAccessTokenForRealtime } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getAccessToken } from "@/lib/auth";
@@ -533,7 +534,7 @@ export default function NotificationCenter({
                   onClick={loadMore}
                   type="button"
                 >
-                  {isLoadingMore ? "Loading..." : "Load More"}
+                  {isLoadingMore ? <LoadingIndicator label="Loading more" size="sm" /> : "Load More"}
                 </button>
               ) : null}
             </div>
@@ -665,20 +666,8 @@ function ActorAvatar({ notification }: { notification: SportSpotNotification }) 
 
 function NotificationSkeletons() {
   return (
-    <div aria-label="Loading notifications" className="space-y-3">
-      {[0, 1, 2, 3].map((item) => (
-        <div className="animate-pulse rounded-lg border border-slate-200 bg-white p-5" key={item}>
-          <div className="flex gap-4">
-            <div className="h-11 w-11 rounded-full bg-slate-200" />
-            <div className="flex-1">
-              <div className="h-4 w-2/5 rounded bg-slate-200" />
-              <div className="mt-3 h-3 w-full rounded bg-slate-100" />
-              <div className="mt-2 h-3 w-4/5 rounded bg-slate-100" />
-              <div className="mt-4 h-8 w-28 rounded bg-slate-200" />
-            </div>
-          </div>
-        </div>
-      ))}
+    <div className="sport-loading-inline-panel min-h-[16rem]" aria-label="Loading notifications">
+      <LoadingIndicator label="Loading notifications" />
     </div>
   );
 }

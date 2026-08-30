@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import ConfirmActionModal from "@/components/ConfirmActionModal";
 import FeedbackToast from "@/components/FeedbackToast";
+import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import VenueMap from "@/components/venue/VenueMap";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
@@ -78,16 +79,16 @@ export default function OwnerVenuePage() {
 
   if (isLoading) {
     return (
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="space-y-6">
         <FeedbackToast message={feedbackMessage} onClose={() => { setMessage(""); setError(""); }} type={feedbackType} />
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">Loading venue profile...</div>
-      </main>
+      </div>
     );
   }
 
   if (!venue) {
     return (
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="space-y-6">
         <FeedbackToast message={feedbackMessage} onClose={() => { setMessage(""); setError(""); }} type={feedbackType} />
         <section className="rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
           <h1 className="text-2xl font-black text-sportNavy">No venue registered yet</h1>
@@ -96,7 +97,7 @@ export default function OwnerVenuePage() {
             Complete Venue Setup
           </Link>
         </section>
-      </main>
+      </div>
     );
   }
 
@@ -105,176 +106,147 @@ export default function OwnerVenuePage() {
   const directionsHref = buildVenueDirectionsHref(venue.latitude, venue.longitude, venue.map_location);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="owner-venue-page space-y-6">
       <FeedbackToast message={feedbackMessage} onClose={() => { setMessage(""); setError(""); }} type={feedbackType} />
 
-      <section className="rounded-lg bg-sportNavy p-6 text-white shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-sm font-black uppercase tracking-wide text-green-300">Manage Venue</p>
-            <h1 className="mt-2 text-3xl font-black">{venue.name || "Untitled Venue"}</h1>
-            <p className="mt-3 max-w-3xl text-slate-300">
-              This is your venue profile. Edit venue details, update photos/proof, manage physical courts, and understand what players can see.
-            </p>
-          </div>
-          <div className="flex flex-col items-start gap-3 lg:items-end">
-            <div className="flex flex-wrap gap-2 lg:justify-end">
-              <StatusBadge status={venue.status} />
-              {!venue.is_active ? <span className="inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-red-800">Deactivated</span> : null}
-            </div>
-            <div className="flex flex-wrap gap-2 lg:justify-end">
-              {venue.can_delete ? (
-                <button className="rounded-md border border-red-300 px-4 py-2 text-sm font-black text-red-100 hover:bg-red-900/30" onClick={() => setPendingAction("delete")} type="button">
-                  Delete Venue
-                </button>
-              ) : venue.is_active ? (
-                <button className="rounded-md border border-amber-300 px-4 py-2 text-sm font-black text-amber-100 hover:bg-amber-900/30" onClick={() => setPendingAction("deactivate")} type="button">
-                  Deactivate Venue
-                </button>
-              ) : null}
-            </div>
-          </div>
+      <OwnerPageHeader
+        actions={
+          <>
+            {canPlayersSeeVenue ? <Link className="owner-secondary-button" href={`/courts/${venue.id}`}>Preview venue</Link> : null}
+            <Link className="owner-primary-button" href="/dashboard/owner/venue-setup">Edit venue</Link>
+          </>
+        }
+        description="Keep the public venue profile accurate, publish trustworthy photos, and manage the courts players can book."
+        eyebrow="Venue Manager"
+        title={venue.name || "Venue profile"}
+      />
+
+      <section className="owner-venue-status-row" aria-label="Venue status">
+        <div className="owner-venue-status-context">
+          <StatusBadge status={venue.status} />
+          {!venue.is_active ? <span className="owner-status owner-status-danger">Deactivated</span> : null}
+          <span className="owner-venue-status-copy">{canPlayersSeeVenue ? "Visible to players" : "Not visible to players yet"}</span>
+        </div>
+        <div className="owner-venue-status-actions">
+          <span>{visibleCourts.length} active court{visibleCourts.length === 1 ? "" : "s"}</span>
+          <span>{venue.bookings_count} booking record{venue.bookings_count === 1 ? "" : "s"}</span>
+          {venue.can_delete ? (
+            <button className="owner-text-danger" onClick={() => setPendingAction("delete")} type="button">Delete venue</button>
+          ) : venue.is_active ? (
+            <button className="owner-text-warning" onClick={() => setPendingAction("deactivate")} type="button">Deactivate venue</button>
+          ) : null}
         </div>
       </section>
 
-
-      <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-6">
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <section className="owner-venue-grid">
+        <div className="owner-venue-main-column">
+          <section className="owner-venue-section">
+            <div className="owner-venue-section-header">
               <div>
-                <h2 className="text-xl font-black text-sportNavy">Venue Information</h2>
-                <p className="mt-1 text-sm text-slate-600">Players see this information after admin approval.</p>
+                <p className="owner-section-kicker">Profile</p>
+                <h2>Venue information</h2>
+                <p>Players see these details after admin approval.</p>
               </div>
-              <Link className="rounded-md border border-green-200 px-4 py-2 text-sm font-black text-sportGreen hover:bg-green-50" href="/dashboard/owner/venue-setup">
-                Edit Venue
-              </Link>
+              <Link className="owner-secondary-button" href="/dashboard/owner/venue-setup">Edit details</Link>
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <Info label="Address" value={`${venue.address || "Not added"}, ${venue.area || "Area"}, ${venue.city || "City"}`} />
+            <div className="owner-venue-info-grid">
+              <Info label="Address" value={`${venue.address || "Not added"}, ${venue.area || "Area"}, ${venue.city || "District"}`} />
               <Info label="Contact" value={venue.contact_phone || "Not added"} />
-              <Info label="Hours" value={`${toTime(venue.opening_time)} - ${toTime(venue.closing_time)}`} />
+              <Info label="Opening hours" value={`${toTime(venue.opening_time)} - ${toTime(venue.closing_time)}`} />
               <Info label="Sport" value="Cricksal" />
-              <Info label="Document Type" value={venue.verification_document_type ? formatChoice(venue.verification_document_type) : "Not selected"} />
-              <Info label="Player Visibility" value={canPlayersSeeVenue ? "Visible on Courts page" : "Hidden from players"} />
-              <Info label="Booking History" value={`${venue.bookings_count} booking record${venue.bookings_count === 1 ? "" : "s"}`} />
+              <Info label="Player visibility" value={canPlayersSeeVenue ? "Visible on Courts" : "Hidden until approved"} />
+              <Info label="Verification" value={venue.verification_document_type ? formatChoice(venue.verification_document_type) : "Not selected"} />
             </div>
-            {!venue.can_delete ? (
-              <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
-                {venue.delete_block_reason}
-              </div>
-            ) : null}
-            {venue.description ? <p className="mt-5 rounded-md bg-slate-50 p-4 text-sm leading-6 text-slate-600">{venue.description}</p> : null}
+            {!venue.can_delete ? <p className="owner-venue-notice">{venue.delete_block_reason}</p> : null}
+            {venue.description ? <p className="owner-venue-copy-block">{venue.description}</p> : null}
             {venue.rules ? (
-              <div className="mt-3 rounded-md bg-slate-50 p-4">
-                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Venue Rules</p>
-                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{venue.rules}</p>
+              <div className="owner-venue-copy-block">
+                <p className="owner-section-kicker">Venue rules</p>
+                <p className="mt-2 whitespace-pre-line">{venue.rules}</p>
               </div>
             ) : null}
-            <div className="mt-3 rounded-md bg-slate-50 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Cancellation Policy</p>
-                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-slate-500">
-                  Version {venue.cancellation_policy_details.version}
-                </span>
-              </div>
-              <ul className="mt-3 space-y-2">
-                {venue.cancellation_policy_details.summary.map((rule) => (
-                  <li className="flex gap-2 text-sm font-semibold leading-6 text-slate-700" key={rule}>
-                    <span aria-hidden="true" className="mt-2 h-2 w-2 shrink-0 rounded-full bg-sportGreen" />
-                    {rule}
-                  </li>
-                ))}
-              </ul>
-              {venue.cancellation_policy_details.additional_notes ? (
-                <p className="mt-3 border-t border-slate-200 pt-3 text-sm leading-6 text-slate-600">
-                  {venue.cancellation_policy_details.additional_notes}
-                </p>
-              ) : null}
-              <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
-                Policy edits apply to future bookings. Existing bookings keep the policy accepted when they were reserved.
-              </p>
-            </div>
-          </div>
+          </section>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-black text-sportNavy">Venue Photos and Proof</h2>
-            <p className="mt-1 text-sm text-slate-600">Use the setup page to replace or add photos and legal verification proof.</p>
-            <div className="mt-5 space-y-5">
+          <section className="owner-venue-section">
+            <div className="owner-venue-section-header">
+              <div>
+                <p className="owner-section-kicker">Trust & presentation</p>
+                <h2>Venue photos and proof</h2>
+                <p>Keep the entrance and playable area current so players know what they are booking.</p>
+              </div>
+              <Link className="owner-secondary-button" href="/dashboard/owner/venue-setup?step=4">Manage photos</Link>
+            </div>
+            <div className="owner-venue-photo-list">
               <PhotoGallery label="Outside / Front Photos" category="OUTSIDE" legacyPhotoUrl={venue.front_photo} photos={venuePhotos} />
               <PhotoGallery label="Court / Play Area Photos" category="COURT_AREA" legacyPhotoUrl={venue.court_area_photo} photos={venuePhotos} />
               <PhotoGallery label="Additional Photos" category="ADDITIONAL" legacyPhotoUrl={venue.additional_photo} photos={venuePhotos} />
             </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <ProofCard label="Legal Document" value={venue.verification_document} />
+            <div className="owner-venue-proof-row"><ProofCard label="Legal document" value={venue.verification_document} /></div>
+          </section>
+
+          <section className="owner-venue-section">
+            <div className="owner-venue-section-header">
+              <div>
+                <p className="owner-section-kicker">Policy</p>
+                <h2>Cancellation policy</h2>
+                <p>Future bookings use the current version. Existing bookings keep their accepted terms.</p>
+              </div>
+              <span className="owner-status owner-status-neutral">Version {venue.cancellation_policy_details.version}</span>
             </div>
-          </div>
+            <ul className="owner-venue-policy-list">
+              {venue.cancellation_policy_details.summary.map((rule) => <li key={rule}>{rule}</li>)}
+            </ul>
+            {venue.cancellation_policy_details.additional_notes ? <p className="owner-venue-copy-block">{venue.cancellation_policy_details.additional_notes}</p> : null}
+          </section>
         </div>
 
-        <aside className="space-y-6">
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-black text-sportNavy">How Player Booking Works</h2>
-            <div className="mt-4 space-y-3">
-              <FlowStep number="1" text="Admin approves your venue." done={venue.status === "APPROVED"} />
-              <FlowStep number="2" text="Active courts appear on /courts." done={visibleCourts.length > 0 && canPlayersSeeVenue} />
-              <FlowStep number="3" text="Available slots appear on each court detail page." done={courts.some((court) => court.lowest_price)} />
-              <FlowStep number="4" text="Player reserves a slot, completes payment, and the slot becomes booked." />
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <aside className="owner-venue-side-column">
+          <section className="owner-venue-section owner-venue-readiness">
+            <div className="owner-venue-section-header">
               <div>
-                <h2 className="text-xl font-black text-sportNavy">Venue location</h2>
-                <p className="mt-1 text-sm text-slate-600">Review the map pin players will use for directions.</p>
+                <p className="owner-section-kicker">Publishing checklist</p>
+                <h2>Booking readiness</h2>
               </div>
-              {directionsHref ? (
-                <a className="rounded-md border border-green-200 px-3 py-2 text-sm font-black text-sportGreen hover:bg-green-50" href={directionsHref} rel="noreferrer" target="_blank">
-                  Open directions
-                </a>
-              ) : null}
             </div>
-            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-              <VenueMap latitude={venue.latitude} longitude={venue.longitude} />
+            <div className="owner-venue-checklist">
+              <ReadinessItem label="Admin approval" done={venue.status === "APPROVED"} />
+              <ReadinessItem label="At least one active court" done={visibleCourts.length > 0} />
+              <ReadinessItem label="Future availability published" done={courts.some((court) => court.lowest_price)} />
+              <ReadinessItem label="Required venue photos" done={Boolean(venue.front_photo || venuePhotos.some((photo) => photo.category === "OUTSIDE")) && Boolean(venue.court_area_photo || venuePhotos.some((photo) => photo.category === "COURT_AREA"))} />
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-black text-sportNavy">Courts Under This Venue</h2>
-            <p className="mt-1 text-sm text-slate-600">{courts.length} court(s) registered. Active approved courts are shown to players.</p>
-            <div className="mt-4 space-y-3">
-              {courts.length === 0 ? (
-                <p className="rounded-md bg-slate-50 p-4 text-sm text-slate-600">No courts added yet.</p>
-              ) : (
-                courts.map((court) => (
-                  <div className="rounded-md border border-slate-200 bg-slate-50 p-4" key={court.id}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-black text-sportNavy">{court.name}</h3>
-                        <p className="mt-1 text-sm text-slate-600">{formatChoice(court.court_type)} · {formatChoice(court.surface_type)}</p>
-                      </div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-black ${court.is_active ? "bg-green-100 text-green-800" : "bg-slate-100 text-slate-600"}`}>
-                        {court.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Link className="text-sm font-black text-sportGreen hover:text-green-700" href={`/dashboard/owner/courts/${court.id}/slots`}>
-                        Manage Slots
-                      </Link>
-                      {canPlayersSeeVenue && court.is_active ? (
-                        <Link className="text-sm font-black text-slate-600 hover:text-sportGreen" href={`/courts/${venue.id}`}>
-                          View Venue Page
-                        </Link>
-                      ) : null}
-                    </div>
-                  </div>
-                ))
-              )}
+          <section className="owner-venue-section">
+            <div className="owner-venue-section-header">
+              <div>
+                <p className="owner-section-kicker">Player directions</p>
+                <h2>Venue location</h2>
+                <p>Review the confirmed map pin used for directions.</p>
+              </div>
+              {directionsHref ? <a className="owner-secondary-button" href={directionsHref} rel="noreferrer" target="_blank">Directions</a> : null}
             </div>
-            <Link className="mt-5 inline-flex rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" href="/dashboard/owner/courts">
-              Manage Courts
-            </Link>
-          </div>
+            <div className="owner-venue-map"><VenueMap latitude={venue.latitude} longitude={venue.longitude} mapLocation={venue.map_location} /></div>
+          </section>
+
+          <section className="owner-venue-section">
+            <div className="owner-venue-section-header">
+              <div>
+                <p className="owner-section-kicker">Inventory</p>
+                <h2>Courts at this venue</h2>
+                <p>{courts.length} registered court{courts.length === 1 ? "" : "s"}.</p>
+              </div>
+              <Link className="owner-secondary-button" href="/dashboard/owner/courts">Manage</Link>
+            </div>
+            <div className="owner-venue-court-list">
+              {courts.length === 0 ? <p className="owner-venue-empty">No courts added yet.</p> : courts.map((court) => (
+                <div className="owner-venue-court-row" key={court.id}>
+                  <div className="min-w-0"><h3>{court.name}</h3><p>{formatChoice(court.court_type)} · {formatChoice(court.surface_type)}</p></div>
+                  <Link href={`/dashboard/owner/courts/${court.id}/slots`}>Slots</Link>
+                </div>
+              ))}
+            </div>
+            <Link className="owner-primary-button owner-venue-full-button" href="/dashboard/owner/courts">Manage courts</Link>
+          </section>
         </aside>
       </section>
 
@@ -293,14 +265,14 @@ export default function OwnerVenuePage() {
           title={pendingAction === "delete" ? `Delete ${venue.name || "this venue"}?` : `Deactivate ${venue.name || "this venue"}?`}
         />
       ) : null}
-    </main>
+    </div>
   );
 }
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-slate-50 p-4">
-      <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
+    <div className="owner-venue-info-item">
+      <p className="owner-section-kicker">{label}</p>
       <p className="mt-2 font-black text-sportNavy">{value}</p>
     </div>
   );
@@ -321,24 +293,24 @@ function PhotoGallery({
   const count = categoryPhotos.length + (legacyPhotoUrl ? 1 : 0);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div className="owner-venue-photo-gallery">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="font-black text-sportNavy">{label}</h3>
           <p className="mt-1 text-sm text-slate-600">{count > 0 ? `${count} photo${count === 1 ? "" : "s"} uploaded` : "No photos uploaded yet"}</p>
         </div>
-        <Link className="inline-flex rounded-md border border-green-200 px-4 py-2 text-sm font-black text-sportGreen hover:bg-green-50" href="/dashboard/owner/venue-setup">
-          Edit Photos
+        <Link className="owner-secondary-button" href="/dashboard/owner/venue-setup?step=4">
+          Edit photos
         </Link>
       </div>
       {count > 0 ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {legacyPhotoUrl ? <img alt={label} className="aspect-[4/3] rounded-md object-cover" src={getMediaUrl(legacyPhotoUrl)} /> : null}
+        <div className="owner-venue-photo-strip">
+          {legacyPhotoUrl ? <img alt={label} className="owner-venue-photo-thumb" src={getMediaUrl(legacyPhotoUrl)} /> : null}
           {categoryPhotos.map((photo) => (
-            <img alt={label} className="aspect-[4/3] rounded-md object-cover" key={photo.id} src={getMediaUrl(photo.image)} />
+            <img alt={label} className="owner-venue-photo-thumb" key={photo.id} src={getMediaUrl(photo.image)} />
           ))}
         </div>
-      ) : null}
+      ) : <p className="owner-venue-empty">Add a clear photo to complete this category.</p>}
     </div>
   );
 }
@@ -354,11 +326,12 @@ function ProofCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function FlowStep({ number, text, done = false }: { number: string; text: string; done?: boolean }) {
+function ReadinessItem({ label, done }: { label: string; done: boolean }) {
   return (
-    <div className="flex gap-3 rounded-md bg-slate-50 p-3">
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${done ? "bg-sportGreen text-white" : "bg-slate-200 text-slate-600"}`}>{number}</span>
-      <p className="text-sm font-semibold text-slate-700">{text}</p>
+    <div className={`owner-venue-checklist-item ${done ? "is-done" : ""}`}>
+      <span aria-hidden="true">{done ? "✓" : ""}</span>
+      <p>{label}</p>
+      <strong>{done ? "Ready" : "Action needed"}</strong>
     </div>
   );
 }

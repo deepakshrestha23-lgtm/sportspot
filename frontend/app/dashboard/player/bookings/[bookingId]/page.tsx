@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
 
 import CancelBookingModal, { type CancelBookingPayload } from "@/components/CancelBookingModal";
@@ -105,13 +106,22 @@ export default function BookingPassPage() {
             {booking.cancelled_at ? <Info label="Cancelled By" value={booking.cancelled_by_name || booking.cancellation_actor_role || "System"} /> : null}
             {booking.cancellation_reason ? <Info label="Cancellation Reason" value={booking.cancellation_reason} /> : null}
           </div>
-          <div className="flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
-            <div className="grid h-28 w-28 grid-cols-4 gap-1 rounded bg-white p-2">
-              {Array.from({ length: 16 }).map((_, index) => (
-                <span className={`${index % 3 === 0 || index % 5 === 0 ? "bg-sportNavy" : "bg-slate-200"}`} key={index} />
-              ))}
-            </div>
-            <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">QR Placeholder</p>
+          <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
+            {booking.check_in?.qr_token ? (
+              <>
+                <div className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+                  <QRCodeSVG bgColor="#ffffff" fgColor="#10213f" includeMargin level="M" size={176} value={booking.check_in.qr_token} />
+                </div>
+                <p className="mt-4 text-xs font-black uppercase tracking-[0.14em] text-sportGreen">Venue check-in pass</p>
+                <p className="mt-1 text-sm font-semibold leading-5 text-slate-600">{booking.check_in.message}</p>
+                <p className="mt-3 rounded-lg bg-white px-3 py-2 font-mono text-xs font-black tracking-wide text-sportNavy">{booking.booking_code}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-black text-sportNavy">Booking pass unavailable</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">A venue check-in pass appears after successful payment confirmation. Use the booking code for this record when speaking with the venue.</p>
+              </>
+            )}
           </div>
         </div>
       </section>

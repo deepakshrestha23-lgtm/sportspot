@@ -11,6 +11,8 @@ from .serializers import (
     ForgotPasswordSerializer,
     LoginSerializer,
     NotificationSettingsSerializer,
+    OwnerNotificationSettingsSerializer,
+    OwnerSettingsSerializer,
     PasswordChangeSerializer,
     PasswordResetTokenValidationSerializer,
     PlayerSettingsSerializer,
@@ -70,12 +72,21 @@ class PlayerSettingsView(APIView):
         return Response(PlayerSettingsSerializer(request.user).data, status=status.HTTP_200_OK)
 
 
+class OwnerSettingsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != "COURT_OWNER":
+            return Response({"detail": "This settings page is available for court-owner accounts."}, status=status.HTTP_403_FORBIDDEN)
+        return Response(OwnerSettingsSerializer(request.user).data, status=status.HTTP_200_OK)
+
+
 class AccountSettingsUpdateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request):
-        if request.user.role != "PLAYER":
-            return Response({"detail": "Only player accounts can update player settings."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in {"PLAYER", "COURT_OWNER"}:
+            return Response({"detail": "Only player and court-owner accounts can update account settings."}, status=status.HTTP_403_FORBIDDEN)
         serializer = AccountUpdateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user, email_changed = serializer.save()
@@ -110,6 +121,18 @@ class NotificationSettingsUpdateView(APIView):
         if request.user.role != "PLAYER":
             return Response({"detail": "Only player accounts can update player settings."}, status=status.HTTP_403_FORBIDDEN)
         serializer = NotificationSettingsSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Your notification preferences have been saved."}, status=status.HTTP_200_OK)
+
+
+class OwnerNotificationSettingsUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        if request.user.role != "COURT_OWNER":
+            return Response({"detail": "Only court-owner accounts can update owner notification settings."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = OwnerNotificationSettingsSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"detail": "Your notification preferences have been saved."}, status=status.HTTP_200_OK)

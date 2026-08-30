@@ -78,6 +78,137 @@ def set_participant_status(participant, status, *, actor=None, acknowledge_sched
     return participant
 
 
+def ensure_game_participation_commitment(participant, *, created_by=None):
+    """Create a reliability commitment only for a confirmed registered player."""
+    if (
+        not participant
+        or not participant.user_id
+        or participant.participant_type == GameParticipant.ParticipantType.GUEST
+        or participant.status != GameParticipant.Status.CONFIRMED
+        or not participant.game_id
+    ):
+        return None, False
+    game = participant.game
+    if not game.booking_id or not game.start_at or not game.end_at:
+        return None, False
+    from players.services import create_participation_commitment
+
+    return create_participation_commitment(
+        player=participant.user,
+        source_type="MATCHMAKING_GAME",
+        source_id=game.id,
+        source_participant_id=participant.id,
+        start_at=game.start_at,
+        end_at=game.end_at,
+        metadata={
+            "game_id": game.id,
+            "participant_id": participant.id,
+            "participant_type": participant.participant_type,
+        },
+        created_by=created_by,
+    )
+
+
+def ensure_game_participation_commitments(game, *, created_by=None):
+    if not game.booking_id:
+        return 0
+    participants = game.participants.filter(
+        status=GameParticipant.Status.CONFIRMED,
+        user__isnull=False,
+    ).exclude(participant_type=GameParticipant.ParticipantType.GUEST).select_related("user", "game")
+    created = 0
+    for participant in participants:
+        _commitment, was_created = ensure_game_participation_commitment(participant, created_by=created_by)
+        created += int(was_created)
+    return created
+
+
+def void_game_participation_commitments(game, *, actor=None, reason=""):
+    from players.models import ParticipationCommitment
+
+    commitments = ParticipationCommitment.objects.select_for_update().filter(
+        source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+        source_id=game.id,
+        status__in=[
+            ParticipationCommitment.Status.COMMITTED,
+            ParticipationCommitment.Status.ATTENDANCE_PENDING,
+            ParticipationCommitment.Status.NO_SHOW_REPORTED,
+        ],
+    )
+    now = timezone.now()
+    count = 0
+    for commitment in commitments:
+        commitment.status = ParticipationCommitment.Status.VOID
+        commitment.resolved_at = now
+        commitment.resolved_by = actor
+        commitment.metadata = {
+            **(commitment.metadata or {}),
+            "void_reason": str(reason or "game_cancelled")[:500],
+        }
+        commitment.save(update_fields=["status", "resolved_at", "resolved_by", "metadata", "updated_at"])
+        count += 1
+    return count
+
+
+@transaction.atomic
+def record_game_attendance(game_id, participant_id, actor, attendance_status):
+    """Record registered-player attendance for a completed Pickup/Fill game."""
+    from players.services import record_commitment_attendance
+
+    game = Game.objects.select_for_update(of=("self",)).select_related("host", "booking").get(id=game_id)
+    synchronize_and_require_game_host(game, actor, "Only the game host can record attendance.")
+    synchronize_game_lifecycle(game, expire_requests=True)
+    if game.status != Game.Status.COMPLETED:
+        raise ValidationError("Attendance can be recorded after the game is completed.")
+    participant = GameParticipant.objects.select_for_update().select_related("user", "game").filter(
+        id=participant_id,
+        game=game,
+        user__isnull=False,
+        participant_type__in=[
+            GameParticipant.ParticipantType.HOST,
+            GameParticipant.ParticipantType.TEAM_MEMBER,
+            GameParticipant.ParticipantType.TEMPORARY,
+        ],
+        status=GameParticipant.Status.CONFIRMED,
+    ).first()
+    if not participant:
+        raise ValidationError("Choose a registered player from this completed game.")
+    normalized = str(attendance_status or "").upper()
+    if normalized not in {"ATTENDED", "ABSENT"}:
+        raise ValidationError("Choose attended or absent.")
+    commitment, _created = ensure_game_participation_commitment(participant, created_by=actor)
+    if not commitment:
+        raise ValidationError("This player does not have a confirmed game commitment.")
+    return record_commitment_attendance(
+        commitment_id=commitment.id,
+        actor=actor,
+        attended=normalized == "ATTENDED",
+    )
+
+
+@transaction.atomic
+def dispute_game_attendance(game_id, participant_id, player, reason):
+    from players.models import ParticipationCommitment
+    from players.services import dispute_commitment
+
+    participant = GameParticipant.objects.filter(
+        id=participant_id,
+        game_id=game_id,
+        user=player,
+    ).first()
+    if not participant:
+        raise ValidationError("You do not have an attendance record for this game.")
+    commitment = ParticipationCommitment.objects.filter(
+        player=player,
+        source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+        source_id=game_id,
+        source_participant_id=participant.id,
+    ).order_by("-source_version", "-id").first()
+    if not commitment:
+        raise ValidationError("This game does not have a reviewable attendance record.")
+    return dispute_commitment(commitment_id=commitment.id, player=player, reason=reason)
+
+
 def game_room_access_level(game, user):
     """Return the least-privileged room a user may open for the game.
 
@@ -250,6 +381,7 @@ def _cancel_game_for_linked_booking(game, actor=None, reason="", now=None, notif
         "status", "is_public", "cancelled_at", "cancellation_reason",
         "booking_handoff_was_public", "updated_at",
     ])
+    void_game_participation_commitments(game, actor=actor, reason=reason or "linked_booking_unavailable")
     expire_open_join_requests_for_game(game, now=now)
     if notify:
         notify_game_cancelled(game, actor, booking_cancelled=True)
@@ -570,6 +702,10 @@ def add_initial_participants(game, host, guests=None, selected_team_member_ids=N
             status=initial_status,
             added_by=host,
         )
+    # Booking-first games create accountable commitments at publication time.
+    # Plan-first participants remain provisional and enter the ledger only after
+    # the host attaches a paid confirmed booking.
+    ensure_game_participation_commitments(game, created_by=host)
 
 
 def team_member_role_to_game_role(member):
@@ -635,10 +771,11 @@ def player_has_overlapping_commitment(
 ):
     """Return whether a player already has a real schedule commitment.
 
-    Matchmaking participants and court bookings are separate records, so
-    checking only one source can let a player accept an overlapping activity.
-    A confirmed paid booking, or a still-held unpaid reservation, is treated
-    as committed until its backend lifecycle releases it.
+    Matchmaking participants, team fixtures, participation commitments, and
+    court bookings are separate records, so each supported source is checked
+    before a player is offered or accepted into another activity. A confirmed
+    paid booking, a still-held unpaid reservation, or an active commitment is
+    treated as unavailable until its backend lifecycle releases it.
     """
     if not start_at or not end_at:
         return False
@@ -658,6 +795,29 @@ def player_has_overlapping_commitment(
         other_end = other.end_at
         if other_start and other_end and start_at < other_end and end_at > other_start:
             return True
+
+    # The ledger is the common source for confirmed registered players across
+    # Pickup Games, Fill My Squad, and Team Challenge fixtures. Exclude the
+    # current matchmaking game so lifecycle refreshes can safely revalidate it.
+    from players.models import ParticipationCommitment
+
+    commitments = ParticipationCommitment.objects.filter(
+        player=player,
+        status__in=[
+            ParticipationCommitment.Status.COMMITTED,
+            ParticipationCommitment.Status.ATTENDANCE_PENDING,
+            ParticipationCommitment.Status.NO_SHOW_REPORTED,
+            ParticipationCommitment.Status.DISPUTED,
+        ],
+        end_at__gt=now,
+    )
+    if exclude_game_id:
+        commitments = commitments.exclude(
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=exclude_game_id,
+        )
+    if commitments.filter(start_at__lt=end_at).exists():
+        return True
 
     bookings = Booking.objects.filter(player=player).filter(
         Q(
@@ -888,6 +1048,19 @@ def expire_pending_reconfirmations(game, now=None, *, notify=True):
         refresh_reconfirmation_state(game)
         return 0
     for participant in pending:
+        from players.models import ParticipationCommitment
+
+        ParticipationCommitment.objects.filter(
+            player_id=participant.user_id,
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=game.id,
+            status=ParticipationCommitment.Status.COMMITTED,
+        ).update(
+            status=ParticipationCommitment.Status.EXCUSED,
+            resolved_at=now,
+            metadata={"reason": "schedule_reconfirmation_expired"},
+            updated_at=now,
+        )
         set_participant_status(participant, GameParticipant.Status.REMOVED, actor=game.host)
         if participant.user_id:
             requests = JoinRequest.objects.select_for_update().filter(
@@ -1393,6 +1566,7 @@ def respond_game_invitation(join_request, player, response):
     participant.status_changed_at = timezone.now()
     participant.status_changed_by = player
     participant.save(update_fields=["status_changed_at", "status_changed_by"])
+    ensure_game_participation_commitment(participant, created_by=player)
     previous_status = locked_request.status
     locked_request.status = JoinRequest.Status.ACCEPTED
     locked_request.decided_at = timezone.now()
@@ -1437,6 +1611,7 @@ def decide_join_request(join_request, actor, decision):
         participant.status_changed_at = timezone.now()
         participant.status_changed_by = actor
         participant.save(update_fields=["status_changed_at", "status_changed_by"])
+        ensure_game_participation_commitment(participant, created_by=actor)
         previous_status = locked_request.status
         locked_request.status = JoinRequest.Status.ACCEPTED
         locked_request.waitlist_position = None
@@ -1536,6 +1711,15 @@ def leave_game(game, player):
         raise ValidationError("The host must cancel the public game instead of leaving it.")
     if locked_game.start_at and locked_game.start_at <= timezone.now():
         raise ValidationError("This game has already started.")
+    from players.services import cancel_participation_commitment
+
+    cancel_participation_commitment(
+        source_type="MATCHMAKING_GAME",
+        source_id=locked_game.id,
+        player=player,
+        actor=player,
+        reason="Player left the game.",
+    )
     set_participant_status(participant, GameParticipant.Status.LEFT, actor=player)
     accepted_request = JoinRequest.objects.select_for_update().filter(
         game=locked_game,
@@ -1641,6 +1825,7 @@ def attach_booking_to_game(game, booking, actor, *, from_payment_handoff=False):
             status_changed_at=timezone.now(),
             status_changed_by=actor,
         )
+    ensure_game_participation_commitments(locked_game, created_by=actor)
     refresh_reconfirmation_state(locked_game)
     locked_game.refresh_status()
     notify_booking_attached(locked_game, material_change)
@@ -1668,6 +1853,22 @@ def reconfirm_game(game, player, response):
     else:
         raise ValidationError("Choose a valid reconfirmation response.")
     set_participant_status(participant, participant_status, actor=player, acknowledge_schedule=True)
+    from players.models import ParticipationCommitment
+    if normalized == "RECONFIRM":
+        ensure_game_participation_commitment(participant, created_by=player)
+    else:
+        commitment = ParticipationCommitment.objects.filter(
+            player=player,
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=locked_game.id,
+            status=ParticipationCommitment.Status.COMMITTED,
+        ).order_by("-source_version", "-id").first()
+        if commitment:
+            commitment.status = ParticipationCommitment.Status.EXCUSED
+            commitment.resolved_at = timezone.now()
+            commitment.resolved_by = player
+            commitment.metadata = {**(commitment.metadata or {}), "reason": "declined_schedule_change"}
+            commitment.save(update_fields=["status", "resolved_at", "resolved_by", "metadata", "updated_at"])
     refresh_reconfirmation_state(locked_game)
     locked_game.refresh_status()
     notify_reconfirmation_response(locked_game, participant, normalized)

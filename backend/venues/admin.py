@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Booking, BookingMessage, BookingSlot, Court, CourtSlot, Venue, VenuePhoto
+from .models import Booking, BookingCheckIn, BookingMessage, BookingSlot, Court, CourtSlot, Venue, VenuePhoto
 
 
 class CourtInline(admin.TabularInline):
@@ -72,6 +72,13 @@ class BookingAdmin(admin.ModelAdmin):
         "created_at",
     )
     search_fields = ("booking_code", "player__full_name", "court__name", "venue__name")
+
+
+@admin.register(BookingCheckIn)
+class BookingCheckInAdmin(admin.ModelAdmin):
+    list_display = ("booking", "status", "checked_in_at", "checked_in_by", "scan_count", "last_scanned_at")
+    list_filter = ("status", "checked_in_at")
+    search_fields = ("booking__booking_code", "booking__venue__name", "booking__player__full_name")
 
 
 @admin.register(BookingSlot)

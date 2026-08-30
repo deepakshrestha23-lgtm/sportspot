@@ -7,6 +7,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateTimeInNepal } from "@/lib/dates";
+import LoadingIndicator, { LoadingScreen } from "@/components/LoadingIndicator";
 import type { GameIntensity, GameListResponse, GameRole, GameType, MatchmakingGame } from "@/types/matchmaking";
 
 const roles: Array<{ label: string; value: GameRole | "" }> = [
@@ -59,7 +60,7 @@ const spotOptions = [
 
 export default function FindGamePage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-[var(--sport-canvas)] px-4 py-8"><div className="sport-surface mx-auto h-72 max-w-7xl animate-pulse" /></main>}>
+    <Suspense fallback={<main className="min-h-screen bg-[var(--sport-canvas)] px-4 py-8"><LoadingScreen label="Loading games" /></main>}>
       <FindGameContent />
     </Suspense>
   );
@@ -80,6 +81,7 @@ function FindGameContent() {
   const [minimumSpots, setMinimumSpots] = useState(searchParams.get("min_spots") || "");
   const [waitlistOnly, setWaitlistOnly] = useState(searchParams.get("waitlist") === "true");
   const [sort, setSort] = useState(searchParams.get("sort") || "soonest");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -169,51 +171,99 @@ function FindGameContent() {
     setWaitlistOnly(false);
   }
 
+  function clearFilter(filter: string) {
+    if (filter === "search") setSearch("");
+    if (filter === "booking") setBookingState("");
+    if (filter === "type") setGameType("");
+    if (filter === "role") setRole("");
+    if (filter === "date") setDate("");
+    if (filter === "area") setArea("");
+    if (filter === "intensity") setIntensity("");
+    if (filter === "skill") setSkill("");
+    if (filter === "time") setTimePeriod("");
+    if (filter === "spots") setMinimumSpots("");
+    if (filter === "waitlist") setWaitlistOnly(false);
+  }
+
   const hasFilters = search || bookingState || gameType || role || date || area || intensity || skill || timePeriod || minimumSpots || waitlistOnly;
+  const activeFilterCount = [search, bookingState, gameType, role, date, area, intensity, skill, timePeriod, minimumSpots, waitlistOnly].filter(Boolean).length;
+  const advancedFilterCount = [bookingState, role, intensity, skill, timePeriod, minimumSpots, waitlistOnly].filter(Boolean).length;
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-          <p className="sport-eyebrow">Find Games</p>
-            <h1 className="sport-page-title">Find Cricksal games near you</h1>
-            <p className="sport-page-description">
-              Join individual Pickup Games or help a permanent team Fill My Squad. Verified games already have a SportSpot booking; planning games recruit first and confirm the court later.
-            </p>
+    <main className="min-h-screen bg-[var(--sport-canvas)]">
+      <section className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
+        <header className="flex flex-col gap-5 border-b border-slate-200/80 pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-3xl">
+            <p className="sport-eyebrow">Find Games</p>
+            <h1 className="sport-page-title">Find your next game</h1>
+            <p className="sport-page-description">Discover open Cricksal games, choose a role that suits you, and join with confidence. Verified games already have a SportSpot court booking.</p>
           </div>
-          <Link className="sport-primary-button" href="/dashboard/player/games/create">Create Game</Link>
-        </div>
+          <Link className="sport-primary-button shrink-0" href="/dashboard/player/games/create">Create Game</Link>
+        </header>
 
-        <section className="sport-surface mt-6 p-4">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_150px_160px_160px_170px_170px_150px]">
-            <Field label="Search"><input className={inputClass} onChange={(event) => setSearch(event.target.value)} placeholder="Search game, host, venue or area" value={search} /></Field>
-            <Field label="Area"><input className={inputClass} onChange={(event) => setArea(event.target.value)} placeholder="Any area" value={area} /></Field>
-            <Select label="Game type" onChange={setGameType} options={gameTypes} value={gameType} />
-            <Select label="Role" onChange={setRole} options={roles} value={role} />
-            <Select label="Booking" onChange={setBookingState} options={bookingStates} value={bookingState} />
-            <Select label="Mood" onChange={setIntensity} options={intensities} value={intensity} />
-            <Select label="Skill" onChange={setSkill} options={skillLevels} value={skill} />
-            <Select label="Time" onChange={setTimePeriod} options={timePeriods} value={timePeriod} />
-            <Select label="Sort" onChange={setSort} options={[{ label: "Soonest", value: "soonest" }, { label: "Newest", value: "newest" }, { label: "Most spots", value: "spots" }]} value={sort} />
+        <section aria-label="Find game filters" className="sport-surface mt-6 p-3 sm:p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <label className="relative block min-w-0 flex-1">
+              <span className="sr-only">Search games</span>
+              <SearchIcon />
+              <input className={`${inputClass} pl-10`} onChange={(event) => setSearch(event.target.value)} placeholder="Search games, hosts, venues or areas" value={search} />
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button aria-controls="advanced-game-filters" aria-expanded={isFilterOpen} className="sport-secondary-button" onClick={() => setIsFilterOpen((current) => !current)} type="button"><FilterIcon /> More filters{advancedFilterCount ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-sportGreen">{advancedFilterCount}</span> : null}</button>
+              <label className="flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><span className="hidden sm:inline">Sort</span><span className="sr-only sm:hidden">Sort results</span><select aria-label="Sort results" className="bg-transparent font-bold text-sportNavy outline-none" onChange={(event) => setSort(event.target.value)} value={sort}><option value="soonest">Soonest</option><option value="newest">Newest</option><option value="spots">Most spots</option></select></label>
+            </div>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-[220px_220px_220px_auto] sm:items-end">
-            <Field label="Date"><input className={inputClass} min={today()} onChange={(event) => setDate(event.target.value)} type="date" value={date} /></Field>
-            <Select label="Open spots" onChange={setMinimumSpots} options={spotOptions} value={minimumSpots} />
-            <label className="flex min-h-12 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-bold text-slate-700"><input checked={waitlistOnly} className="h-4 w-4 accent-green-700" onChange={(event) => setWaitlistOnly(event.target.checked)} type="checkbox" /> Waitlist available</label>
-            {hasFilters ? <button className="sport-secondary-button min-h-12 border-green-200 text-sportGreen hover:bg-green-50" onClick={clearFilters} type="button">Clear filters</button> : null}
+
+          <div className="mt-3 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <fieldset className="flex min-w-0 items-center gap-2 overflow-x-auto">
+              <legend className="sr-only">Game type</legend>
+              <span className="shrink-0 text-xs font-black uppercase tracking-wide text-slate-500">Show</span>
+              <div className="inline-flex min-w-max rounded-lg border border-slate-200 bg-slate-50 p-1">
+                {gameTypes.map((option) => <button aria-pressed={gameType === option.value} className={`min-h-9 rounded-md px-3 text-sm font-bold transition ${gameType === option.value ? "bg-white text-sportGreen shadow-sm" : "text-slate-600 hover:text-sportNavy"}`} key={option.value || "all"} onClick={() => setGameType(option.value)} type="button">{option.label === "All game types" ? "All games" : option.label}</button>)}
+              </div>
+            </fieldset>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><CalendarIcon /><span className="sr-only">Game date</span><input aria-label="Game date" className="min-w-32 bg-transparent font-bold text-sportNavy outline-none" min={today()} onChange={(event) => setDate(event.target.value)} type="date" value={date} /></label>
+              <label className="flex min-h-11 min-w-36 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><MapPinIcon /><span className="sr-only">Area</span><input aria-label="Area" className="min-w-0 w-full bg-transparent font-bold text-sportNavy outline-none placeholder:font-semibold placeholder:text-slate-400" onChange={(event) => setArea(event.target.value)} placeholder="Any area" value={area} /></label>
+            </div>
           </div>
+
+          {isFilterOpen ? <div className="mt-4 border-t border-slate-200 pt-4" id="advanced-game-filters">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <Select label="Role needed" onChange={setRole} options={roles} value={role} />
+              <Select label="Court status" onChange={setBookingState} options={bookingStates} value={bookingState} />
+              <Select label="Game mood" onChange={setIntensity} options={intensities} value={intensity} />
+              <Select label="Skill level" onChange={setSkill} options={skillLevels} value={skill} />
+              <Select label="Time of day" onChange={setTimePeriod} options={timePeriods} value={timePeriod} />
+              <Select label="Open spots" onChange={setMinimumSpots} options={spotOptions} value={minimumSpots} />
+              <label className="flex min-h-11 items-center gap-2 self-end rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700"><input checked={waitlistOnly} className="h-4 w-4 accent-green-700" onChange={(event) => setWaitlistOnly(event.target.checked)} type="checkbox" /> Waitlist available</label>
+            </div>
+          </div> : null}
+
+          {hasFilters ? <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <span className="mr-1 text-xs font-black uppercase tracking-wide text-slate-500">Active</span>
+            {search ? <FilterChip label={`Search: ${search}`} onRemove={() => clearFilter("search")} /> : null}
+            {gameType ? <FilterChip label={gameTypes.find((item) => item.value === gameType)?.label || gameType} onRemove={() => clearFilter("type")} /> : null}
+            {date ? <FilterChip label={`Date: ${date}`} onRemove={() => clearFilter("date")} /> : null}
+            {area ? <FilterChip label={`Area: ${area}`} onRemove={() => clearFilter("area")} /> : null}
+            {role ? <FilterChip label={roles.find((item) => item.value === role)?.label || role} onRemove={() => clearFilter("role")} /> : null}
+            {bookingState ? <FilterChip label={bookingStates.find((item) => item.value === bookingState)?.label || bookingState} onRemove={() => clearFilter("booking")} /> : null}
+            {intensity ? <FilterChip label={intensities.find((item) => item.value === intensity)?.label || intensity} onRemove={() => clearFilter("intensity")} /> : null}
+            {skill ? <FilterChip label={skillLevels.find((item) => item.value === skill)?.label || skill} onRemove={() => clearFilter("skill")} /> : null}
+            {timePeriod ? <FilterChip label={timePeriods.find((item) => item.value === timePeriod)?.label || timePeriod} onRemove={() => clearFilter("time")} /> : null}
+            {minimumSpots ? <FilterChip label={`At least ${minimumSpots} spot${minimumSpots === "1" ? "" : "s"}`} onRemove={() => clearFilter("spots")} /> : null}
+            {waitlistOnly ? <FilterChip label="Waitlist available" onRemove={() => clearFilter("waitlist")} /> : null}
+            <button className="ml-auto text-xs font-bold text-sportGreen underline-offset-2 hover:underline" onClick={clearFilters} type="button">Clear all</button>
+          </div> : null}
         </section>
 
-        <div className="mt-5 flex items-center justify-between">
-          <p aria-live="polite" className="text-sm font-black text-slate-700">
-            {isLoading ? "Loading games..." : `${games.length} game${games.length === 1 ? "" : "s"} found`}
-            {isRefreshing ? <span className="ml-2 font-semibold text-slate-400">Updating...</span> : null}
-          </p>
+        <div className="mt-7 flex items-end justify-between gap-4">
+          <div><p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Open games</p><p aria-live="polite" className="mt-1 text-sm font-bold text-slate-700">{isLoading ? <LoadingIndicator label="Finding games" size="sm" /> : <><span className="text-lg font-black text-sportNavy">{games.length}</span> game{games.length === 1 ? "" : "s"} found</>}{isRefreshing ? <span className="ml-2 inline-flex align-middle"><LoadingIndicator label="Updating games" size="sm" /></span> : null}</p></div>
+          <p className="hidden text-xs font-semibold text-slate-500 sm:block">New openings appear automatically.</p>
         </div>
 
         {isLoading && games.length === 0 ? (
-          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((item) => <div className="sport-surface h-80 animate-pulse" key={item} />)}</div>
+          <div className="sport-loading-inline-panel mt-4 min-h-[18rem]"><LoadingIndicator label="Loading games" /></div>
         ) : error && games.length === 0 ? (
           <StateCard title="Games unavailable" description={error} actionLabel="Retry" onAction={() => loadGames(query)} />
         ) : games.length === 0 ? (
@@ -221,7 +271,7 @@ function FindGameContent() {
         ) : (
           <>
             {error ? <p className="mt-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}
-            <div className={`mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3 transition-opacity ${isRefreshing ? "opacity-70" : "opacity-100"}`}>{games.map((game) => <GameCard game={game} key={game.id} />)}</div>
+            <div className={`mt-4 grid gap-3 xl:grid-cols-2 transition-opacity ${isRefreshing ? "opacity-70" : "opacity-100"}`}>{games.map((game) => <GameCard game={game} key={game.id} />)}</div>
           </>
         )}
       </section>
@@ -231,54 +281,47 @@ function FindGameContent() {
 
 function GameCard({ game }: { game: MatchmakingGame }) {
   const recruitmentCountdown = useCountdown(game.recruitment_deadline);
-  const bookingCountdown = useCountdown(game.booking_deadline);
+  const bookingCountdown = useCountdown(game.booking_deadline, "Booking deadline passed");
   const canJoin = !game.user_state.is_host && !game.user_state.is_participant && !game.user_state.request_status && game.status === "RECRUITING";
   const canWaitlist = !game.user_state.is_host && !game.user_state.is_participant && !game.user_state.request_status && game.status === "FULL" && game.waitlist_enabled;
+  const location = game.is_booking_verified ? [game.venue_name, game.court_name].filter(Boolean).join(" · ") : [game.preferred_area, game.preferred_district].filter(Boolean).join(", ") || "Location to be confirmed";
+  const progress = Math.min((game.occupied_spots_count / Math.max(game.total_capacity, 1)) * 100, 100);
+  const openRoles = game.role_progress.filter((item) => item.available_count > 0);
   return (
-    <article className="sport-surface flex h-full flex-col overflow-hidden transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md">
-      <div className="border-b border-slate-100 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-white">
+    <article className="group overflow-hidden rounded-lg border border-slate-200 bg-white transition-shadow hover:border-green-300 hover:shadow-[0_8px_24px_rgba(16,32,22,0.08)]">
+      <div className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black uppercase tracking-wide text-white">{game.game_type === "FILL_SQUAD" ? "Fill My Squad" : "Pickup Game"}</span>
-            <h2 className="mt-3 line-clamp-2 text-xl font-black">{game.title}</h2>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1"><span className="text-[11px] font-black uppercase tracking-[0.14em] text-sportGreen">{game.game_type === "FILL_SQUAD" ? "Fill My Squad" : "Pickup game"}</span><Badge tone={game.is_booking_verified ? "green" : "blue"}>{game.is_booking_verified ? "Verified court" : "Planning"}</Badge></div>
+            <h2 className="mt-2 line-clamp-2 text-lg font-black leading-tight text-sportNavy">{game.title}</h2>
           </div>
           <StatusBadge game={game} />
         </div>
-        <p className="mt-3 text-sm font-semibold text-white/75">{formatDateTimeInNepal(game.start_at)} - {game.booking_display_time}</p>
+
+        <div className="mt-4 grid gap-3 border-y border-slate-100 py-3 sm:grid-cols-2">
+          <MetaItem icon={<CalendarIcon />} label="When" value={game.start_at ? formatDateTimeInNepal(game.start_at, { weekday: "short", month: "short", day: "numeric" }) : "Date to be confirmed"} detail={game.booking_display_time} />
+          <MetaItem icon={<MapPinIcon />} label="Where" value={location} detail={game.game_type === "FILL_SQUAD" && game.team_name ? game.team_name : `Hosted by ${game.host_name}`} />
+        </div>
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between gap-3 text-sm"><span className="font-black text-sportNavy">{game.occupied_spots_count}/{game.total_capacity} players confirmed</span><span className={game.available_spots > 0 ? "font-black text-sportGreen" : "font-bold text-slate-500"}>{game.available_spots > 0 ? `${game.available_spots} open` : "Full"}</span></div>
+          <div aria-label={`${game.occupied_spots_count} of ${game.total_capacity} players`} className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${game.is_booking_verified ? "bg-sportGreen" : "bg-blue-500"}`} style={{ width: `${progress}%` }} /></div>
+          <p className="mt-2 truncate text-xs font-bold text-slate-500">{openRoles.length ? `Needs ${openRoles.slice(0, 2).map((item) => `${item.role_label} (${item.available_count})`).join(" · ")}${openRoles.length > 2 ? " · more" : ""}` : "All requested roles are covered"}</p>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold text-slate-500"><span>{game.game_intensity_label}</span><span aria-hidden="true" className="text-slate-300">·</span><span>{formatSkill(game.min_skill_level)}</span>{game.host_reliability_label ? <><span aria-hidden="true" className="text-slate-300">·</span><span className="text-sportGreen">{game.host_reliability_label}</span></> : null}</div>
       </div>
-      <div className="flex flex-1 flex-col p-4">
-        <div className="flex flex-wrap gap-2">
-          <Badge tone={game.is_booking_verified ? "green" : "blue"}>{game.is_booking_verified ? "Verified SportSpot Booking" : "Planning - Court Not Booked Yet"}</Badge>
-          <Badge>{game.game_intensity_label}</Badge>
-        </div>
-        <div className="mt-4 space-y-2 text-sm font-semibold text-slate-600">
-          <p className="font-black text-sportNavy">{game.venue_name}</p>
-          <p>{game.is_booking_verified ? game.court_name : [game.preferred_area, game.preferred_district].filter(Boolean).join(", ")}</p>
-          <p>{game.game_type === "FILL_SQUAD" && game.team_name ? `${game.team_name} captain: ${game.host_name}` : `Hosted by ${game.host_name}`}</p>
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
-          <MiniStat label="Players" value={`${game.occupied_spots_count}/${game.total_capacity}`} />
-          <MiniStat label="Spots" value={game.available_spots} />
-          <MiniStat label="Waitlist" value={game.waitlist_count} />
-        </div>
-        <div className="mt-4 min-h-16">
-          <p className="text-xs font-black uppercase tracking-wide text-slate-500">Roles still needed</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {game.role_progress.filter((item) => item.available_count > 0).slice(0, 4).map((item) => <Badge key={item.role}>{item.role_label}: {item.filled_count}/{item.required_count}</Badge>)}
-            {game.role_progress.every((item) => item.available_count === 0) ? <Badge tone="green">Roster target filled</Badge> : null}
-          </div>
-        </div>
-        <div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs font-black text-slate-600">
-          <p>{recruitmentCountdown || "Recruitment deadline not set"}</p>
-          {!game.is_booking_verified && game.booking_deadline ? <p className="mt-1 text-blue-700">Court must be booked: {bookingCountdown}</p> : null}
-        </div>
-        <div className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
-          <p className="text-xs font-bold text-slate-500">{formatSkill(game.min_skill_level)}</p>
-          <Link className="sport-primary-button min-h-10 shrink-0" href={`/find-game/${game.id}`}>{canJoin ? "Request to Join" : canWaitlist ? "Join Waitlist" : "View Details"}</Link>
-        </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-5">
+        <div className="min-w-0 text-xs font-bold text-slate-500"><p className="flex items-center gap-1.5 truncate"><ClockIcon />{recruitmentCountdown || "Recruitment deadline not set"}</p>{!game.is_booking_verified && game.booking_deadline ? <p className="mt-1 truncate text-blue-700">Court booking: {bookingCountdown}</p> : null}</div>
+        <Link className="sport-primary-button min-h-9 shrink-0 px-3 text-xs" href={`/find-game/${game.id}`}>{canJoin ? "Request to join" : canWaitlist ? "Join waitlist" : "View details"}</Link>
       </div>
     </article>
   );
+}
+
+function MetaItem({ detail, icon, label, value }: { detail: string; icon: React.ReactNode; label: string; value: string }) {
+  return <div className="flex min-w-0 gap-2"><span className="mt-0.5 shrink-0 text-slate-400">{icon}</span><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{label}</p><p className="mt-0.5 truncate font-bold text-sportNavy">{value}</p><p className="truncate text-xs font-semibold text-slate-500">{detail}</p></div></div>;
 }
 
 function Field({ children, label }: { children: React.ReactNode; label: string }) {
@@ -291,23 +334,48 @@ function Select({ label, onChange, options, value }: { label: string; onChange: 
 
 function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: "slate" | "green" | "blue" }) {
   const classes = tone === "green" ? "border-green-200 bg-green-50 text-sportGreen" : tone === "blue" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600";
-  return <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${classes}`}>{children}</span>;
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${classes}`}>{children}</span>;
 }
 
-function MiniStat({ label, value }: { label: string; value: string | number }) {
-  return <div className="rounded-xl bg-slate-50 p-2"><p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 font-black text-sportNavy">{value}</p></div>;
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-green-200 bg-green-50 py-1 pl-2.5 pr-1 text-xs font-bold text-sportGreen"><span className="max-w-[15rem] truncate">{label}</span><button aria-label={`Remove ${label} filter`} className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-sm leading-none hover:bg-green-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400" onClick={onRemove} type="button"><CloseIcon /></button></span>;
 }
 
 function StatusBadge({ game }: { game: MatchmakingGame }) {
   const label = game.status === "RECRUITING" ? "Recruiting" : game.status === "FULL" ? (game.waitlist_enabled ? "Waitlist open" : "Full") : game.status === "CLOSED" ? "Recruitment closed" : game.status_label;
-  return <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-800">{label}</span>;
+  const isClosed = game.status === "CLOSED" || game.status === "CANCELLED";
+  return <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black ${isClosed ? "border-red-200 bg-red-50 text-red-700" : game.status === "FULL" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-green-200 bg-green-50 text-sportGreen"}`}>{label}</span>;
 }
 
 function StateCard({ actionLabel, description, onAction, title }: { actionLabel: string; description: string; onAction: () => void; title: string }) {
   return <section className="sport-empty-state mt-4 border-green-200 bg-green-50"><h2 className="text-xl font-bold text-sportNavy">{title}</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">{description}</p><button className="sport-primary-button mt-5" onClick={onAction} type="button">{actionLabel}</button></section>;
 }
 
-function useCountdown(target: string | null) {
+function SearchIcon() {
+  return <svg aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" /><path d="m16 16 4.5 4.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+}
+
+function FilterIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M7 12h10M10 17h4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+}
+
+function CalendarIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24"><rect height="15" rx="2" stroke="currentColor" strokeWidth="1.8" width="16" x="4" y="5" /><path d="M8 3v4M16 3v4M4 10h16" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+}
+
+function MapPinIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24"><path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z" stroke="currentColor" strokeWidth="1.8" /><circle cx="12" cy="10" r="2.2" stroke="currentColor" strokeWidth="1.8" /></svg>;
+}
+
+function ClockIcon() {
+  return <svg aria-hidden="true" className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" /><path d="M12 7v5l3 2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+}
+
+function CloseIcon() {
+  return <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+}
+
+function useCountdown(target: string | null, expiredLabel = "Recruitment closed") {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     setNow(new Date());
@@ -316,7 +384,7 @@ function useCountdown(target: string | null) {
   }, []);
   if (!target || !now) return "";
   const ms = new Date(target).getTime() - now.getTime();
-  if (ms <= 0) return "Recruitment closed";
+  if (ms <= 0) return expiredLabel;
   const minutes = Math.floor(ms / 60000);
   if (minutes < 60) return minutes <= 15 ? `Closing soon - ${minutes}m left` : `Closes in ${minutes}m`;
   const hours = Math.floor(minutes / 60);

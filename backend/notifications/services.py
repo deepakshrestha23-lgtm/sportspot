@@ -45,6 +45,7 @@ TYPE_CATEGORY = {
     Notification.NotificationType.BOOKING_CANCELLED_BY_OWNER: Notification.Category.BOOKINGS,
     Notification.NotificationType.BOOKING_REMINDER: Notification.Category.BOOKINGS,
     Notification.NotificationType.BOOKING_COMPLETED: Notification.Category.BOOKINGS,
+    Notification.NotificationType.BOOKING_CHECKED_IN: Notification.Category.BOOKINGS,
     Notification.NotificationType.REFUND_PENDING: Notification.Category.BOOKINGS,
     Notification.NotificationType.REFUND_APPROVED: Notification.Category.BOOKINGS,
     Notification.NotificationType.REFUND_REJECTED: Notification.Category.BOOKINGS,
@@ -87,6 +88,7 @@ def notification_allowed_for_recipient(recipient, notification_type):
         Notification.NotificationType.BOOKING_PAYMENT_FAILED: "notify_booking_updates",
         Notification.NotificationType.BOOKING_REMINDER: "notify_booking_updates",
         Notification.NotificationType.BOOKING_COMPLETED: "notify_booking_updates",
+        Notification.NotificationType.BOOKING_CHECKED_IN: "notify_booking_updates",
         Notification.NotificationType.BOOKING_CANCELLED_BY_PLAYER: "notify_cancellation_refunds",
         Notification.NotificationType.BOOKING_CANCELLED_BY_OWNER: "notify_cancellation_refunds",
         Notification.NotificationType.REFUND_PENDING: "notify_cancellation_refunds",
@@ -512,6 +514,23 @@ def notify_booking_completed(booking):
             metadata=_booking_metadata(booking),
             deduplication_key=f"booking:{booking.id}:completed:{recipient.id}",
         )
+
+
+def notify_booking_checked_in(booking, actor):
+    return create_notification(
+        recipient=booking.player,
+        actor=actor,
+        notification_type=Notification.NotificationType.BOOKING_CHECKED_IN,
+        title="Booking check-in recorded",
+        message=f"The venue verified your booking at {booking.venue.name}. Court access is confirmed.",
+        priority=Notification.Priority.IMPORTANT,
+        action_url=f"/dashboard/player/bookings/{booking.id}",
+        related_entity_type="booking",
+        related_entity_id=booking.id,
+        action_status=Notification.ActionStatus.COMPLETED,
+        metadata=_booking_metadata(booking),
+        deduplication_key=f"booking:{booking.id}:checked-in:player",
+    )
 
 
 def notify_booking_cancelled(booking, actor):

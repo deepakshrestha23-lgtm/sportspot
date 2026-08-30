@@ -43,6 +43,7 @@ class Venue(models.Model):
     class LocationSource(models.TextChoices):
         MANUAL_PIN = "MANUAL_PIN", "Confirmed map pin"
         GEOCODED = "GEOCODED", "Address search"
+        DEVICE_LOCATION = "DEVICE_LOCATION", "Device location"
         LEGACY_LINK = "LEGACY_LINK", "Legacy map link"
 
     owner = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="venue")
@@ -458,6 +459,260 @@ class Booking(models.Model):
 
     def __str__(self):
         return self.booking_code
+
+
+class BookingCheckIn(models.Model):
+    class Status(models.TextChoices):
+        CHECKED_IN = "CHECKED_IN", "Checked in"
+
+    booking = models.OneToOneField(
+        Booking,
+        on_delete=models.PROTECT,
+        related_name="check_in",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.CHECKED_IN)
+    checked_in_at = models.DateTimeField()
+    checked_in_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="booking_check_ins_recorded",
+        null=True,
+        blank=True,
+    )
+    scan_count = models.PositiveIntegerField(default=1)
+    last_scanned_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-checked_in_at"]
+
+    def __str__(self):
+        return f"{self.booking.booking_code} check-in"
+
+
+class CourtReview(models.Model):
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="court_reviews",
+    )
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="court_reviews")
+    court = models.ForeignKey(Court, on_delete=models.CASCADE, related_name="reviews")
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.PROTECT,
+        related_name="court_reviews",
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    comment = models.TextField(blank=True, max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["reviewer", "court"],
+                name="unique_court_review_per_player",
+            ),
+        ]
+
+    def clean(self):
+        if self.reviewer_id and self.reviewer.role != "PLAYER":
+            raise ValidationError("Only player accounts can review courts.")
+        if self.court_id and self.venue_id and self.court.venue_id != self.venue_id:
+            raise ValidationError("The selected court must belong to the selected venue.")
+        if self.booking_id:
+            if self.booking.court_id != self.court_id or self.booking.venue_id != self.venue_id:
+                raise ValidationError("The review booking must belong to the selected court.")
+            if self.booking.player_id != self.reviewer_id:
+                raise ValidationError("You can only review a court you booked.")
+            if self.booking.status != Booking.BookingStatus.COMPLETED or self.booking.payment_status != Booking.PaymentStatus.PAID:
+                raise ValidationError("You can review a court after a completed paid booking.")
+
+    def save(self, *args, **kwargs):
+        self.comment = self.comment.strip()
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.court.name} review by {self.reviewer.full_name}"
+
+
+class CourtReviewComment(models.Model):
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="court_review_comments",
+    )
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="court_review_comments")
+    court = models.ForeignKey(Court, on_delete=models.CASCADE, related_name="review_comments")
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.PROTECT,
+        related_name="court_review_comments",
+    )
+    comment = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def clean(self):
+        if self.reviewer_id and self.reviewer.role != "PLAYER":
+            raise ValidationError("Only player accounts can comment on courts.")
+        if self.court_id and self.venue_id and self.court.venue_id != self.venue_id:
+            raise ValidationError("The selected court must belong to the selected venue.")
+        if self.booking_id:
+            if self.booking.court_id != self.court_id or self.booking.venue_id != self.venue_id:
+                raise ValidationError("The comment booking must belong to the selected court.")
+            if self.booking.player_id != self.reviewer_id:
+                raise ValidationError("You can only comment on a court you booked.")
+            if self.booking.status != Booking.BookingStatus.COMPLETED or self.booking.payment_status != Booking.PaymentStatus.PAID:
+                raise ValidationError("You can comment after a completed paid booking.")
+
+    def save(self, *args, **kwargs):
+        self.comment = self.comment.strip()
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.court.name} comment by {self.reviewer.full_name}"
+
+
+class CourtFeedbackReaction(models.Model):
+    class Reaction(models.TextChoices):
+        LIKE = "LIKE", "Like"
+        DISLIKE = "DISLIKE", "Dislike"
+
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="court_feedback_reactions",
+    )
+    review = models.ForeignKey(
+        CourtReview,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="feedback_reactions",
+    )
+    comment = models.ForeignKey(
+        CourtReviewComment,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="feedback_reactions",
+    )
+    reaction = models.CharField(max_length=10, choices=Reaction.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(review__isnull=False, comment__isnull=True)
+                    | models.Q(review__isnull=True, comment__isnull=False)
+                ),
+                name="feedback_reaction_one_target",
+            ),
+            models.UniqueConstraint(
+                fields=["reviewer", "review"],
+                condition=models.Q(review__isnull=False),
+                name="unique_feedback_reaction_per_review",
+            ),
+            models.UniqueConstraint(
+                fields=["reviewer", "comment"],
+                condition=models.Q(comment__isnull=False),
+                name="unique_feedback_reaction_per_comment",
+            ),
+        ]
+
+    def clean(self):
+        if self.reviewer_id and self.reviewer.role != "PLAYER":
+            raise ValidationError("Only player accounts can react to court feedback.")
+        if self.review_id and self.comment_id:
+            raise ValidationError("A reaction can target only one feedback item.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class CourtFeedbackReport(models.Model):
+    class Reason(models.TextChoices):
+        SPAM = "SPAM", "Spam"
+        INAPPROPRIATE = "INAPPROPRIATE", "Inappropriate content"
+        MISLEADING = "MISLEADING", "Misleading information"
+        OTHER = "OTHER", "Other"
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Open"
+        REVIEWED = "REVIEWED", "Reviewed"
+        DISMISSED = "DISMISSED", "Dismissed"
+
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="court_feedback_reports",
+    )
+    review = models.ForeignKey(
+        CourtReview,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="feedback_reports",
+    )
+    comment = models.ForeignKey(
+        CourtReviewComment,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="feedback_reports",
+    )
+    reason = models.CharField(max_length=20, choices=Reason.choices)
+    details = models.TextField(blank=True, max_length=500)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(review__isnull=False, comment__isnull=True)
+                    | models.Q(review__isnull=True, comment__isnull=False)
+                ),
+                name="feedback_report_one_target",
+            ),
+            models.UniqueConstraint(
+                fields=["reporter", "review"],
+                condition=models.Q(review__isnull=False),
+                name="unique_feedback_report_per_review",
+            ),
+            models.UniqueConstraint(
+                fields=["reporter", "comment"],
+                condition=models.Q(comment__isnull=False),
+                name="unique_feedback_report_per_comment",
+            ),
+        ]
+
+    def clean(self):
+        if self.review_id and self.comment_id:
+            raise ValidationError("A report can target only one feedback item.")
+        if not self.review_id and not self.comment_id:
+            raise ValidationError("A report must target a feedback item.")
+
+    def save(self, *args, **kwargs):
+        self.details = self.details.strip()
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class BookingMessage(models.Model):

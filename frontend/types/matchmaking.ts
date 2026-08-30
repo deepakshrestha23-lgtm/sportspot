@@ -8,6 +8,7 @@ export type GameSkillLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "OPEN";
 export type GameRole = "BATSMAN" | "BOWLER" | "ALL_ROUNDER" | "WICKETKEEPER" | "ANY";
 export type JoinRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "WAITLISTED" | "INVITED" | "WITHDRAWN" | "REMOVED" | "EXPIRED";
 export type ParticipantStatus = "CONFIRMED" | "PROVISIONAL" | "RECONFIRM_REQUIRED" | "GUEST_CONFIRMATION_REQUIRED" | "DECLINED" | "LEFT" | "REMOVED";
+export type ParticipationAttendanceStatus = "NOT_CREATED" | "NOT_TRACKED" | "COMMITTED" | "ATTENDANCE_PENDING" | "ATTENDED" | "NO_SHOW_REPORTED" | "FINALIZED_NO_SHOW" | "DISPUTED" | "CANCELLED_EARLY" | "LATE_CANCELLED" | "EXCUSED" | "VOID";
 
 export type GameRoleRequirement = {
   id: number;
@@ -40,6 +41,12 @@ export type GameParticipant = {
   status_label: string;
   reconfirmation_required: boolean;
   reconfirmation_kind: "PLAYER_RESPONSE" | "HOST_ACKNOWLEDGEMENT" | "NONE";
+  attendance?: {
+    id?: number;
+    status: ParticipationAttendanceStatus;
+    review_deadline_at: string | null;
+    can_dispute: boolean;
+  };
   joined_at: string;
 };
 
@@ -203,6 +210,22 @@ export type GameCreatePayload = {
 
 export type GameListResponse = { games: MatchmakingGame[] };
 export type GameResponse = { game: MatchmakingGame; room_access?: "NONE" | "PLANNING" | "RECONFIRMATION" | "CONFIRMED" | "READ_ONLY" };
+export type GameChatMessage = {
+  id: number;
+  sender_id: number | null;
+  sender_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  is_deleted: boolean;
+  is_mine: boolean;
+};
+export type GameChatResponse = {
+  messages: GameChatMessage[];
+  has_more: boolean;
+  next_before: number | null;
+  room_access: "PLANNING" | "RECONFIRMATION" | "CONFIRMED" | "READ_ONLY";
+};
 export type EligibleBookingsResponse = { bookings: EligibleGameBooking[] };
 export type JoinRequestResponse = { request: JoinRequest };
 

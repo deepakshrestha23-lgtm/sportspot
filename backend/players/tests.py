@@ -1,14 +1,24 @@
 from datetime import time, timedelta
 from decimal import Decimal
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from notifications.models import Notification
-from players.models import PlayerProfile, PlayerRating, PlayerRatingEligibility, ReliabilityEvent
-from players.services import create_rating_eligibility, record_player_rating, record_reliability_event
+from players.models import ParticipationCommitment, PlayerProfile, PlayerRating, PlayerRatingEligibility, ReliabilityEvent
+from players.services import (
+    create_participation_commitment,
+    create_rating_eligibility,
+    dispute_commitment,
+    finalize_pending_attendance,
+    record_commitment_attendance,
+    record_player_rating,
+    record_reliability_event,
+)
 from teams.models import Team, TeamMember
 from venues.models import Booking, BookingSlot, Court, CourtSlot, Venue
 
@@ -234,6 +244,176 @@ class ReliabilityEventServiceTests(APITestCase):
         self.assertTrue(response.data["reliability"]["is_provisional"])
         self.assertEqual(response.data["activity"][0]["title"], "Verified game completed")
         self.assertEqual(response.data["activity"][0]["impact"], ReliabilityEvent.Impact.POSITIVE)
+
+class ParticipationCommitmentServiceTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.player = user_model.objects.create_user(
+            email="commitment-player@example.com",
+            password="test-password",
+            full_name="Commitment Player",
+            phone="9800000091",
+            role="PLAYER",
+            email_verified=True,
+        )
+        self.profile = PlayerProfile.objects.create(
+            user=self.player,
+            skill_level=PlayerProfile.SkillLevel.INTERMEDIATE,
+            location="Kathmandu",
+            weekly_availability="Evenings",
+            playing_style="Reliable player",
+            preferred_cricksal_role=PlayerProfile.CricksalRole.BOWLER,
+        )
+
+    def create_commitment(self, source_id, *, start_offset=2, participant_id=1):
+        start_at = timezone.now() + timedelta(hours=start_offset)
+        end_at = start_at + timedelta(hours=1)
+        commitment, created = create_participation_commitment(
+            player=self.player,
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=source_id,
+            source_participant_id=participant_id,
+            start_at=start_at,
+            end_at=end_at,
+            created_by=self.player,
+        )
+        self.assertTrue(created)
+        return commitment
+
+    def test_commitment_creation_is_idempotent(self):
+        first = self.create_commitment(501)
+        second, created = create_participation_commitment(
+            player=self.player,
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=501,
+            source_participant_id=1,
+            start_at=first.start_at,
+            end_at=first.end_at,
+        )
+
+        self.assertFalse(created)
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(ParticipationCommitment.objects.count(), 1)
+
+    def test_no_show_is_reviewable_and_dispute_prevents_penalty(self):
+        commitment = self.create_commitment(502)
+        record_commitment_attendance(commitment_id=commitment.id, actor=self.player, attended=False)
+        commitment.refresh_from_db()
+
+        self.assertEqual(commitment.status, ParticipationCommitment.Status.NO_SHOW_REPORTED)
+        self.assertFalse(
+            ReliabilityEvent.objects.filter(
+                metadata__commitment_id=commitment.id,
+            ).exists()
+        )
+
+        dispute_commitment(
+            commitment_id=commitment.id,
+            player=self.player,
+            reason="I was present and the report is incorrect.",
+        )
+        commitment.refresh_from_db()
+        self.assertEqual(commitment.status, ParticipationCommitment.Status.DISPUTED)
+        self.assertEqual(self.profile.reliability_score, 100)
+
+        self.assertEqual(finalize_pending_attendance(now=timezone.now() + timedelta(days=2)), 0)
+        self.assertEqual(ReliabilityEvent.objects.filter(player=self.player).count(), 0)
+
+    def test_undisputed_no_show_is_finalized_by_maintenance(self):
+        commitment = self.create_commitment(503)
+        record_commitment_attendance(commitment_id=commitment.id, actor=self.player, attended=False)
+        commitment.refresh_from_db()
+        commitment.review_deadline_at = timezone.now() - timedelta(minutes=1)
+        commitment.save(update_fields=["review_deadline_at", "updated_at"])
+
+        self.assertEqual(finalize_pending_attendance(now=timezone.now()), 1)
+        commitment.refresh_from_db()
+        self.profile.refresh_from_db()
+        self.assertEqual(commitment.status, ParticipationCommitment.Status.FINALIZED_NO_SHOW)
+        self.assertEqual(self.profile.no_show_count, 1)
+        self.assertEqual(self.profile.reliability_score, 0)
+        self.assertEqual(ReliabilityEvent.objects.filter(player=self.player).count(), 1)
+        self.assertEqual(finalize_pending_attendance(now=timezone.now()), 0)
+
+    def test_repeated_no_show_report_is_idempotent_and_cannot_be_reversed_by_host(self):
+        commitment = self.create_commitment(507)
+        first = record_commitment_attendance(commitment_id=commitment.id, actor=self.player, attended=False)
+        first.refresh_from_db()
+
+        replay = record_commitment_attendance(commitment_id=commitment.id, actor=self.player, attended=False)
+        self.assertTrue(getattr(replay, "_idempotent_replay", False))
+        self.assertEqual(replay.review_deadline_at, first.review_deadline_at)
+
+        with self.assertRaises(ValidationError):
+            record_commitment_attendance(commitment_id=commitment.id, actor=self.player, attended=True)
+
+    def test_staff_resolution_of_dispute_creates_the_verified_outcome(self):
+        staff = get_user_model().objects.create_user(
+            email="attendance-staff@example.com",
+            password="test-password",
+            full_name="Attendance Staff",
+            phone="9800000099",
+            role="PLAYER",
+            email_verified=True,
+            is_staff=True,
+        )
+        commitment = self.create_commitment(508)
+        record_commitment_attendance(commitment_id=commitment.id, actor=staff, attended=False)
+        dispute_commitment(
+            commitment_id=commitment.id,
+            player=self.player,
+            reason="I attended and checked in with the host.",
+        )
+
+        from players.services import resolve_commitment_dispute
+
+        resolved = resolve_commitment_dispute(commitment_id=commitment.id, actor=staff, outcome="ATTENDED")
+        self.profile.refresh_from_db()
+        self.assertEqual(resolved.status, ParticipationCommitment.Status.ATTENDED)
+        self.assertEqual(self.profile.completed_matches_count, 1)
+        self.assertEqual(ReliabilityEvent.objects.filter(player=self.player).count(), 1)
+
+    def test_attended_commitment_updates_reliability_without_duplicate_event(self):
+        commitment = self.create_commitment(504)
+        record_commitment_attendance(commitment_id=commitment.id, actor=self.player, attended=True)
+        record_commitment_attendance(commitment_id=commitment.id, actor=self.player, attended=True)
+        commitment.refresh_from_db()
+        self.profile.refresh_from_db()
+
+        self.assertEqual(commitment.status, ParticipationCommitment.Status.ATTENDED)
+        self.assertEqual(self.profile.completed_matches_count, 1)
+        self.assertEqual(self.profile.reliability_score, 100)
+        self.assertEqual(ReliabilityEvent.objects.filter(player=self.player).count(), 1)
+
+    def test_late_cancellation_is_accountable_but_early_cancellation_is_neutral(self):
+        early = self.create_commitment(505, start_offset=8, participant_id=1)
+        from players.services import cancel_participation_commitment
+
+        cancel_participation_commitment(
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=505,
+            player=self.player,
+            actor=self.player,
+            reason="Schedule changed.",
+        )
+        early.refresh_from_db()
+        self.assertEqual(early.status, ParticipationCommitment.Status.CANCELLED_EARLY)
+        self.assertEqual(ReliabilityEvent.objects.filter(player=self.player).count(), 0)
+
+        late = self.create_commitment(506, start_offset=2, participant_id=1)
+        cancel_participation_commitment(
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=506,
+            player=self.player,
+            actor=self.player,
+            reason="Cannot attend.",
+        )
+        late.refresh_from_db()
+        self.profile.refresh_from_db()
+        self.assertEqual(late.status, ParticipationCommitment.Status.LATE_CANCELLED)
+        self.assertEqual(self.profile.late_cancellation_count, 1)
+        self.assertEqual(self.profile.reliability_score, 60)
+
 
 class PlayerRatingServiceTests(APITestCase):
     def setUp(self):

@@ -7,3 +7,11 @@ export function getNotificationWebSocketUrl() {
   url.search = "";
   return url.toString();
 }
+
+export function getGameChatWebSocketUrl(gameId: number) {
+  const url = new URL(apiBaseUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/ws/games/${gameId}/chat/`;
+  url.search = "";
+  return url.toString();
+}

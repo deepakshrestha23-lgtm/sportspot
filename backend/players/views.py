@@ -13,10 +13,17 @@ from teams.models import TeamMember
 from venues.models import Booking
 from venues.policies import get_booking_start_at
 
-from .models import PlayerProfile, ReliabilityEvent
+from .models import ParticipationCommitment, PlayerProfile, ReliabilityEvent
 from .permissions import IsPlayer
 from .serializers import PlayerProfileSerializer
-from .services import get_pending_rating_items, get_player_rating_summary, submit_player_rating_eligibility
+from .services import (
+    get_pending_rating_items,
+    get_pending_attendance_reviews,
+    get_player_commitment_summary,
+    get_player_rating_summary,
+    resolve_commitment_dispute,
+    submit_player_rating_eligibility,
+)
 
 
 class PlayerProfileView(APIView):
@@ -219,26 +226,33 @@ class PlayerRatingsReliabilityView(APIView):
                     "metrics": {
                         "completed_games": 0,
                         "attendance_rate": None,
+                        "commitments_honoured_rate": None,
+                        "accountable_commitments": 0,
                         "late_cancellations": 0,
                         "no_shows": 0,
+                        "pending_attendance_reviews": 0,
                     },
                     "breakdown": get_reliability_breakdown(None),
                     "activity": [],
                     "pending_ratings": [],
+                    "pending_attendance_reviews": [],
                     "recent_ratings": [],
                     "improvement_guidance": "Complete your player profile first so teams can understand your Cricksal identity.",
                 },
                 status=status.HTTP_200_OK,
             )
 
-        completed_games = profile.completed_matches_count
+        commitment_summary = get_player_commitment_summary(request.user)
+        has_commitment_history = commitment_summary["accountable_commitments"] > 0 or commitment_summary["pending_reviews"] > 0
+        completed_games = commitment_summary["attended"] if has_commitment_history else profile.completed_matches_count
         reliability_events = list(ReliabilityEvent.objects.filter(player=request.user).order_by("-occurred_at", "-id")[:5])
-        no_shows = profile.no_show_count
-        late_cancellations = profile.late_cancellation_count
-        is_provisional = completed_games < 3
+        no_shows = commitment_summary["finalized_no_shows"] if has_commitment_history else profile.no_show_count
+        late_cancellations = commitment_summary["late_cancellations"] if has_commitment_history else profile.late_cancellation_count
+        history_count = commitment_summary["accountable_commitments"] if has_commitment_history else completed_games
+        is_provisional = history_count < (5 if has_commitment_history else 3)
         attendance_rate = (
-            max(0, round(((completed_games - no_shows) / completed_games) * 100))
-            if completed_games
+            round((completed_games / history_count) * 100)
+            if history_count
             else None
         )
         rating_summary = get_player_rating_summary(request.user)
@@ -250,9 +264,9 @@ class PlayerRatingsReliabilityView(APIView):
                 "reliability": {
                     "score": profile.reliability_score,
                     "display_score": None if is_provisional else profile.reliability_score,
-                    "level": get_reliability_level(profile.reliability_score, completed_games),
+                    "level": get_reliability_level(profile.reliability_score, history_count),
                     "is_provisional": is_provisional,
-                    "verified_games_considered": completed_games,
+                    "verified_games_considered": history_count,
                     "progress_percent": 0 if is_provisional else profile.reliability_score,
                 },
                 "rating": {
@@ -266,14 +280,18 @@ class PlayerRatingsReliabilityView(APIView):
                 "metrics": {
                     "completed_games": completed_games,
                     "attendance_rate": attendance_rate,
+                    "commitments_honoured_rate": commitment_summary["commitments_honoured_rate"] if has_commitment_history else attendance_rate,
+                    "accountable_commitments": history_count,
                     "late_cancellations": late_cancellations,
                     "no_shows": no_shows,
+                    "pending_attendance_reviews": commitment_summary["pending_reviews"],
                 },
-                "breakdown": get_reliability_breakdown(profile),
+                "breakdown": get_reliability_breakdown(profile, commitment_summary),
                 "activity": get_reliability_activity(reliability_events),
                 "pending_ratings": get_pending_rating_items(request.user),
+                "pending_attendance_reviews": get_pending_attendance_reviews(request.user),
                 "recent_ratings": rating_summary["recent"],
-                "improvement_guidance": get_reliability_guidance(profile, attendance_rate),
+                    "improvement_guidance": get_reliability_guidance(profile, attendance_rate, commitment_summary),
             },
             status=status.HTTP_200_OK,
         )
@@ -316,12 +334,44 @@ class PlayerRatingEligibilitySubmitView(APIView):
             status=status.HTTP_200_OK,
         )
 
+
+class ParticipationDisputeResolveView(APIView):
+    """Protected staff hook for resolving an attendance dispute."""
+
+    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
+
+    def post(self, request, commitment_id):
+        commitment = ParticipationCommitment.objects.filter(pk=commitment_id).first()
+        if not commitment:
+            return Response({"detail": "Attendance record not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            if commitment.source_type == ParticipationCommitment.SourceType.TEAM_FIXTURE:
+                from team_challenges.services import resolve_fixture_attendance_dispute
+
+                resolved = resolve_fixture_attendance_dispute(
+                    commitment.source_id,
+                    commitment.source_participant_id,
+                    request.user,
+                    request.data.get("outcome"),
+                )
+            else:
+                resolved = resolve_commitment_dispute(
+                    commitment_id=commitment.id,
+                    actor=request.user,
+                    outcome=request.data.get("outcome"),
+                )
+        except ValidationError as exc:
+            message = exc.messages[0] if getattr(exc, "messages", None) else "We could not resolve this attendance dispute."
+            return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"attendance": {"id": resolved.id, "status": resolved.status, "resolved_at": resolved.resolved_at.isoformat() if resolved.resolved_at else None}})
+
 def get_player_profile(user):
     return PlayerProfile.objects.filter(user=user).first()
 
 
 def get_reliability_level(score, completed_games):
-    if completed_games < 3:
+    if completed_games < 5:
         return "Provisional"
     if score >= 90:
         return "Excellent"
@@ -332,10 +382,12 @@ def get_reliability_level(score, completed_games):
     return "Needs Improvement"
 
 
-def get_reliability_breakdown(profile):
-    completed_games = profile.completed_matches_count if profile else 0
-    late_cancellations = profile.late_cancellation_count if profile else 0
-    no_shows = profile.no_show_count if profile else 0
+def get_reliability_breakdown(profile, commitment_summary=None):
+    if profile and commitment_summary is None:
+        commitment_summary = get_player_commitment_summary(profile.user)
+    completed_games = commitment_summary["attended"] if commitment_summary else (profile.completed_matches_count if profile else 0)
+    late_cancellations = commitment_summary["late_cancellations"] if commitment_summary else (profile.late_cancellation_count if profile else 0)
+    no_shows = commitment_summary["finalized_no_shows"] if commitment_summary else (profile.no_show_count if profile else 0)
 
     return [
         {
@@ -394,12 +446,15 @@ def get_reliability_activity(events):
     ]
 
 
-def get_reliability_guidance(profile, attendance_rate):
-    if profile.completed_matches_count < 3:
+def get_reliability_guidance(profile, attendance_rate, commitment_summary=None):
+    history_count = commitment_summary["accountable_commitments"] if commitment_summary else profile.completed_matches_count
+    no_shows = commitment_summary["finalized_no_shows"] if commitment_summary else profile.no_show_count
+    late_cancellations = commitment_summary["late_cancellations"] if commitment_summary else profile.late_cancellation_count
+    if history_count < 5:
         return "Attend your next confirmed games to build a meaningful reliability history."
-    if profile.no_show_count:
+    if no_shows:
         return "Avoid missing confirmed games to rebuild trust with teams and captains."
-    if profile.late_cancellation_count:
+    if late_cancellations:
         return "Avoid late game cancellations where possible to protect your reliability score."
     if attendance_rate is not None and attendance_rate >= 90 and profile.reliability_score >= 90:
         return "Your attendance record is strong. Keep accepting games you can confidently attend."

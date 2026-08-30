@@ -17,6 +17,7 @@ from .views import (
     TeamChallengeDetailView,
     TeamChallengeListCreateView,
     FixtureAttendanceView,
+    FixtureAttendanceDisputeView,
     FixtureParticipantCreateView,
     FixtureParticipantRemoveView,
     FixtureResultConfirmView,
@@ -49,6 +50,7 @@ urlpatterns = [
     path("fixtures/<int:fixture_id>/participants/", FixtureParticipantCreateView.as_view(), name="team-fixture-participant-create"),
     path("fixtures/<int:fixture_id>/participants/<int:participant_id>/remove/", FixtureParticipantRemoveView.as_view(), name="team-fixture-participant-remove"),
     path("fixtures/<int:fixture_id>/participants/<int:participant_id>/attendance/", FixtureAttendanceView.as_view(), name="team-fixture-participant-attendance"),
+    path("fixtures/<int:fixture_id>/participants/<int:participant_id>/attendance/dispute/", FixtureAttendanceDisputeView.as_view(), name="team-fixture-participant-attendance-dispute"),
     path("fixtures/<int:fixture_id>/result/", FixtureResultView.as_view(), name="team-fixture-result"),
     path("fixtures/<int:fixture_id>/result/confirm/", FixtureResultConfirmView.as_view(), name="team-fixture-result-confirm"),
 ]

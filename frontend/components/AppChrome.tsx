@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import Navbar from "@/components/Navbar";
+import SiteFooter from "@/components/SiteFooter";
 import VenueOwnerTopBar from "@/components/owner/VenueOwnerTopBar";
 import { ToastProvider } from "@/components/ToastProvider";
 
@@ -22,8 +23,11 @@ export default function AppChrome({ children }: { children: ReactNode }) {
 
   return (
     <ToastProvider>
-      {!shouldHideNavbar ? (isOwnerWorkspace ? <VenueOwnerTopBar /> : <Navbar />) : null}
-      {children}
+      <div className="flex min-h-screen flex-col">
+        {!shouldHideNavbar ? (isOwnerWorkspace ? <VenueOwnerTopBar /> : <Navbar />) : null}
+        <div className="min-w-0 flex-1">{children}</div>
+        {!shouldHideNavbar ? <SiteFooter /> : null}
+      </div>
     </ToastProvider>
   );
 }

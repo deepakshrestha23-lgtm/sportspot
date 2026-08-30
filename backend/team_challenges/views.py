@@ -49,6 +49,7 @@ from .services import (
     add_fixture_participant,
     remove_fixture_participant,
     record_fixture_attendance,
+    dispute_fixture_attendance,
     submit_fixture_result,
     confirm_fixture_result,
     get_challenge_fixture_room,
@@ -638,6 +639,30 @@ class FixtureAttendanceView(MutationThrottleMixin, APIView):
         except DjangoValidationError as error:
             return Response({"detail": readable_error(error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"fixture": TeamFixtureSerializer(participant.fixture, context={"request": request}).data})
+
+
+class FixtureAttendanceDisputeView(MutationThrottleMixin, APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def post(self, request, fixture_id, participant_id):
+        try:
+            commitment = dispute_fixture_attendance(
+                fixture_id,
+                participant_id,
+                request.user,
+                request.data.get("reason", ""),
+            )
+        except TeamFixture.DoesNotExist:
+            return Response({"detail": "This team match is no longer available."}, status=status.HTTP_404_NOT_FOUND)
+        except DjangoValidationError as error:
+            return Response({"detail": readable_error(error)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            "attendance": {
+                "id": commitment.id,
+                "status": commitment.status,
+                "disputed_at": commitment.disputed_at.isoformat() if commitment.disputed_at else None,
+            },
+        })
 
 
 class FixtureResultView(MutationThrottleMixin, APIView):

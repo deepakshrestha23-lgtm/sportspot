@@ -49,11 +49,11 @@ export default function VenueOwnerDashboardLayout({ children }: { children: Reac
 
   return (
     <RoleGate allowedRoles={["COURT_OWNER"]} workspace="owner">
-      <div className="sport-page-shell">
+      <div className="sport-page-shell owner-dashboard-theme">
 
         <div className="flex min-w-0">
           <VenueOwnerSidebar isLoading={isVenueLoading} venue={venue} />
-          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+          <main className="owner-dashboard-main min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
             <OwnerDashboardContent>{children}</OwnerDashboardContent>
           </main>
         </div>

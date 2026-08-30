@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import PlayerProfile, PlayerRating, PlayerRatingEligibility, ReliabilityEvent
+from .models import ParticipationCommitment, PlayerProfile, PlayerRating, PlayerRatingEligibility, ReliabilityEvent
 
 
 @admin.register(PlayerProfile)
@@ -42,6 +42,22 @@ class ReliabilityEventAdmin(admin.ModelAdmin):
     list_filter = ("event_type", "impact", "related_entity_type", "occurred_at")
     search_fields = ("player__full_name", "player__email", "title", "description", "dedupe_key")
     readonly_fields = ("created_at",)
+
+
+@admin.register(ParticipationCommitment)
+class ParticipationCommitmentAdmin(admin.ModelAdmin):
+    list_display = (
+        "player",
+        "source_type",
+        "source_id",
+        "source_version",
+        "status",
+        "start_at",
+        "review_deadline_at",
+    )
+    list_filter = ("source_type", "status", "start_at", "review_deadline_at")
+    search_fields = ("player__full_name", "player__email", "dispute_reason")
+    readonly_fields = ("created_at", "updated_at")
 
 @admin.register(PlayerRating)
 class PlayerRatingAdmin(admin.ModelAdmin):

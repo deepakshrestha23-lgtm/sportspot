@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { ChangeEvent, FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 
+import ConfirmActionModal from "@/components/ConfirmActionModal";
 import FeedbackToast from "@/components/FeedbackToast";
 import TimeSelect from "@/components/TimeSelect";
 import VenueLocationPicker, { type VenueLocationChange } from "@/components/owner/VenueLocationPicker";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { addCalendarDays, buildTimeOptions, formatDateOnly, formatTimeValue, getLocalDateString } from "@/lib/dates";
+import { isVenueMapUrl } from "@/lib/maps";
 import { estimateGeneratedSlots } from "@/lib/slotSchedule";
 import type { Court, Venue, VenuePhoto, VenuePhotoCategory } from "@/types/venue";
 
@@ -66,6 +68,14 @@ type VenueForm = {
   cancellation_partial_refund_percent: string;
   verification_document_type: string;
   declaration_accepted: boolean;
+};
+
+type VenueLegacyPhotoField = "front_photo" | "court_area_photo" | "additional_photo";
+
+const legacyPhotoLabels: Record<VenueLegacyPhotoField, string> = {
+  front_photo: "Outside / front photo",
+  court_area_photo: "Court / play area photo",
+  additional_photo: "Additional venue photo",
 };
 
 type CourtForm = {
@@ -144,10 +154,14 @@ export default function VenueSetupPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [clearConfirmCourtId, setClearConfirmCourtId] = useState<number | null>(null);
+  const [pendingLegacyPhotoRemoval, setPendingLegacyPhotoRemoval] = useState<VenueLegacyPhotoField | null>(null);
+  const [pendingGalleryPhotoId, setPendingGalleryPhotoId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const requestedStep = Number(new URLSearchParams(window.location.search).get("step"));
+    if (requestedStep >= 1 && requestedStep <= 4) setStep(requestedStep);
     loadSetup();
   }, []);
 
@@ -219,6 +233,14 @@ export default function VenueSetupPage() {
   const hasMajorChanges = Boolean(isApprovedVenue && venue && detectMajorVenueChanges(venue, form, files));
   const hasOutsideVenuePhoto = Boolean(venue?.front_photo || venuePhotos.some((photo) => photo.category === "OUTSIDE"));
   const hasCourtAreaPhoto = Boolean(venue?.court_area_photo || venuePhotos.some((photo) => photo.category === "COURT_AREA"));
+  const hasUnconfirmedLocationChange = Boolean(
+    isApprovedVenue &&
+      venue &&
+      hasVenueCoordinateChanges(venue, form) &&
+      form.latitude !== null &&
+      form.longitude !== null &&
+      !form.location_confirmed,
+  );
   const feedbackMessage = error || message;
   const feedbackType = error ? "error" : message ? "success" : "info";
   const estimatedSlots = estimateGeneratedSlots({
@@ -229,16 +251,31 @@ export default function VenueSetupPage() {
     closingTime: slotForm.closing_time,
     durationMinutes: slotForm.slot_duration_minutes,
   });
-  const canSubmit = useMemo(() => {
+  const canSubmitInitialApproval = useMemo(() => {
     return Boolean(courts.length > 0 && form.declaration_accepted && form.verification_document_type && hasOutsideVenuePhoto && hasCourtAreaPhoto);
   }, [courts.length, form.declaration_accepted, form.verification_document_type, hasOutsideVenuePhoto, hasCourtAreaPhoto]);
+  const canSubmitMajorReview = Boolean(isApprovedVenue && hasMajorChanges && !hasUnconfirmedLocationChange);
+  const canSubmitPrimaryAction = isApprovedVenue ? (hasMajorChanges ? canSubmitMajorReview : true) : canSubmitInitialApproval;
 
   function clearFeedback() {
     setMessage("");
     setError("");
   }
 
-  async function saveVenueDraft({ submitForReview = false }: { submitForReview?: boolean } = {}) {
+  async function saveVenueDraft({
+    submitForReview = false,
+    replacement,
+    clearPhotoField,
+  }: {
+    submitForReview?: boolean;
+    replacement?: { field: VenueLegacyPhotoField; file: File };
+    clearPhotoField?: VenueLegacyPhotoField;
+  } = {}) {
+    if (form.map_location.trim() && !isVenueMapUrl(form.map_location.trim())) {
+      setError("Enter a valid HTTPS link from Google Maps, OpenStreetMap, Apple Maps, or Bing Maps.");
+      setMessage("");
+      return null;
+    }
     if (!isCancellationPolicyValid(form)) {
       setError("Fix the cancellation policy values before saving. Full refund must be 2-168 hours, and the partial tier must start earlier with a 1-99% refund.");
       setMessage("");
@@ -261,6 +298,8 @@ export default function VenueSetupPage() {
       Object.entries(files).forEach(([key, file]) => {
         if (file) payload.append(key, file);
       });
+      if (replacement) payload.append(replacement.field, replacement.file);
+      if (clearPhotoField && !replacement) payload.append(`clear_${clearPhotoField}`, "true");
       payload.append("submit_for_review", String(submitForReview));
       const response = await api.post<{ venue: Venue }>("/api/venues/owner/venue/", payload);
       setVenue(response.data.venue);
@@ -330,6 +369,33 @@ export default function VenueSetupPage() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  async function replaceLegacyPhoto(field: VenueLegacyPhotoField, event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+    if (!file) return;
+
+    const savedVenue = await saveVenueDraft({ replacement: { field, file } });
+    if (savedVenue) {
+      setFiles((current) => ({ ...current, [field]: null }));
+      setMessage(`${legacyPhotoLabels[field]} replaced successfully.`);
+    }
+  }
+
+  async function removeLegacyPhoto(field: VenueLegacyPhotoField) {
+    const savedVenue = await saveVenueDraft({ clearPhotoField: field });
+    if (savedVenue) {
+      setPendingLegacyPhotoRemoval(null);
+      setMessage(`${legacyPhotoLabels[field]} removed. Add a replacement before submitting for approval.`);
+    }
+  }
+
+  async function removeGalleryPhoto() {
+    if (pendingGalleryPhotoId === null) return;
+    const photoId = pendingGalleryPhotoId;
+    setPendingGalleryPhotoId(null);
+    await deleteVenuePhoto(photoId);
   }
 
   async function addCourt(event: FormEvent<HTMLFormElement>) {
@@ -437,6 +503,11 @@ export default function VenueSetupPage() {
 
   async function submitForApproval() {
     if (isApprovedVenue) {
+      if (hasMajorChanges && hasUnconfirmedLocationChange) {
+        setError("Confirm the new venue pin before submitting this location change for admin review.");
+        setMessage("");
+        return;
+      }
       const savedVenue = await saveVenueDraft({ submitForReview: hasMajorChanges });
       if (savedVenue) setStep(4);
       return;
@@ -476,8 +547,8 @@ export default function VenueSetupPage() {
       address: location.displayName || current.address,
       city: location.district || current.city,
       area: location.area || current.area,
-      latitude: location.latitude,
-      longitude: location.longitude,
+      latitude: roundCoordinate(location.latitude),
+      longitude: roundCoordinate(location.longitude),
       location_source: location.source,
       location_confirmed: false,
     }));
@@ -495,17 +566,17 @@ export default function VenueSetupPage() {
 
   if (isLoading) {
     return (
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="space-y-6">
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">Loading venue setup...</div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="space-y-6">
       <FeedbackToast message={feedbackMessage} onClose={clearFeedback} type={feedbackType} />
 
-      <div className="rounded-lg bg-sportNavy p-6 text-white shadow-sm">
+      <div className="owner-venue-hero rounded-lg bg-sportNavy p-6 text-white shadow-sm">
         <p className="text-sm font-black uppercase tracking-wide text-green-300">Venue Setup</p>
         <h1 className="mt-2 text-3xl font-black">Set up your Cricksal venue</h1>
         <p className="mt-3 text-slate-300">Complete these steps to make your courts bookable after admin approval.</p>
@@ -547,8 +618,7 @@ export default function VenueSetupPage() {
               <Input label="Address" value={form.address} onChange={(value) => setForm({ ...form, address: value })} />
               <Select label="District" value={form.city} onChange={(value) => setForm((current) => ({ ...current, city: value, area: "" }))} options={availableDistricts.map((item) => item.value)} labels={Object.fromEntries(availableDistricts.map((item) => [item.value, item.label]))} />
               <Select label="Area" value={form.area} onChange={(value) => setForm({ ...form, area: value })} options={availableAreas.map((item) => item.value)} labels={Object.fromEntries(availableAreas.map((item) => [item.value, item.label]))} />
-              <p className="-mt-2 text-xs leading-5 text-slate-500 md:col-span-2">Choose the area players will use to discover this venue. The map pin below stores the exact entrance for directions.</p>
-              <Input label="Map link (optional)" value={form.map_location} onChange={(value) => setForm({ ...form, map_location: value })} />
+              <p className="-mt-2 text-xs leading-5 text-slate-500 md:col-span-2">Choose the area players will use to discover this venue. The confirmed map pin stores the exact entrance for directions.</p>
               <TimeSelectField label="Opening Time" value={form.opening_time} onChange={(value) => setForm({ ...form, opening_time: value })} />
               <TimeSelectField label="Closing Time" value={form.closing_time} onChange={(value) => setForm({ ...form, closing_time: value })} />
             </div>
@@ -557,9 +627,12 @@ export default function VenueSetupPage() {
               confirmed={form.location_confirmed}
               latitude={form.latitude}
               longitude={form.longitude}
+              mapLocation={form.map_location}
               onChange={updateVenueLocation}
               onClear={clearVenueLocation}
+              onMapLocationChange={(value) => setForm((current) => ({ ...current, map_location: value }))}
               onConfirm={() => setForm((current) => ({ ...current, location_confirmed: true }))}
+              source={form.location_source}
             />
             <Textarea label="Description" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
             <div>
@@ -762,8 +835,11 @@ export default function VenueSetupPage() {
                   <VenuePhotoManager
                     category="OUTSIDE"
                     description="Entrance, signboard, exterior, or road-facing front view."
+                    legacyField="front_photo"
                     legacyPhotoUrl={venue?.front_photo || ""}
-                    onDelete={deleteVenuePhoto}
+                    onDelete={(photoId) => setPendingGalleryPhotoId(photoId)}
+                    onRemoveLegacy={() => setPendingLegacyPhotoRemoval("front_photo")}
+                    onReplaceLegacy={replaceLegacyPhoto}
                     onUpload={uploadVenuePhotos}
                     photos={venuePhotos}
                     required
@@ -772,8 +848,11 @@ export default function VenueSetupPage() {
                   <VenuePhotoManager
                     category="COURT_AREA"
                     description="Main playable area, pitch/court surface, nets, lights, and boundaries."
+                    legacyField="court_area_photo"
                     legacyPhotoUrl={venue?.court_area_photo || ""}
-                    onDelete={deleteVenuePhoto}
+                    onDelete={(photoId) => setPendingGalleryPhotoId(photoId)}
+                    onRemoveLegacy={() => setPendingLegacyPhotoRemoval("court_area_photo")}
+                    onReplaceLegacy={replaceLegacyPhoto}
                     onUpload={uploadVenuePhotos}
                     photos={venuePhotos}
                     required
@@ -782,8 +861,11 @@ export default function VenueSetupPage() {
                   <VenuePhotoManager
                     category="ADDITIONAL"
                     description="Parking, seating, changing room, washroom, shop, or other facilities."
+                    legacyField="additional_photo"
                     legacyPhotoUrl={venue?.additional_photo || ""}
-                    onDelete={deleteVenuePhoto}
+                    onDelete={(photoId) => setPendingGalleryPhotoId(photoId)}
+                    onRemoveLegacy={() => setPendingLegacyPhotoRemoval("additional_photo")}
+                    onReplaceLegacy={replaceLegacyPhoto}
                     onUpload={uploadVenuePhotos}
                     photos={venuePhotos}
                     title="Additional Photos"
@@ -818,22 +900,35 @@ export default function VenueSetupPage() {
             </div>
 
             <aside className="rounded-lg bg-sportNavy p-5 text-white shadow-sm lg:sticky lg:top-24 lg:self-start">
-              <p className="text-xs font-black uppercase tracking-wide text-green-300">Safe & Secure</p>
-              <h3 className="mt-3 text-2xl font-black">Ready to Go Live?</h3>
+              <p className="text-xs font-black uppercase tracking-wide text-green-300">{isApprovedVenue ? "Venue protection" : "Safe & Secure"}</p>
+              <h3 className="mt-3 text-2xl font-black">{isApprovedVenue ? (hasMajorChanges ? "Review changes before publishing" : "Keep your venue up to date") : "Ready to Go Live?"}</h3>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Submit your Cricksal venue for admin verification. Players can book only after approval.
+                {isApprovedVenue
+                  ? hasMajorChanges
+                    ? "Identity and map changes are held for admin review. Your current approved listing remains protected until the review is complete."
+                    : "Operational edits can be saved directly while your approved listing stays bookable."
+                  : "Submit your Cricksal venue for admin verification. Players can book only after approval."}
               </p>
               <div className="mt-5 space-y-2 text-sm text-slate-300">
                 <p>Courts added: <strong className="text-white">{courts.length}</strong></p>
                 <p>Selected slot: <strong className="text-white">{slotForm.slot_duration_minutes} min</strong></p>
                 <p>Base price: <strong className="text-white">Rs {Number(selectedBasePrice || 0).toLocaleString()}</strong></p>
               </div>
-              <button className="mt-5 w-full rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-500" disabled={isSaving || !canSubmit} onClick={submitForApproval} type="button">
+              {isApprovedVenue && hasMajorChanges ? (
+                <div className={`mt-5 rounded-md border px-3 py-3 text-xs leading-5 ${hasUnconfirmedLocationChange ? "border-amber-300/40 bg-amber-400/10 text-amber-100" : "border-green-300/30 bg-green-400/10 text-green-100"}`} role="status">
+                  {hasUnconfirmedLocationChange
+                    ? "Confirm the new pin in the location panel before sending it for review."
+                    : "The review request is ready. Admin approval is required before this change becomes public."}
+                </div>
+              ) : null}
+              <button className="mt-5 w-full rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-500" disabled={isSaving || !canSubmitPrimaryAction} onClick={submitForApproval} type="button">
                 {isApprovedVenue ? (hasMajorChanges ? "Submit Major Changes for Review" : "Save Safe Changes") : "Submit for Verification"}
               </button>
-              <button className="mt-3 w-full rounded-md border border-white/20 px-5 py-3 text-sm font-black text-white hover:bg-white/10" disabled={isSaving} onClick={() => saveVenueDraft()} type="button">
-                {isApprovedVenue ? "Save Safe Changes" : "Save as Draft"}
-              </button>
+              {!isApprovedVenue ? (
+                <button className="mt-3 w-full rounded-md border border-white/20 px-5 py-3 text-sm font-black text-white hover:bg-white/10" disabled={isSaving} onClick={() => saveVenueDraft()} type="button">
+                  Save as Draft
+                </button>
+              ) : null}
             </aside>
           </div>
         ) : null}
@@ -845,9 +940,11 @@ export default function VenueSetupPage() {
               Previous
             </button>
             <div className="flex flex-wrap gap-3">
-              <button className="rounded-md border border-green-200 px-5 py-3 text-sm font-black text-sportGreen hover:bg-green-50" disabled={isSaving} onClick={() => saveVenueDraft()} type="button">
-                {isSaving ? "Saving..." : isApprovedVenue ? "Save Safe Changes" : "Save as Draft"}
-              </button>
+              {!isApprovedVenue || !hasMajorChanges ? (
+                <button className="rounded-md border border-green-200 px-5 py-3 text-sm font-black text-sportGreen hover:bg-green-50" disabled={isSaving} onClick={() => saveVenueDraft()} type="button">
+                  {isSaving ? "Saving..." : isApprovedVenue ? "Save Safe Changes" : "Save as Draft"}
+                </button>
+              ) : null}
               <button className="rounded-md bg-sportGreen px-5 py-3 text-sm font-black text-white hover:bg-green-700" onClick={() => setStep((current) => Math.min(4, current + 1))} type="button">
                 Next
               </button>
@@ -866,7 +963,30 @@ export default function VenueSetupPage() {
       <Link className="mt-5 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/owner">
         Back to Owner Dashboard
       </Link>
-    </main>
+
+      {pendingLegacyPhotoRemoval ? (
+        <ConfirmActionModal
+          actionLabel="Remove photo"
+          body={`This removes the current ${legacyPhotoLabels[pendingLegacyPhotoRemoval].toLowerCase()} from your venue profile. Existing bookings and court availability are not affected.`}
+          confirmTone="danger"
+          isWorking={isSaving}
+          onCancel={() => setPendingLegacyPhotoRemoval(null)}
+          onConfirm={() => removeLegacyPhoto(pendingLegacyPhotoRemoval)}
+          title={`Remove ${legacyPhotoLabels[pendingLegacyPhotoRemoval]}?`}
+        />
+      ) : null}
+      {pendingGalleryPhotoId !== null ? (
+        <ConfirmActionModal
+          actionLabel="Remove photo"
+          body="This removes this gallery photo from the venue profile. Existing bookings and court availability are not affected."
+          confirmTone="danger"
+          isWorking={isSaving}
+          onCancel={() => setPendingGalleryPhotoId(null)}
+          onConfirm={removeGalleryPhoto}
+          title="Remove this gallery photo?"
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -1213,75 +1333,93 @@ function VenuePhotoManager({
   description,
   category,
   photos,
+  legacyField,
   legacyPhotoUrl,
   required = false,
   onUpload,
   onDelete,
+  onRemoveLegacy,
+  onReplaceLegacy,
 }: {
   title: string;
   description: string;
   category: VenuePhotoCategory;
   photos: VenuePhoto[];
+  legacyField: VenueLegacyPhotoField;
   legacyPhotoUrl: string;
   required?: boolean;
   onUpload: (category: VenuePhotoCategory, event: ChangeEvent<HTMLInputElement>) => void;
   onDelete: (photoId: number) => void;
+  onRemoveLegacy: () => void;
+  onReplaceLegacy: (field: VenueLegacyPhotoField, event: ChangeEvent<HTMLInputElement>) => void;
 }) {
   const categoryPhotos = photos.filter((photo) => photo.category === category);
   const hasPhotos = categoryPhotos.length > 0 || Boolean(legacyPhotoUrl);
+  const totalPhotos = categoryPhotos.length + (legacyPhotoUrl ? 1 : 0);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <section className="owner-photo-manager">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="font-black text-sportNavy">{title}</h4>
-            <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${hasPhotos ? "bg-green-100 text-green-800" : required ? "bg-red-100 text-red-700" : "bg-slate-200 text-slate-600"}`}>
-              {hasPhotos ? `${categoryPhotos.length + (legacyPhotoUrl ? 1 : 0)} photo${categoryPhotos.length + (legacyPhotoUrl ? 1 : 0) === 1 ? "" : "s"}` : required ? "Required" : "Optional"}
+            <span className={`owner-photo-count ${hasPhotos ? "owner-photo-count-ready" : required ? "owner-photo-count-required" : ""}`}>
+              {hasPhotos ? `${totalPhotos} photo${totalPhotos === 1 ? "" : "s"}` : required ? "Required" : "Optional"}
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-600">{description}</p>
         </div>
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-sportGreen px-4 py-2 text-sm font-black text-white hover:bg-green-700">
+        <label className="owner-photo-upload-button">
           <EditIcon />
-          Add Photos
+          Add photos
           <input accept=".jpg,.jpeg,.png" className="sr-only" multiple onChange={(event) => onUpload(category, event)} type="file" />
         </label>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {legacyPhotoUrl ? <PhotoTile imageUrl={legacyPhotoUrl} label="Existing photo" /> : null}
-        {categoryPhotos.map((photo) => (
-          <PhotoTile imageUrl={photo.image} key={photo.id} label="Uploaded photo" onDelete={() => onDelete(photo.id)} />
-        ))}
-        {!hasPhotos ? (
-          <label className="flex aspect-[4/3] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-center hover:border-sportGreen hover:bg-green-50">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-50 text-sportGreen">
-              <CameraIcon />
-            </div>
-            <p className="mt-2 text-sm font-black text-sportGreen">Add Photos</p>
-            <p className="mt-1 px-4 text-xs text-slate-500">JPG, JPEG, PNG</p>
-            <input accept=".jpg,.jpeg,.png" className="sr-only" multiple onChange={(event) => onUpload(category, event)} type="file" />
-          </label>
+      <div className="owner-photo-grid">
+        {legacyPhotoUrl ? (
+          <PhotoTile
+            imageUrl={legacyPhotoUrl}
+            isPrimary
+            label="Current primary photo"
+            onDelete={onRemoveLegacy}
+            onReplace={(event) => onReplaceLegacy(legacyField, event)}
+          />
         ) : null}
+        {categoryPhotos.map((photo) => (
+          <PhotoTile imageUrl={photo.image} key={photo.id} label="Gallery photo" onDelete={() => onDelete(photo.id)} />
+        ))}
+        <label className="owner-photo-add">
+            <span className="owner-photo-add-icon"><CameraIcon /></span>
+            <span className="mt-2 text-sm font-black text-sportGreen">{hasPhotos ? "Add another photo" : "Add your first photo"}</span>
+            <span className="mt-1 px-4 text-xs text-slate-500">JPG, JPEG or PNG</span>
+            <input accept=".jpg,.jpeg,.png" className="sr-only" multiple onChange={(event) => onUpload(category, event)} type="file" />
+        </label>
       </div>
-    </div>
+    </section>
   );
 }
 
-function PhotoTile({ imageUrl, label, onDelete }: { imageUrl: string; label: string; onDelete?: () => void }) {
+function PhotoTile({ imageUrl, label, isPrimary = false, onDelete, onReplace }: { imageUrl: string; label: string; isPrimary?: boolean; onDelete?: () => void; onReplace?: (event: ChangeEvent<HTMLInputElement>) => void }) {
   return (
-    <div className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <img alt={label} className="aspect-[4/3] w-full object-cover" src={getMediaUrl(imageUrl)} />
-      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-slate-950/65 px-3 py-2 text-xs font-black text-white">
-        <span>{label}</span>
-        {onDelete ? (
-          <button className="rounded bg-white/15 px-2 py-1 hover:bg-red-500" onClick={onDelete} type="button">
-            Remove
-          </button>
-        ) : null}
+    <article className="owner-photo-tile">
+      <img alt={label} className="owner-photo-image" src={getMediaUrl(imageUrl)} />
+      <div className="owner-photo-tile-footer">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black text-sportNavy">{label}</p>
+          <p className="mt-1 text-xs text-slate-500">{isPrimary ? "Shown as the category cover" : "Visible in the venue gallery"}</p>
+        </div>
+        <div className="owner-photo-tile-actions">
+          {onReplace ? (
+            <label className="owner-photo-action owner-photo-action-replace">
+              Replace
+              <input accept=".jpg,.jpeg,.png" className="sr-only" onChange={onReplace} type="file" />
+            </label>
+          ) : null}
+          {onDelete ? <button className="owner-photo-action owner-photo-action-remove" onClick={onDelete} type="button">Remove</button> : null}
+        </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -1317,9 +1455,23 @@ function getSelectedBasePrice(slotForm: { slot_duration_minutes: string; price_3
 }
 
 function detectMajorVenueChanges(venue: Venue, form: VenueForm, files: Record<string, File | null>) {
-  const majorFields: Array<keyof VenueForm> = ["name", "address", "city", "area", "map_location", "latitude", "longitude", "verification_document_type"];
+  const majorFields: Array<keyof VenueForm> = ["name", "address", "city", "area", "map_location", "verification_document_type"];
   const changedMajorField = majorFields.some((field) => normalizeCompare(String(venue[field] || "")) !== normalizeCompare(String(form[field] || "")));
-  return changedMajorField || Boolean(files.verification_document);
+  return changedMajorField || hasVenueCoordinateChanges(venue, form) || Boolean(files.verification_document);
+}
+
+function hasVenueCoordinateChanges(venue: Venue, form: VenueForm) {
+  return normalizeCoordinate(venue.latitude) !== normalizeCoordinate(form.latitude) || normalizeCoordinate(venue.longitude) !== normalizeCoordinate(form.longitude);
+}
+
+function normalizeCoordinate(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return "";
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue.toFixed(6) : String(value).trim();
+}
+
+function roundCoordinate(value: number) {
+  return Number.isFinite(value) ? Number(value.toFixed(6)) : value;
 }
 
 function normalizeCompare(value: string) {

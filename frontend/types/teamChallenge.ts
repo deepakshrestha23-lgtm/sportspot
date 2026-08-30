@@ -119,6 +119,12 @@ export type TeamFixtureParticipant = {
   status: string;
   status_label: string;
   attendance_recorded_at: string | null;
+  attendance?: {
+    id?: number;
+    status: string;
+    review_deadline_at: string | null;
+    can_dispute: boolean;
+  };
   created_at: string;
 };
 

@@ -119,7 +119,15 @@ class PlayerProfile(models.Model):
 
     @property
     def reliability_label(self):
-        if self.completed_matches_count < 3:
+        accountable_commitments = self.user.participation_commitments.filter(
+            status__in=[
+                "ATTENDED",
+                "LATE_CANCELLED",
+                "FINALIZED_NO_SHOW",
+            ]
+        ).count()
+        history_count = max(self.completed_matches_count, accountable_commitments)
+        if history_count < 5:
             return "Provisional Reliability"
         return f"{self.reliability_score}/100"
 
@@ -182,6 +190,108 @@ class ReliabilityEvent(models.Model):
 
     def __str__(self):
         return f"{self.player.email} - {self.event_type}"
+
+
+class ParticipationCommitment(models.Model):
+    """The auditable attendance lifecycle for one registered player.
+
+    Roster membership and reliability are deliberately separate.  A commitment
+    is created only after a registered player has a confirmed game schedule;
+    guests, pending requests, waitlisted players, and pre-booking plan-first
+    participants never enter this ledger.
+    """
+
+    class SourceType(models.TextChoices):
+        MATCHMAKING_GAME = "MATCHMAKING_GAME", "Matchmaking game"
+        TEAM_FIXTURE = "TEAM_FIXTURE", "Team fixture"
+
+    class Status(models.TextChoices):
+        COMMITTED = "COMMITTED", "Committed"
+        CANCELLED_EARLY = "CANCELLED_EARLY", "Cancelled early"
+        LATE_CANCELLED = "LATE_CANCELLED", "Cancelled late"
+        ATTENDANCE_PENDING = "ATTENDANCE_PENDING", "Attendance pending"
+        ATTENDED = "ATTENDED", "Attended"
+        NO_SHOW_REPORTED = "NO_SHOW_REPORTED", "No-show reported"
+        FINALIZED_NO_SHOW = "FINALIZED_NO_SHOW", "Finalized no-show"
+        DISPUTED = "DISPUTED", "Disputed"
+        EXCUSED = "EXCUSED", "Excused"
+        VOID = "VOID", "Voided"
+
+    player = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="participation_commitments",
+    )
+    source_type = models.CharField(max_length=30, choices=SourceType.choices)
+    source_id = models.PositiveBigIntegerField()
+    source_participant_id = models.PositiveBigIntegerField()
+    source_version = models.PositiveSmallIntegerField(default=1)
+    start_at = models.DateTimeField()
+    end_at = models.DateTimeField()
+    late_cutoff_at = models.DateTimeField()
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.COMMITTED)
+    attendance_recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="recorded_participation_attendance",
+        blank=True,
+        null=True,
+    )
+    attendance_recorded_at = models.DateTimeField(blank=True, null=True)
+    review_deadline_at = models.DateTimeField(blank=True, null=True)
+    disputed_at = models.DateTimeField(blank=True, null=True)
+    dispute_reason = models.CharField(max_length=500, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="resolved_participation_disputes",
+        blank=True,
+        null=True,
+    )
+    resolved_at = models.DateTimeField(blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-start_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["player", "source_type", "source_id", "source_version"],
+                name="unique_participation_commitment_version",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["source_type", "source_id", "status"]),
+            models.Index(fields=["player", "status", "-start_at"]),
+            models.Index(fields=["status", "review_deadline_at"]),
+        ]
+
+    def clean(self):
+        if self.player_id and self.player.role != "PLAYER":
+            raise ValidationError("Only player accounts can have participation commitments.")
+        if self.end_at <= self.start_at:
+            raise ValidationError("A participation commitment must have a valid time window.")
+        if self.late_cutoff_at >= self.start_at:
+            raise ValidationError("The late-cancellation cutoff must be before the game starts.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def is_resolved(self):
+        return self.status in {
+            self.Status.CANCELLED_EARLY,
+            self.Status.LATE_CANCELLED,
+            self.Status.ATTENDED,
+            self.Status.FINALIZED_NO_SHOW,
+            self.Status.EXCUSED,
+            self.Status.VOID,
+        }
+
+    def __str__(self):
+        return f"{self.player.email} - {self.source_type} {self.source_id} v{self.source_version}"
 
 class PlayerRating(models.Model):
     ALLOWED_FEEDBACK_TAGS = {

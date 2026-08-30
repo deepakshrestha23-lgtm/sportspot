@@ -2,9 +2,9 @@
 
 SportSpot is a Nepal-focused sports web application for Cricksal players, teams, court owners, and administrators.
 
-Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, Pickup Game matchmaking, Fill My Squad temporary-player recruitment, structured Planning/Game/Squad Rooms, booking-payment reconciliation, request lifecycle history, automatic platform maintenance, a dedicated Venue Manager workspace shell with top bar, sidebar, Overview, and Calendar, authenticated user-scoped WebSocket notification delivery, and a partially complete Team Challenge workflow with discovery, direct/open proposals, multiple open-team responses, opponent selection, counter-proposals, acceptance, booking handoff, notifications, expiry maintenance, rescheduling/reconfirmation, and protected fixture-room coordination exist in the repository. Disputes/moderation, production deployment, Redis provisioning for shared push delivery, owner offline booking, exhaustive concurrency testing, and several admin operations are not complete.
+Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, Pickup Game matchmaking, Fill My Squad temporary-player recruitment, structured Planning/Game/Squad Rooms, booking-payment reconciliation, request lifecycle history, automatic platform maintenance, shared player participation commitments with host attendance review and player dispute protection, a dedicated Venue Manager workspace shell with top bar, sidebar, Overview, and Calendar, authenticated user-scoped WebSocket notification delivery, and a partially complete Team Challenge workflow with discovery, direct/open proposals, multiple open-team responses, opponent selection, counter-proposals, acceptance, booking handoff, notifications, expiry maintenance, rescheduling/reconfirmation, and protected fixture-room coordination exist in the repository. Broader abuse/report moderation, staff dispute tooling, production deployment, Redis provisioning for shared push delivery, owner offline booking, exhaustive concurrency testing, and several admin operations are not complete.
 
-Last repository verification: 2026-08-28. The latest checked branch is `main`.
+Last repository verification: 2026-08-30. The latest checked branch is `main`.
 
 Current sport scope: Cricksal only.
 
@@ -32,7 +32,7 @@ Outside current scope:
 - Real automatic refund transfer.
 - Split payment.
 - Team-based open games beyond Pickup Game.
-- Disputes, appeals, and moderation workflows for games and team challenges.
+- General disputes, appeals, and abuse moderation for games and team challenges. Attendance disputes now have a bounded player review flow and protected staff resolution endpoint, while a broader case-management console remains future work.
 - Full chat-based Game Room.
 - Rating submission and recommendation engine.
 - Production deployment and monitoring.
@@ -43,7 +43,7 @@ Outside current scope:
 | --- | --- | --- | --- |
 | Guest | Public visitor | View homepage and public court discovery, register, log in, request password reset | Cannot book, save wishlist, manage teams, or access dashboards |
 | Player | Cricksal participant | Verify email, log in, use the Player Dashboard, maintain profile, upload profile photo, create teams, invite by SportSpot ID, add guests, accept/reject invitations, view member profile cards, save wishlist items, discover venues, reserve consecutive slots, pay with Khalti, view bookings, cancel eligible bookings, receive notifications, and use the available Team Challenge discovery and captain-authorized proposal actions | Cannot manage venues, slots, owner refunds, or admin review |
-| Court Owner | Venue operator | Verify email, use the Venue Manager workspace, set up venue, upload photos/proof, submit for review, manage own courts, generate/block/unblock slots, view operational calendar, view bookings, cancel own bookings, send booking messages, process owner-side refund records | Cannot create player teams or approve venues |
+| Court Owner | Venue operator | Verify email, use the Venue Manager workspace, set up venue, upload photos/proof, submit for review, manage own courts, generate/block/unblock slots, view operational calendar, view bookings, view venue reports, cancel own bookings, send booking messages, process owner-side refund records | Cannot create player teams or approve venues |
 | Admin | Internal reviewer | Django admin access, frontend admin dashboard, venue approval/request-changes/rejection/suspension | Public registration is blocked; full users/bookings/reports/disputes admin is incomplete |
 
 ## 4. Technology Stack
@@ -130,10 +130,11 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Player My Teams page | Completed | `/dashboard/player/teams` | Team discovery later |
 | Player My Games page | Partially completed | `/dashboard/player/games` | Pickup/Fill My Squad activity is connected; broader Team Challenge presentation and end-to-end coverage remain |
 | Player My Bookings page | Completed | `/dashboard/player/bookings` | More cancellation/refund QA |
-| Ratings & Reliability page | Partially completed | `/dashboard/player/ratings` | Fixture-based eligibility and reliability events exist; broader rating and adjudication coverage remains |
+| Ratings & Reliability page | Partially completed | `/dashboard/player/ratings` | Shared participation commitments, verified attendance outcomes, bounded no-show review, fixture-based rating eligibility, and reliability metrics exist; broader rating and adjudication coverage remains |
 | Player Settings page | Completed | `/dashboard/player/settings` | Dual-role/account-mode support later |
+| Venue Owner Settings page | Completed | `/dashboard/owner/settings` | Staff accounts and automated payouts are not in the current domain |
 | Player Wishlist access | Completed | `/dashboard/player/wishlist`, Player navbar link | Expand saved-item types later |
-| Venue Manager shell/sidebar/top bar | Completed | `frontend/components/owner/*`, `/dashboard/owner/*` | Continue destination-page implementation |
+| Venue Manager shell/sidebar/top bar | Completed | `frontend/components/owner/*`, `/dashboard/owner/*` | Continue workflow expansion without fragmenting the shared owner visual system |
 
 ### Authentication and Accounts
 
@@ -156,7 +157,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | SportSpot ID | Completed | `generate_sportspot_id` | Concurrency hardening later |
 | Profile view/update | Completed | `/api/players/profile/`, `/dashboard/player/profile` | Broader tests |
 | Profile photo upload | Completed | `profile_photo` and UI | Size/compression rules |
-| Reliability display | Partially completed | `record_reliability_event`, fixture attendance integration, ratings page | Dispute/appeal review and broader event coverage remain |
+| Reliability display | Partially completed | `ParticipationCommitment`, attendance services, fixture/game rooms, ratings page | Staff-facing dispute resolution, broader rating coverage, and moderation remain |
 | Ratings | Partially completed | `PlayerRating`, eligibility service, `/api/players/ratings/eligibilities/{id}/submit/` | Broader UI, moderation and cross-match coverage remain |
 
 ### Team Management
@@ -193,7 +194,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Accept, counter, decline and withdraw | Partially completed | challenge detail actions, immutable proposals, and service layer | Add more concurrency and browser-flow tests |
 | Booking-first and plan-first challenge lifecycle | Partially completed | `attach-booking/`, `reschedule/`, `reconfirm/`, `TeamFixture`, booking synchronisation service | Broaden browser/concurrency coverage and finalize dispute policy |
 | Challenge notifications and deadline expiry | Partially completed | `team_challenges/notifications.py`, captain-continuity synchroniser, `expire_team_challenges`, unified maintenance | Configure scheduled maintenance and expand notification coverage |
-| Challenge fixture/Game Room | Partially completed | `/challenges/{id}/room/`, lineup, attendance, result submit/confirm, participant permissions, rating eligibility | Add disputes/appeals, richer activity, and broader end-to-end coverage |
+| Challenge fixture/Game Room | Partially completed | `/challenges/{id}/room/`, lineup, attendance, player dispute review, result submit/confirm, participant permissions, rating eligibility | Add staff dispute tooling, richer activity, and broader end-to-end coverage |
 
 ### Venue and Court Discovery
 
@@ -228,6 +229,8 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Slot generation/pricing | Completed | `GenerateSlotsView`, owner setup and court slot screens | Explicit 1-90 day publishing window, weekday recurrence, idempotent regeneration, past-time validation, and overlap protection are implemented; persistent rolling schedule automation and peak pricing are not |
 | Block/unblock slots | Completed | `SlotStatusView`, block metadata on `CourtSlot` | Court-closure model can be added later |
 | Owner operations calendar | Completed | `/dashboard/owner/calendar`, `/api/venues/owner/calendar/`, `/api/venues/owner/calendar/block/` | Manual booking creation not implemented |
+| Venue owner reports | Partially completed | `/dashboard/owner/reports`, `/api/venues/owner/reports/`, bounded custom periods, CSV export | Comparison periods, forecasting, and richer staff analytics later |
+| Payment and refund operations | Completed | `/dashboard/owner/refunds`, `/api/venues/owner/refunds/` | Automated money transfer and gateway reconciliation remain future work |
 | Offline booking | Planned | navigation concept but no complete model/API | Build owner offline booking flow |
 
 ### Booking
@@ -242,6 +245,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Khalti initiation | Completed | `KhaltiPaymentInitiateView` | Requires valid env key |
 | Khalti verification | Completed | lookup before confirmation | Needs live sandbox end-to-end verification |
 | Booking pass/history | Completed | player booking pages | Print/download later |
+| Booking QR and venue check-in | Completed | `BookingCheckIn`, `BookingVerificationPanel`, `OwnerBookingVerifyView` | Camera/browser QA and operational owner training |
 | Cancellation | Completed | `BookingCancelView`, `policies.py` | More tests for all tiers |
 | Owner refund actions | Completed | owner refund APIs/page | Real money transfer not implemented |
 | Expiry/completion commands | Completed | `expire_reservations`, `complete_bookings`, `run_booking_maintenance`, `run_sportspot_maintenance` | Configure the unified one-shot scheduler/worker in deployment |
@@ -266,7 +270,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Venue review | Completed | `/dashboard/admin/venues` and admin review API | Audit log |
 | User management | Planned | no dedicated page | Build moderation UI |
 | Booking oversight | Partially completed | backend permission logic exists | frontend admin booking page missing |
-| Reports/disputes | Planned | no models/pages | Build later |
+| Admin reports/disputes | Planned | no staff reporting/case-management page | Build later |
 
 ### Testing and Deployment
 
@@ -289,27 +293,33 @@ Verified completed work includes:
 - JWT authentication with verified-user and auth-version checks.
 - Cricksal player profile with SportSpot ID, photo, location, skill, role, availability, style, and trust counters.
 - Player Dashboard shell with Overview, My Profile, My Teams, My Games, My Bookings, Ratings & Reliability, Settings, and Help & Support navigation.
+- My Teams includes an accessible, unclipped actions menu for captain and member team actions, with consistent dashboard menu semantics and responsive stacking.
 - Player Settings page with horizontal sections, explicit Account edit/cancel mode, safer email-change verification, separate password updates, notification/privacy preferences, and account deactivation.
+- Venue Owner Settings page with focused Account, Security, owner-relevant Notifications, and Venue Operations sections. Owner account edits use the shared email-verification flow; booking/refund alerts are persisted through owner-specific settings endpoints; venue profile, courts, pricing, calendar, refunds, and reports remain linked to their operational workspaces.
 - Team creation, redesigned Create Team page, captain permissions, registered invitation by SportSpot ID, guest players, member cards, and invitation decisions.
-- Court owner venue setup, photo gallery, verification document upload, admin review, court setup, explicit date-range slot generation, slot blocking, Venue Manager shell/sidebar, Overview, and operational Calendar with compact booking blocks.
+- Court owner venue setup, photo gallery, verification document upload, admin review, court setup, explicit date-range slot generation, slot blocking, Venue Manager shell/sidebar, Overview, and operational Calendar with compact booking blocks. Venue & Courts now use a consistent owner inventory workspace: venue readiness, location, policy, photos, and court records are separated into scannable sections; owners can replace/remove legacy venue photos and edit/remove court photos without touching bookings or slots.
 - Venue-first public discovery with stable backend filter reference data.
 - Consecutive multi-slot booking, 10-minute holds, Khalti payment verification, booking pass/history, cancellation, and owner-managed refund records.
+- Real signed booking QR passes with booking-code fallback, venue-owner verification, a two-hour pre/post check-in window, idempotent check-in records, and strict separation from player attendance and reliability.
+- My Bookings uses a compact responsive reservation workspace with persistent List and three-column Cards views, fixed venue thumbnails, scannable booking metadata, clear payment/status hierarchy, and preserved pass, payment, directions, cancellation, and book-again actions.
+- Shared responsive SiteFooter added to the application shell with real player, venue-owner, and support routes; authentication screens remain focused without global navigation chrome.
 - Central Notification Centre and global toast feedback.
 - Transactional email service with delivery audit table.
 - Player wishlist for venues/courts, exposed from the logged-in Player top navbar.
 - Dedicated Venue Manager navigation for `/dashboard/owner/*`, including top bar, stable lifecycle-aware sidebar, venue identity/status, contextual venue actions, owner notifications, profile dropdown, and responsive mobile drawer.
-- Shared UI refinement pass: compact page headers, cards, controls, field states, empty/error states, fixed feedback toasts, route-aware back links, focus states, reduced-motion support, and smoother active navigation were applied across the main player, owner, discovery, booking, matchmaking, challenge and authentication surfaces. Remaining older screens are tracked as migration work rather than being presented as complete.
+- Shared UI refinement pass: compact page headers, cards, controls, field states, empty/error states, fixed feedback toasts, route-aware back links, focus states, reduced-motion support, and smoother active navigation were applied across the main player, owner, discovery, booking, matchmaking, challenge and authentication surfaces. The Venue Manager workspace now has a scoped visual system for its shell, operational panels, KPI links, forms, empty states, and action paths without changing owner APIs or workflows. Remaining older screens are tracked as migration work rather than being presented as complete.
+- Venue Manager Bookings now uses compact, individually bounded responsive records with filter counts, avatar/code identity, court and schedule hierarchy, readable status tones, NPR totals, check-in context, and preserved message/cancel actions.
 - Team Challenge lifecycle hardening: active-captain continuity, retry-safe decisions and booking attachment, booking reuse prevention, immutable proposal-version rescheduling, participant reconfirmation deadlines, protected fixture-room access, captain-managed lineups, attendance recording, two-captain result submission/confirmation, and verified rating-eligibility creation after attended fixtures.
 - Shared mutation throttling for authenticated state-changing matchmaking and challenge endpoints; safe methods remain unthrottled so browsing and read-only detail pages are not slowed by the abuse-control limit.
 
 ## 9. Partially Completed and In-Progress Work
 
-- Ratings/reliability use real player profile counters, fixture attendance events, rating eligibility and submitted ratings, but broader cross-match event coverage, dispute handling, and moderation are incomplete.
-- Team Challenges now have a real backend domain, migrations, discovery/create/detail screens, direct and open challenge paths, multiple open-team responses with creator-controlled opponent selection, immutable proposals, captain-only decisions, booking-first and plan-first states, booking ownership/status/time validation, retry-safe lifecycle actions, proposal-version rescheduling, explicit captain reconfirmation, linked-booking lifecycle synchronisation, automatic deadline expiry, active-captain continuity, and a protected fixture Game Room with lineup, attendance and result controls. Remaining work includes disputes/appeals, richer room activity, broader end-to-end/concurrency coverage, and production scheduler configuration.
+- Ratings/reliability use a shared `ParticipationCommitment` ledger for confirmed Pickup Games, Fill My Squad games, and Team fixtures. Hosts/captains record attendance after completion; no-show reports remain neutral for 24 hours so the affected player can dispute them, and only finalized outcomes affect reliability. Broader player-rating coverage and staff case-management tooling remain incomplete.
+- Team Challenges now have a real backend domain, migrations, discovery/create/detail screens, direct and open challenge paths, multiple open responses with creator-controlled opponent selection, immutable proposals, captain-only decisions, booking-first and plan-first states, booking ownership/status/time validation, retry-safe lifecycle actions, proposal-version rescheduling, explicit captain reconfirmation, linked-booking lifecycle synchronisation, automatic deadline expiry, active-captain continuity, and a protected fixture Game Room with lineup, shared attendance review, and result controls. Remaining work includes staff dispute tooling, richer room activity, broader end-to-end/concurrency coverage, and production scheduler configuration.
 - Pickup Game has a structured Planning Room/Game Room; live chat and reusable rooms for future challenge flows are not implemented.
 - Admin venue review works, but broader admin operations are incomplete.
 - Owner offline booking is not implemented as a full feature.
-- Venue Manager top bar, sidebar, mobile drawer, Overview, and Calendar are implemented; the remaining owner destination pages still need full workflow refinement.
+- Venue Manager top bar, sidebar, mobile drawer, Overview, Calendar, venue/court pages, bookings, refunds, slot management, and Reports now share a scoped operational visual system. Availability & Pricing loads the owner venue and court inventory, summarizes active/publishing readiness, and provides direct slot and calendar actions. Reports load server-calculated booking, payment, refund, check-in, slot, utilization, daily activity, and per-court performance records; owners can switch the activity view between reservations and paid value and export the loaded report as CSV. Settings clearly exposes its current workflow boundaries. Comparison analytics remain tracked separately.
 - The UI migration is intentionally incremental. The shared tokens and primitives are in place, but older admin pages and a few complex owner forms still contain local styling that should be migrated after their workflows are verified.
 - Slot publishing accepts an explicit date range of up to 90 days and is intentionally add-only: it preserves existing/booked slots and rejects overlapping schedules. Owners can clear a selected future date range per court, but only future unbooked slots are removed; booked, reserved, blocked, past, and historical slots are protected. Past slots remain visible to owners as history but are not bookable or editable. Automatic rolling extension and bulk all-court schedule replacement are not implemented yet.
 - Dual-role account switching is not supported by the current backend user model, so “Switch to Player Mode” is intentionally hidden.
@@ -344,7 +354,7 @@ Verified completed work includes:
 
 | Objective | Current status | Main tasks | Dependencies | Completion criteria |
 | --- | --- | --- | --- | --- |
-| Ratings/reliability | Partially completed | Complete cross-match attendance/rating coverage, moderation and dispute handling | Completed games and verified participants | Verified participant ratings and reliability events consistently affect trust displays |
+| Ratings/reliability | Partially completed | Complete broader player-rating coverage, staff moderation, and dispute handling | Completed games and verified participants | Verified participant ratings and reliability events consistently affect trust displays |
 | Game Room expansion | Partially completed | Add richer announcement/history features and future live chat if needed | Pickup Game and team fixtures | Pickup and confirmed team fixtures have least-privilege room access; richer collaboration remains |
 | Disputes/reports | Planned | Models, admin review, notifications | Booking/match flows | Users can report serious issues |
 | Notification expansion | Partially completed | Connect only real future module events | New modules | No fake or broken notifications |
@@ -396,7 +406,7 @@ Status: Partially completed. Players can browse real Pickup Game and Fill My Squ
 
 ### Team challenge
 
-Status: Partially completed. Captains can discover teams, create direct or open challenges, publish booking-first or plan-first proposals, receive multiple responses to an open challenge, select one opponent, respond through captain-only actions, counter a plan, attach an eligible booking from either participating captain, reschedule through a new proposal version, reconfirm changed schedules, and receive challenge notifications. Accepted challenges expose a protected fixture Game Room with captain-managed lineup, attendance recording, result submission/confirmation, and verified rating-eligibility creation for attended participants. The backend rejects duplicate active team pairings and booking reuse, synchronizes linked booking lifecycle changes, transfers or closes unmanaged challenges after captain changes, and expires due records through maintenance. Remaining work includes disputes/appeals, richer room activity, broader end-to-end/concurrency coverage, and production scheduler configuration.
+Status: Partially completed. Captains can discover teams, create direct or open challenges, publish booking-first or plan-first proposals, receive multiple responses to an open challenge, select one opponent, respond through captain-only actions, counter a plan, attach an eligible booking from either participating captain, reschedule through a new proposal version, reconfirm changed schedules, and receive challenge notifications. Accepted challenges expose a protected fixture Game Room with captain-managed lineup, shared attendance review, result submission/confirmation, and verified rating-eligibility creation for attended participants. The backend rejects duplicate active team pairings and booking reuse, synchronizes linked booking lifecycle changes, transfers or closes unmanaged challenges after captain changes, and expires due records through maintenance. Remaining work includes staff dispute tooling, richer room activity, broader end-to-end/concurrency coverage, and production scheduler configuration.
 
 Challenge proposals carry the complete agreed plan: match date, start and end time, district, area, and optional preferred venue. A booking can be attached only when it matches that accepted plan. If either captain needs to change the location or schedule, they must send a new counter-proposal; both captains must accept the new proposal before a matching paid booking can be attached. The challenge screens use dependent district/area fields and separate date and friendly time controls so location changes are not hidden in a message.
 
@@ -409,6 +419,15 @@ Challenge proposals carry the complete agreed plan: match date, start and end ti
 5. Cancel restores the last saved values.
 6. Changing email requires the current password and starts OTP verification for the new address.
 7. Security, notification, privacy, and account-management actions remain separate.
+
+### Venue owner settings
+
+1. Court Owner opens `/dashboard/owner/settings` and receives only owner-account settings.
+2. Account allows the owner to edit full name, phone, or email. An email change requires the current password and starts OTP verification; the existing email stays active until verification succeeds.
+3. Security uses the shared password-change flow and signs the owner out after a successful password change so existing sessions cannot remain active.
+4. Notifications expose only booking activity, cancellations/refunds, and supported email delivery because those are the owner-relevant alert domains currently connected to the notification service.
+5. Venue Operations is a navigation section, not a duplicate form. It links to Venue & Courts, Courts/slot management, Calendar, Payments & Refunds, and Reports so changes remain scoped and auditable.
+6. Player-only privacy, team, rating, and reliability settings are intentionally absent. Staff roles, payout accounts, and owner account deletion require separate backend domains before they should appear in this workspace.
 
 ### Venue owner top navigation
 
@@ -439,6 +458,26 @@ Challenge proposals carry the complete agreed plan: match date, start and end ti
 6. `Block Court Time` posts to `/api/venues/owner/calendar/block/` and blocks overlapping generated available slots.
 7. If selected time overlaps reserved or booked slots, the API returns a conflict warning and does not hide customer bookings.
 8. Block metadata is stored on `CourtSlot`; public venue discovery serializers must not expose slot-only block fields on venue records.
+
+### Venue Manager reports
+
+1. Owner opens `/dashboard/owner/reports` and chooses a 7, 30, or 90-day preset, or selects a custom inclusive date range of up to 365 days.
+2. Presets use `/api/venues/owner/reports/?period=7|30|90`; custom ranges use `/api/venues/owner/reports/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`. The backend limits the response to the authenticated owner&apos;s venue and rejects malformed, reversed, future, or over-long ranges.
+3. The report summarizes reservations, confirmed/completed outcomes, paid booking value, processed and pending refunds, venue check-ins, published/booked/reserved/blocked slots, and slot utilization.
+4. Court performance is calculated per physical court so owners can compare booking count, paid value, check-ins, published capacity, and utilization before opening that court&apos;s slot manager.
+5. Activity bars group the server-provided daily trend into up to 14 readable periods; they are a compact visualization of source records, not a forecast.
+6. Paid booking value includes only confirmed or completed bookings with a recorded `PAID` status. Utilization is booked slots divided by published slots (`AVAILABLE`, `RESERVED`, and `BOOKED`); blocked and cancelled slots are excluded.
+7. The report is read-only. Owners can export the loaded summary, daily activity, and court performance as CSV. They use Bookings, Payments & Refunds, Calendar, and Court Slots for operational changes. Comparison periods, forecasting, and staff dispute analytics remain future work.
+
+### Venue Manager payments and refunds
+
+1. Owner opens `/dashboard/owner/refunds`; the page requests refund-eligible cancelled bookings scoped to the authenticated owner's venue.
+2. The default queue shows only `PENDING_OWNER_ACTION` records because that is the only state requiring an owner decision.
+3. Each record is a separate bounded card with an explicit player and booking block, a dedicated financial block, and a compact details band for the policy-calculated refund percentage and amount, cancellation reason, payment status, and eligibility explanation.
+4. Owners can switch between all records, pending action, refunded, partially refunded, and rejected outcomes without changing the underlying booking state.
+5. For a pending record, the owner must enter a processing reference or note of at least three characters and submit `MARK_REFUNDED` to `/api/venues/owner/refunds/{booking_id}/review/`.
+6. The API rechecks venue ownership, cancellation state, refund state, and note validity inside a database transaction. It derives full versus partial payment status from the stored entitlement and does not allow the owner to reduce or reject a system-approved refund.
+7. The processed record retains the owner's note, reviewing account, and timestamp. The player receives the existing refund-status notification; this MVP records the outcome but does not move money through a payment gateway.
 
 ### Pickup Game and Fill My Squad matchmaking
 
@@ -491,6 +530,16 @@ Challenge proposals carry the complete agreed plan: match date, start and end ti
 5. Backend verifies Khalti lookup after return.
 6. If complete, booking becomes `CONFIRMED` and slots become `BOOKED`.
 7. If failed/expired, booking is not confirmed and slots are released.
+
+### Booking pass and venue check-in
+
+- A real signed QR pass is exposed only to the player who owns a paid booking after it is `CONFIRMED`; unpaid reservations never receive an active pass.
+- The pass also shows the human-readable booking code so venue staff can continue when camera permission, lighting, or a desktop browser makes scanning impractical.
+- Venue owners use `POST owner/bookings/verify/` from the Venue Manager Bookings page. Verification is authenticated, restricted to the booking's venue owner, and returns only the operational booking summary needed at the desk. Camera scanning prefers the device environment camera, starts after the scanner preview mounts, and explains secure-context, permission, and no-camera failures while preserving the code fallback.
+- The check-in window opens two hours before the first slot and closes two hours after the final slot. Cancelled, expired, unpaid, refund-pending, and refunded bookings cannot be checked in.
+- Successful check-in is idempotent: repeated scans show the original check-in and increment an audit scan count instead of creating duplicate records. The first successful check-in sends one deduplicated in-app `BOOKING_CHECKED_IN` update to the booking owner; the venue owner is the verifying actor and receives no redundant self-notification.
+- A booking QR verifies court access only. It does not mark a Pickup Game, Fill My Squad game, or Team Challenge roster as attended and never changes reliability. Hosts and captains continue to record registered-player attendance through the shared participation-commitment workflow.
+- `BookingCheckIn` stores the verified check-in actor and timestamps. The QR token is opaque and signed; it contains no player contact details, payment data, or private profile information.
 
 ### Booking cancellation
 
@@ -727,6 +776,8 @@ copy .env.local.example .env.local
 npm run dev
 ```
 
+The frontend development command always targets port `3000`. Its launcher automatically restarts an existing SportSpot Next.js development process on that port, but will not stop an unrelated application. Run `npm run dev` once per terminal session; repeated runs safely restart the same SportSpot watcher instead of falling back to another port.
+
 Local URLs:
 
 - Frontend: `http://localhost:3000`
@@ -737,7 +788,7 @@ Local URLs:
 
 Database engine: PostgreSQL. Migration `0016` adds canonical venue latitude/longitude coordinates, the location source, confirmation state, and update timestamp. Coordinates are optional for backward compatibility, must be a pair inside Nepal, and public serializers expose them only after the owner confirms the pin. Existing `map_location` URLs remain a backward-compatible directions fallback for older venues.
 
-Main domain tables include accounts, email OTPs, password reset tokens, player profiles, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, Pickup Games, matchmaking participants and request history, Team Challenges, challenge proposals, open challenge responses, challenge events, team fixtures, notifications, email deliveries, and wishlist items. Court slots now also store block metadata (`block_type`, `block_reason`, `block_note`, `blocked_at`, `blocked_by`) for owner calendar maintenance/closure periods.
+Main domain tables include accounts, email OTPs, password reset tokens, player profiles, reliability events, participation commitments, player ratings and eligibilities, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, booking check-ins, Pickup Games, matchmaking participants and request history, Team Challenges, challenge proposals, open challenge responses, challenge events, team fixtures, notifications, email deliveries, and wishlist items. Migration `0008` adds the shared participation-commitment ledger used by verified attendance and reliability. Migration `0020` adds the venue-scoped booking check-in record used by QR/code verification. Court slots now also store block metadata (`block_type`, `block_reason`, `block_note`, `blocked_at`, `blocked_by`) for owner calendar maintenance/closure periods.
 
 Migration commands:
 
@@ -899,13 +950,21 @@ Team Challenges: `/api/team-challenges/`
 - `POST challenges/{challenge_id}/select-opponent/` for the challenge creator to select one responding team.
 - `POST challenges/{challenge_id}/withdraw/`, `attach-booking/`, `reschedule/`, `reconfirm/`, and `cancel/` for lifecycle actions.
 - `GET challenges/{challenge_id}/room/` for protected confirmed-fixture coordination.
-- `GET fixtures/{fixture_id}/eligible-players/`, `POST fixtures/{fixture_id}/participants/`, participant removal/attendance endpoints, and result submit/confirm endpoints for fixture management.
+- `GET fixtures/{fixture_id}/eligible-players/`, `POST fixtures/{fixture_id}/participants/`, participant removal/attendance/dispute endpoints, and result submit/confirm endpoints for fixture management.
+
+Attendance and reliability:
+
+- `POST matchmaking/games/{game_id}/participants/{participant_id}/attendance/` lets the host mark a registered participant attended or absent after a completed Pickup/Fill My Squad game.
+- `POST matchmaking/games/{game_id}/participants/{participant_id}/attendance/dispute/` lets only the affected player dispute a no-show report during the 24-hour review window.
+- `POST team-challenges/fixtures/{fixture_id}/participants/{participant_id}/attendance/` and the matching `/attendance/dispute/` endpoint provide the same policy for confirmed team fixtures. Staff resolve a disputed commitment through `POST players/attendance/{commitment_id}/resolve/` with `outcome` set to `ATTENDED`, `NO_SHOW`, or `EXCUSED`.
+- `ParticipationCommitment` is created only for confirmed registered players. Guests, pending requests, waitlisted players, provisional plan-first players, and cancelled/void commitments do not affect reliability.
+- Late cancellation is measured against a four-hour pre-start cutoff. A reported no-show remains `NO_SHOW_REPORTED` for 24 hours; maintenance finalizes an undisputed report as `FINALIZED_NO_SHOW`. Reliability events are deduplicated per commitment outcome.
 
 Team Challenge endpoints enforce active registered-captain permissions, immutable proposal versions, one selected opponent for open challenges, eligible booking ownership/status checks, booking reuse prevention, explicit schedule reconfirmation, protected fixture-room access, and active team-pair safeguards. State-changing matchmaking and challenge endpoints also use the shared mutation throttle configured by `SPORTSPOT_MUTATION_RATE`; safe read requests are not throttled by that mixin.
 
 Venues/bookings: `/api/venues/`
 
-- Owner venue/courts/slots/bookings/refunds/message endpoints under `owner/`.
+- Owner venue/courts/slots/bookings/refunds/message endpoints under `owner/`, including `owner/bookings/verify/` for authenticated QR or booking-code verification.
 - Owner location search and reverse lookup: `owner/location/search/`, `owner/location/reverse/`.
 - Owner overview/calendar endpoints: `owner/overview/`, `owner/calendar/`, `owner/calendar/block/`.
 - Admin venue review endpoints under `admin/venues/`.
@@ -962,13 +1021,13 @@ cd frontend
 npm run build
 ```
 
-No frontend test runner is configured.
+No frontend test runner is configured. The production Next.js build is the current frontend compile/type verification.
 
-Recommended next tests: true concurrent reservations and challenge decisions, Khalti status mapping, cancellation tiers, refund transitions, notification seen/read security, Redis-backed multi-worker WebSocket delivery, discovery zero-result filters, fixture disputes, and browser-level lifecycle tests.
+Recommended next tests: true concurrent reservations and challenge decisions, Khalti status mapping, cancellation tiers, refund transitions, notification seen/read security, Redis-backed multi-worker WebSocket delivery, discovery zero-result filters, staff dispute resolution, and browser-level lifecycle tests.
 
 ## 20. Known Issues and Limitations
 
-- Pickup Game and Fill My Squad matchmaking are implemented for booking-first and plan-first journeys, including controlled area data, role-based requests, backend-validated discovery filters, host decisions, waitlist recovery, guest participants, registered-player invitations by SportSpot ID, invitation expiry, immutable request history, duplicate-request protection, guided court-booking handoff after a plan reaches its threshold, idempotent payment initiation, automatic booking attachment after verified Khalti payment, payment reconciliation recovery, participant-specific schedule reconfirmation, explicit host acknowledgement for offline guests, safe public and planning-room roster payloads, quiet detail-page refreshes, automatic maintenance, structured room access, and authenticated notification push delivery with REST fallback. Remaining gaps include pagination, Redis-backed multi-worker push deployment, deeper high-concurrency/end-to-end coverage, and richer room activity. After a completed Fill My Squad game, the captain can send a separate permanent-team invitation through the existing team invitation workflow. Team Challenges now include proposal rescheduling/reconfirmation, active-captain continuity, protected fixture-room access, lineup, attendance, result confirmation, and verified rating eligibility; remaining gaps include disputes/appeals, richer room activity, deeper concurrency coverage, and production scheduling/push infrastructure.
+- Pickup Game and Fill My Squad matchmaking are implemented for booking-first and plan-first journeys, including controlled area data, role-based requests, backend-validated discovery filters, host decisions, waitlist recovery, guest participants, registered-player invitations by SportSpot ID, invitation expiry, immutable request history, duplicate-request protection, guided court-booking handoff after a plan reaches its threshold, idempotent payment initiation, automatic booking attachment after verified Khalti payment, payment reconciliation recovery, participant-specific schedule reconfirmation, explicit host acknowledgement for offline guests, safe public and planning-room roster payloads, quiet detail-page refreshes, automatic maintenance, structured room access, shared participation commitments, post-game host attendance recording, player dispute protection, and authenticated notification push delivery with REST fallback. Remaining gaps include pagination, Redis-backed multi-worker push deployment, deeper high-concurrency/end-to-end coverage, richer room activity, and staff dispute tooling. After a completed Fill My Squad game, the captain can send a separate permanent-team invitation through the existing team invitation workflow. Team Challenges now include proposal rescheduling/reconfirmation, active-captain continuity, protected fixture-room access, lineup attendance review with player dispute protection, result confirmation, and verified rating eligibility; remaining gaps include staff dispute tooling, richer room activity, deeper concurrency coverage, and production scheduling/push infrastructure.
 - The current workspace has valid PostgreSQL test credentials and the full `matchmaking`, `venues`, `teams`, and `team_challenges` regression suite passes. A clean-machine setup still requires matching local database credentials in the ignored `backend/.env` (and `TEST_DB_PASSWORD` when using separate test credentials).
 - Several placeholder pages still exist for future modules.
 - Future-compatible Futsal fields remain in `PlayerProfile`, but current UI must stay Cricksal-only.
@@ -1057,13 +1116,13 @@ Most recently developed areas:
 - Shared SportSpot UI language, global feedback, compact controls, responsive states, and route-aware back navigation across the primary user flows.
 - Player Settings edit/cancel behavior and safe email-change flow.
 - Redesigned Player Create Team page.
-- Dedicated Venue Manager top bar, sidebar, mobile drawer, Overview, Calendar, and calendar booking-block UI polish for owner workspace routes.
+- Venue Manager top bar, sidebar, mobile drawer, Overview, Calendar, venue/court pages, bookings, refunds, slot management, and scoped destination-page design polish for owner workspace routes.
 - Court discovery filters and venue card UX.
 - Wishlist integration in Player top navigation.
 - Booking lifecycle, cancellation, refunds, Khalti idempotency, and paid-after-expiry safety.
 - Notifications and toast feedback.
 - Email verification and password recovery.
-- Team Challenge lifecycle hardening: direct/open challenges, multiple open responses with one opponent selection, immutable proposals, booking-first/plan-first handoff, retry-safe decisions, booking reuse prevention, proposal-version rescheduling, explicit reconfirmation, linked-booking synchronisation, active-captain continuity, notifications, expiry maintenance, and protected fixture-room coordination with lineup, attendance, and result confirmation.
+- Team Challenge lifecycle hardening: direct/open challenges, multiple open responses with one opponent selection, immutable proposals, booking-first/plan-first handoff, retry-safe decisions, booking reuse prevention, proposal-version rescheduling, explicit reconfirmation, linked-booking synchronisation, active-captain continuity, notifications, expiry maintenance, and protected fixture-room coordination with lineup, shared attendance commitments, bounded player disputes, and result confirmation.
 
 Inspect these first before changing major flows:
 
@@ -1108,7 +1167,7 @@ Current blockers:
 
 Before implementing a feature, verify its current frontend, backend, database and permission status. Do not assume that a visible page means the feature is complete.
 
-Recommended next task: complete Venue Owner destination pages (`Bookings`, `Venue & Courts`, `Availability & Pricing`, `Payments & Refunds`, `Reports`, `Settings`) and run browser-level QA for booking, matchmaking, challenge reconfirmation, fixture attendance/result confirmation, rating eligibility, and Notification Centre push/reconnect behavior. Then add true concurrent transaction tests, dispute/moderation controls, and production-managed scheduling, Redis, and ASGI deployment.
+Recommended next task: run browser-level QA for the completed Venue Owner destination pages and for booking, matchmaking, challenge reconfirmation, fixture attendance/result confirmation, rating eligibility, and Notification Centre push/reconnect behavior. Then add report CSV export/comparison periods, true concurrent transaction tests, dispute/moderation controls, and production-managed scheduling, Redis, and ASGI deployment.
 
 Commands before new work:
 

@@ -7,12 +7,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getCurrentUser } from "@/lib/auth";
-import { addCalendarDays, formatDateOnly, formatTimeValue, getLocalDateString } from "@/lib/dates";
+import { addCalendarDays, formatDateOnly, formatDateTimeInNepal, formatTimeValue, getLocalDateString } from "@/lib/dates";
 import { buildVenueDirectionsHref } from "@/lib/maps";
 import { emitToast } from "@/lib/toast";
 import BackButton from "@/components/BackButton";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import VenueMap from "@/components/venue/VenueMap";
-import type { Booking, CourtSlot, PublicVenue } from "@/types/venue";
+import type { Booking, CourtReviewComment, CourtReviewsResponse, CourtSlot, PublicVenue } from "@/types/venue";
 
 const formatTime = formatTimeValue;
 
@@ -157,10 +158,8 @@ export default function VenueDetailPage() {
   if (isLoading) {
     return (
       <main className="mx-auto w-full max-w-[1280px] px-4 py-8 sm:px-6 lg:px-8">
-        <div aria-label="Loading venue details" className="space-y-5" role="status">
-          <div className="h-5 w-32 animate-pulse rounded bg-slate-200" />
-          <div className="h-64 animate-pulse rounded-xl bg-slate-200 sm:h-80" />
-          <div className="grid gap-4 lg:grid-cols-[1fr_350px]"><div className="h-40 animate-pulse rounded-xl bg-white" /><div className="h-72 animate-pulse rounded-xl bg-white" /></div>
+        <div className="sport-loading-inline-panel min-h-[22rem]" aria-label="Loading venue details">
+          <LoadingIndicator label="Loading venue details" size="lg" />
         </div>
       </main>
     );
@@ -353,8 +352,10 @@ export default function VenueDetailPage() {
               <div><p className="sport-eyebrow">Visit the venue</p><h2 className="mt-1 text-2xl font-bold text-sportNavy">Location</h2><p className="mt-2 text-sm leading-6 text-slate-600">{venue.address || "Address not added"}, {venue.area}, {venue.city}</p></div>
               {directionsHref ? <a className="sport-secondary-button shrink-0" href={directionsHref} rel="noreferrer" target="_blank"><LocationIcon /> Get directions</a> : null}
             </div>
-            <div className="mt-5 overflow-hidden rounded-xl border border-slate-200"><VenueMap latitude={venue.latitude} longitude={venue.longitude} /></div>
+            <div className="mt-5 overflow-hidden rounded-xl border border-slate-200"><VenueMap latitude={venue.latitude} longitude={venue.longitude} mapLocation={venue.map_location} /></div>
           </section>
+
+          <CourtReviewsPanel courtCount={venue.courts.length} courtId={selectedCourt?.id ?? null} courtName={selectedCourt?.name || "the selected court"} />
 
         </div>
 
@@ -369,6 +370,7 @@ export default function VenueDetailPage() {
           <Link className="mt-5 flex justify-center text-sm font-bold text-sportGreen hover:text-green-800" href={backToCourtsHref}>Back to courts</Link>
         </aside>
       </section>
+
     </main>
   );
 }
@@ -464,6 +466,312 @@ function VenueFact({ icon, label, value }: { icon: React.ReactNode; label: strin
   return <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-50 text-sportGreen">{icon}</span><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-500">{label}</p><p className="mt-1 text-sm font-semibold text-sportNavy">{value}</p></div></div>;
 }
 
+function CourtReviewsPanel({ courtCount, courtId, courtName }: { courtCount: number; courtId: number | null; courtName: string }) {
+  const [reviewData, setReviewData] = useState<CourtReviewsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [commentDraft, setCommentDraft] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
+  const [pendingFeedbackAction, setPendingFeedbackAction] = useState("");
+  const [reportTarget, setReportTarget] = useState<{ targetType: "review" | "comment"; targetId: number; label: string } | null>(null);
+  const [reportReason, setReportReason] = useState("SPAM");
+  const [reportDetails, setReportDetails] = useState("");
+  const [isReporting, setIsReporting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
+
+  useEffect(() => {
+    setReviewData(null);
+    setError("");
+    setRating(0);
+    setComment("");
+    setCommentDraft("");
+    setEditingCommentId(null);
+    setEditingCommentText("");
+    setReportTarget(null);
+    setIsEditing(false);
+    if (courtId) void loadReviews(courtId);
+    // The selected court is the only input to this request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courtId]);
+
+  async function loadReviews(requestedCourtId = courtId) {
+    if (!requestedCourtId) return;
+    setIsLoading(true);
+    setError("");
+    try {
+      const response = await api.get<CourtReviewsResponse>(`/api/venues/courts/${requestedCourtId}/reviews/`);
+      setReviewData(response.data);
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, "Court reviews could not be loaded right now."));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function beginEditing() {
+    if (!reviewData?.my_review) return;
+    setRating(reviewData.my_review.rating);
+    setComment(reviewData.my_review.comment);
+    setIsEditing(true);
+  }
+
+  function cancelEditing() {
+    setIsEditing(false);
+    setRating(0);
+    setComment("");
+  }
+
+  async function saveReview() {
+    if (!courtId || !rating) {
+      emitToast({ message: "Choose a rating from 1 to 5 stars.", type: "warning", dedupeKey: "court-review-rating" });
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const payload = { rating, comment: comment.trim(), ...(!reviewData?.my_review && reviewData?.eligibility.booking_id ? { booking_id: reviewData.eligibility.booking_id } : {}) };
+      if (reviewData?.my_review) {
+        await api.patch(`/api/venues/courts/${courtId}/reviews/`, payload);
+      } else {
+        await api.post(`/api/venues/courts/${courtId}/reviews/`, payload);
+      }
+      emitToast({ message: reviewData?.my_review ? "Your court rating has been updated." : "Your court rating has been published.", type: "success", dedupeKey: `court-review-${courtId}` });
+      setIsEditing(false);
+      setRating(0);
+      setComment("");
+      await loadReviews(courtId);
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not save your court rating."), type: "error", dedupeKey: `court-review-error-${courtId}` });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function deleteReview() {
+    if (!courtId || !window.confirm("Delete your rating for this court?")) return;
+    setIsSubmitting(true);
+    try {
+      await api.delete(`/api/venues/courts/${courtId}/reviews/`);
+      emitToast({ message: "Your court rating has been deleted.", type: "success", dedupeKey: `court-review-delete-${courtId}` });
+      setReviewData(null);
+      setIsEditing(false);
+      await loadReviews(courtId);
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not delete your court rating."), type: "error", dedupeKey: `court-review-delete-error-${courtId}` });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function publishComment() {
+    const trimmedComment = commentDraft.trim();
+    if (!courtId || !trimmedComment) {
+      emitToast({ message: "Write a comment before publishing.", type: "warning", dedupeKey: "court-comment-empty" });
+      return;
+    }
+    setIsCommentSubmitting(true);
+    try {
+      await api.post(`/api/venues/courts/${courtId}/reviews/comments/`, { comment: trimmedComment });
+      emitToast({ message: "Your court comment has been published.", type: "success", dedupeKey: `court-comment-${courtId}` });
+      setCommentDraft("");
+      await loadReviews(courtId);
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not publish your court comment."), type: "error", dedupeKey: `court-comment-error-${courtId}` });
+    } finally {
+      setIsCommentSubmitting(false);
+    }
+  }
+
+  function beginEditingComment(item: CourtReviewComment) {
+    setEditingCommentId(item.id);
+    setEditingCommentText(item.comment);
+  }
+
+  function cancelEditingComment() {
+    setEditingCommentId(null);
+    setEditingCommentText("");
+  }
+
+  async function saveCommentEdit(commentId: number) {
+    const trimmedComment = editingCommentText.trim();
+    if (!courtId || !trimmedComment) {
+      emitToast({ message: "Write a comment before saving.", type: "warning", dedupeKey: "court-comment-empty" });
+      return;
+    }
+    setIsCommentSubmitting(true);
+    try {
+      await api.patch(`/api/venues/courts/${courtId}/reviews/comments/${commentId}/`, { comment: trimmedComment });
+      emitToast({ message: "Your court comment has been updated.", type: "success", dedupeKey: `court-comment-edit-${commentId}` });
+      cancelEditingComment();
+      await loadReviews(courtId);
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not update your court comment."), type: "error", dedupeKey: `court-comment-edit-error-${commentId}` });
+    } finally {
+      setIsCommentSubmitting(false);
+    }
+  }
+
+  async function deleteComment(commentId: number) {
+    if (!courtId || !window.confirm("Delete this court comment?")) return;
+    setIsCommentSubmitting(true);
+    try {
+      await api.delete(`/api/venues/courts/${courtId}/reviews/comments/${commentId}/`);
+      emitToast({ message: "Your court comment has been deleted.", type: "success", dedupeKey: `court-comment-delete-${commentId}` });
+      await loadReviews(courtId);
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not delete your court comment."), type: "error", dedupeKey: `court-comment-delete-error-${commentId}` });
+    } finally {
+      setIsCommentSubmitting(false);
+    }
+  }
+
+  async function reactToFeedback(targetType: "review" | "comment", targetId: number, reaction: "LIKE" | "DISLIKE") {
+    if (!getCurrentUser()) {
+      emitToast({ message: "Log in to react to court feedback.", type: "warning", dedupeKey: "court-feedback-login" });
+      return;
+    }
+    const actionKey = `${targetType}-${targetId}`;
+    setPendingFeedbackAction(actionKey);
+    try {
+      await api.post(`/api/venues/courts/${courtId}/reviews/feedback/reactions/`, { target_type: targetType, target_id: targetId, reaction });
+      await loadReviews(courtId);
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not update your reaction."), type: "error", dedupeKey: `court-feedback-reaction-${actionKey}` });
+    } finally {
+      setPendingFeedbackAction("");
+    }
+  }
+
+  async function shareFeedback(label: string) {
+    const shareUrl = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${label} on SportSpot`, url: shareUrl });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        emitToast({ message: "Feedback link copied.", type: "success", dedupeKey: "court-feedback-share" });
+      } else {
+        emitToast({ message: "This browser cannot share a feedback link.", type: "warning", dedupeKey: "court-feedback-share-unsupported" });
+      }
+    } catch (shareError) {
+      if ((shareError as DOMException).name !== "AbortError") {
+        emitToast({ message: "We could not share this feedback right now.", type: "error", dedupeKey: "court-feedback-share-error" });
+      }
+    }
+  }
+
+  function openReport(targetType: "review" | "comment", targetId: number, label: string) {
+    if (!getCurrentUser()) {
+      emitToast({ message: "Log in to report court feedback.", type: "warning", dedupeKey: "court-feedback-report-login" });
+      return;
+    }
+    setReportTarget({ targetType, targetId, label });
+    setReportReason("SPAM");
+    setReportDetails("");
+  }
+
+  async function submitReport() {
+    if (!courtId || !reportTarget) return;
+    setIsReporting(true);
+    try {
+      await api.post(`/api/venues/courts/${courtId}/reviews/feedback/reports/`, {
+        target_type: reportTarget.targetType,
+        target_id: reportTarget.targetId,
+        reason: reportReason,
+        details: reportDetails.trim(),
+      });
+      emitToast({ message: "Thanks. Your report has been sent for review.", type: "success", dedupeKey: `court-feedback-report-${reportTarget.targetType}-${reportTarget.targetId}` });
+      setReportTarget(null);
+      setReportDetails("");
+    } catch (requestError) {
+      emitToast({ message: getApiErrorMessage(requestError, "We could not send this report."), type: "error", dedupeKey: "court-feedback-report-error" });
+    } finally {
+      setIsReporting(false);
+    }
+  }
+
+  if (!courtId) {
+    const message = courtCount ? "Choose a court above to read its reviews and see whether you are eligible to leave one." : "Reviews will be available when this venue has a bookable court.";
+    return <section className="sport-surface p-5 sm:p-6" id="court-reviews"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="sport-eyebrow">Community feedback</p><h2 className="mt-1 text-2xl font-bold text-sportNavy">Court reviews</h2><p className="mt-2 text-sm leading-6 text-slate-600">{message}</p></div>{courtCount ? <span className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-500">Choose a court first</span> : null}</div></section>;
+  }
+
+  return (
+    <section className="sport-surface p-5 sm:p-6" id="court-reviews">
+      <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
+        <div><p className="sport-eyebrow">Community feedback</p><h2 className="mt-1 text-2xl font-bold text-sportNavy">Reviews for {courtName}</h2><p className="mt-1 max-w-xl text-sm leading-6 text-slate-600">One rating per player keeps the score trustworthy. Verified players can add follow-up comments after their visits.</p></div>
+        {reviewData?.summary ? <div className="flex w-fit items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div><p className="text-xl font-black leading-none text-sportNavy">{reviewData.summary.review_count ? Number(reviewData.summary.average_rating || 0).toFixed(1) : "—"}</p><div aria-label={reviewData.summary.review_count ? `${reviewData.summary.average_rating} out of 5 stars` : "No ratings yet"} className="mt-1 text-amber-500"><StarRating value={Number(reviewData.summary.average_rating || 0)} /></div></div><p className="text-xs font-semibold text-slate-500">{reviewData.summary.review_count ? `${reviewData.summary.review_count} rating${reviewData.summary.review_count === 1 ? "" : "s"}` : "No ratings yet"}</p></div> : null}
+      </div>
+
+      {isLoading && !reviewData ? <div className="sport-loading-inline-panel mt-5 min-h-[12rem]" aria-label="Loading court feedback"><LoadingIndicator label="Loading court feedback" size="sm" /></div> : error ? <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4" role="alert"><p className="text-sm font-bold text-red-950">{error}</p><button className="sport-secondary-button mt-3" onClick={() => void loadReviews()} type="button">Try again</button></div> : reviewData ? <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0">
+          {reviewData.reviews.length ? <><div className="mb-3 flex items-center justify-between"><p className="text-sm font-bold text-sportNavy">Player ratings</p><p className="text-xs font-semibold text-slate-500">{reviewData.summary.review_count} total</p></div><div className="space-y-3">{reviewData.reviews.map((review) => <article className="rounded-lg border border-slate-200 bg-white p-4" key={review.id}><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-bold text-sportNavy">{review.reviewer_name || "SportSpot player"}</p><p className="mt-0.5 text-xs text-slate-500">{formatDateTimeInNepal(review.updated_at, { month: "short", day: "numeric", year: "numeric" })}</p></div><StarRating value={review.rating} /></div>{review.comment ? <p className="mt-3 text-sm leading-6 text-slate-600">{review.comment}</p> : <p className="mt-3 text-sm italic text-slate-400">No written comment.</p>}<FeedbackActions dislikeCount={review.dislike_count} isPending={pendingFeedbackAction === `review-${review.id}`} likeCount={review.like_count} myReaction={review.my_reaction} onDelete={review.is_author ? () => void deleteReview() : undefined} onEdit={review.is_author ? beginEditing : undefined} onReact={(reaction) => void reactToFeedback("review", review.id, reaction)} onReport={review.is_author ? undefined : () => openReport("review", review.id, "this rating")} onShare={() => void shareFeedback("this court rating")} /></article>)}</div></> : <div className="flex min-h-32 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 py-7 text-center"><p className="font-bold text-sportNavy">No ratings yet</p><p className="mt-1 max-w-md text-sm leading-6 text-slate-600">Be the first verified player to rate this court.</p></div>}
+
+          {reviewData.comments.length ? <div className="mt-7 border-t border-slate-200 pt-6"><div className="mb-3 flex items-center justify-between"><p className="text-sm font-bold text-sportNavy">Player comments</p><p className="text-xs font-semibold text-slate-500">{reviewData.summary.comment_count} total</p></div><div className="space-y-3">{reviewData.comments.map((item) => <article className="rounded-lg border border-slate-200 bg-white p-4" key={item.id}><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-sportNavy">{item.reviewer_name || "SportSpot player"}</p><p className="mt-0.5 text-xs text-slate-500">{formatDateTimeInNepal(item.updated_at, { month: "short", day: "numeric", year: "numeric" })}</p></div></div>{editingCommentId === item.id ? <><textarea aria-label="Edit your comment" className="sport-input mt-3 min-h-20 resize-y" maxLength={1000} onChange={(event) => setEditingCommentText(event.target.value)} value={editingCommentText} /><div className="mt-2 flex justify-end gap-2"><button className="sport-secondary-button" disabled={isCommentSubmitting} onClick={cancelEditingComment} type="button">Cancel</button><button className="sport-primary-button" disabled={isCommentSubmitting || !editingCommentText.trim()} onClick={() => void saveCommentEdit(item.id)} type="button">{isCommentSubmitting ? "Saving..." : "Save comment"}</button></div></> : <p className="mt-3 text-sm leading-6 text-slate-600">{item.comment}</p>}<FeedbackActions dislikeCount={item.dislike_count} isPending={pendingFeedbackAction === `comment-${item.id}`} likeCount={item.like_count} myReaction={item.my_reaction} onDelete={item.is_author ? () => void deleteComment(item.id) : undefined} onEdit={item.is_author ? () => beginEditingComment(item) : undefined} onReact={(reaction) => void reactToFeedback("comment", item.id, reaction)} onReport={item.is_author ? undefined : () => openReport("comment", item.id, "this comment")} onShare={() => void shareFeedback("this court comment")} /></article>)}</div></div> : null}
+        </div>
+
+        <aside className="h-fit rounded-lg border border-slate-200 bg-slate-50/70 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Your feedback</p>
+          {!getCurrentUser() ? <><p className="mt-3 text-sm leading-6 text-slate-600">Log in as a player to rate or comment after completing a paid booking.</p><Link className="sport-secondary-button mt-4 w-full" href="/login">Log in</Link></> : reviewData.my_review && !isEditing ? <><div className="mt-3 rounded-lg border border-green-200 bg-white p-3"><p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-500">Your rating</p><div className="mt-2"><StarRating value={reviewData.my_review.rating} /></div>{reviewData.my_review.comment ? <p className="mt-2 text-sm leading-6 text-slate-600">{reviewData.my_review.comment}</p> : null}</div><div className="mt-3 flex gap-2"><button className="sport-secondary-button flex-1" disabled={isSubmitting} onClick={beginEditing} type="button">Edit rating</button><button className="sport-secondary-button flex-1 border-red-200 text-red-700 hover:bg-red-50" disabled={isSubmitting} onClick={() => void deleteReview()} type="button">Delete</button></div></> : reviewData.eligibility.can_review || isEditing ? <><p className="mt-3 text-sm font-semibold text-slate-600">Rate {courtName}</p><div className="mt-1"><StarRating interactive value={rating} onChange={setRating} /></div><label className="mt-4 block text-sm font-semibold text-sportNavy">First comment <span className="font-normal text-slate-500">(optional)</span><textarea className="sport-input mt-2 min-h-24 resize-y" maxLength={1000} onChange={(event) => setComment(event.target.value)} placeholder="Share something useful for the next player" value={comment} /></label><div className="mt-3 flex gap-2"><button className="sport-primary-button flex-1" disabled={isSubmitting || !rating} onClick={() => void saveReview()} type="button">{isSubmitting ? "Saving..." : isEditing ? "Save rating" : "Publish rating"}</button>{isEditing ? <button className="sport-secondary-button" disabled={isSubmitting} onClick={cancelEditing} type="button">Cancel</button> : null}</div></> : <p className="mt-3 text-sm leading-6 text-slate-600">{reviewData.eligibility.reason}</p>}
+
+          {getCurrentUser() && !isEditing && reviewData.eligibility.can_comment ? <div className="mt-6 border-t border-slate-200 pt-5"><p className="text-sm font-bold text-sportNavy">Add a comment</p><p className="mt-1 text-xs leading-5 text-slate-500">Share another update from a completed visit.</p><textarea aria-label="Add a court comment" className="sport-input mt-3 min-h-24 resize-y" maxLength={1000} onChange={(event) => setCommentDraft(event.target.value)} placeholder="What should the next player know?" value={commentDraft} /><button className="sport-primary-button mt-3 w-full" disabled={isCommentSubmitting || !commentDraft.trim()} onClick={() => void publishComment()} type="button">{isCommentSubmitting ? "Publishing..." : "Publish comment"}</button></div> : null}
+        </aside>
+      </div> : null}
+
+      {reportTarget ? <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-0 sm:items-center sm:p-4" role="presentation"><div aria-labelledby="report-feedback-title" aria-modal="true" className="w-full max-w-md rounded-t-xl border border-slate-200 bg-white p-5 shadow-2xl sm:rounded-xl" role="dialog"><div className="flex items-start justify-between gap-4"><div><p className="sport-eyebrow">Community safety</p><h3 className="mt-1 text-lg font-bold text-sportNavy" id="report-feedback-title">Report {reportTarget.label}</h3></div><button aria-label="Close report dialog" className="sport-icon-button h-9 w-9" onClick={() => setReportTarget(null)} type="button"><CloseIcon /></button></div><p className="mt-3 text-sm leading-6 text-slate-600">Tell us what needs attention. Your report will be reviewed privately.</p><label className="sport-field mt-4">Reason<select value={reportReason} onChange={(event) => setReportReason(event.target.value)}><option value="SPAM">Spam</option><option value="INAPPROPRIATE">Inappropriate content</option><option value="MISLEADING">Misleading information</option><option value="OTHER">Other</option></select></label><label className="sport-field mt-4">Details <span className="font-normal text-slate-500">(optional)</span><textarea className="sport-input min-h-20 resize-y" maxLength={500} onChange={(event) => setReportDetails(event.target.value)} placeholder="Add context for the SportSpot team" value={reportDetails} /></label><div className="mt-5 flex justify-end gap-2"><button className="sport-secondary-button" disabled={isReporting} onClick={() => setReportTarget(null)} type="button">Cancel</button><button className="sport-primary-button" disabled={isReporting} onClick={() => void submitReport()} type="button">{isReporting ? "Sending..." : "Send report"}</button></div></div></div> : null}
+    </section>
+  );
+}
+
+function FeedbackActions({ dislikeCount, isPending, likeCount, myReaction, onDelete, onEdit, onReact, onReport, onShare }: { dislikeCount: number; isPending: boolean; likeCount: number; myReaction: "LIKE" | "DISLIKE" | null; onDelete?: () => void; onEdit?: () => void; onReact: (reaction: "LIKE" | "DISLIKE") => void; onReport?: () => void; onShare: () => void }) {
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-1 border-t border-slate-100 pt-3">
+      <button aria-label={`Like, ${likeCount} ${likeCount === 1 ? "like" : "likes"}`} aria-pressed={myReaction === "LIKE"} className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold transition-colors ${myReaction === "LIKE" ? "bg-amber-50 text-amber-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"}`} disabled={isPending} onClick={() => onReact("LIKE")} type="button"><ThumbUpIcon /><span>{likeCount}</span></button>
+      <button aria-label={`Dislike, ${dislikeCount} ${dislikeCount === 1 ? "dislike" : "dislikes"}`} aria-pressed={myReaction === "DISLIKE"} className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold transition-colors ${myReaction === "DISLIKE" ? "bg-slate-100 text-slate-800" : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"}`} disabled={isPending} onClick={() => onReact("DISLIKE")} type="button"><ThumbDownIcon /><span>{dislikeCount}</span></button>
+      {onEdit ? <button className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700" disabled={isPending} onClick={onEdit} type="button"><EditIcon />Edit</button> : null}
+      {onDelete ? <button className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold text-red-700 transition-colors hover:bg-red-50" disabled={isPending} onClick={onDelete} type="button"><DeleteIcon />Delete</button> : null}
+      <span className="hidden flex-1 sm:block" />
+      <button className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700" onClick={onShare} type="button"><ShareIcon />Share</button>
+      {onReport ? <button className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700" onClick={onReport} type="button"><ReportIcon />Report</button> : null}
+    </div>
+  );
+}
+
+function StarRating({ interactive = false, onChange, value }: { interactive?: boolean; onChange?: (value: number) => void; value: number }) {
+  return <div className="flex items-center gap-0.5" role={interactive ? "radiogroup" : undefined} aria-label={interactive ? "Choose a rating" : undefined}>{[1, 2, 3, 4, 5].map((star) => interactive ? <button aria-label={`${star} star${star === 1 ? "" : "s"}`} aria-checked={value === star} className="rounded-sm p-0.5 text-amber-500 transition hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300" key={star} onClick={() => onChange?.(star)} role="radio" type="button"><StarIcon filled={star <= value} /></button> : <StarIcon filled={star <= value} key={star} />)}</div>;
+}
+
+function StarIcon({ filled }: { filled: boolean }) {
+  return <svg aria-hidden="true" className="h-4 w-4" fill={filled ? "currentColor" : "none"} viewBox="0 0 24 24"><path d="m12 4 2.35 4.76 5.25.76-3.8 3.7.9 5.23L12 16l-4.7 2.45.9-5.23-3.8-3.7 5.25-.76L12 4Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.7" /></svg>;
+}
+
+function ThumbUpIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M7 10v10H4a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2h3Zm0 10h9.2a2 2 0 0 0 1.94-1.52l1.58-6.32A2 2 0 0 0 17.78 10H14l.58-3.47A2.1 2.1 0 0 0 12.51 4L7 10v10Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" /></svg>;
+}
+
+function ThumbDownIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M7 14V4H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h3Zm0-10h9.2a2 2 0 0 1 1.94 1.52l1.58 6.32A2 2 0 0 1 17.78 14H14l.58 3.47A2.1 2.1 0 0 1 12.51 20L7 14V4Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" /></svg>;
+}
+
+function EditIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="m14 6 4 4M4 20l3.2-.7L19.5 7a2.12 2.12 0 0 0-3-3L4.2 16.3 4 20Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" /></svg>;
+}
+
+function DeleteIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" /></svg>;
+}
+
+function ShareIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.7" /><circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.7" /><circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.7" /><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" /></svg>;
+}
+
+function ReportIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /><path d="M12 8v5M12 16h.01" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" /></svg>;
+}
+
 function SummaryRow({ label, strong = false, value }: { label: string; strong?: boolean; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4">
@@ -482,7 +790,7 @@ function InlineState({ action, description, icon, title, tone = "neutral" }: { a
 }
 
 function SlotSkeleton() {
-  return <div aria-label="Loading available times" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3" role="status">{[1, 2, 3, 4, 5, 6].map((item) => <div className="h-[72px] animate-pulse rounded-lg border border-slate-200 bg-slate-50" key={item} />)}</div>;
+  return <div className="sport-loading-inline-panel min-h-[9rem]" aria-label="Loading available times"><LoadingIndicator label="Loading available times" size="sm" /></div>;
 }
 
 function Legend({ color, label }: { color: string; label: string }) {

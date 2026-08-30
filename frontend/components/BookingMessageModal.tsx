@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import LoadingIndicator from "@/components/LoadingIndicator";
 import type { Booking } from "@/types/venue";
 
 export type BookingMessagePayload = {
@@ -96,7 +97,7 @@ export default function BookingMessageModal({
             onClick={() => onSend({ message_type: messageType, message: message.trim() })}
             type="button"
           >
-            {isWorking ? "Sending..." : "Send Important Message"}
+            {isWorking ? <LoadingIndicator label="Sending message" size="sm" tone="inverse" /> : "Send Important Message"}
           </button>
         </div>
       </div>

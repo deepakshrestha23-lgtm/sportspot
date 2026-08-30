@@ -72,7 +72,7 @@ export function VenueOwnerMobileDrawer({
       <aside
         aria-label="Venue Manager menu"
         aria-modal="true"
-        className="absolute inset-y-0 left-0 flex w-full max-w-[350px] flex-col bg-white p-4 shadow-2xl outline-none"
+        className="owner-mobile-drawer absolute inset-y-0 left-0 flex w-full max-w-[350px] flex-col bg-white p-4 shadow-2xl outline-none"
         id="venue-owner-mobile-menu"
         onKeyDown={handleKeyDown}
         ref={drawerRef}

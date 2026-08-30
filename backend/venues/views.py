@@ -1,9 +1,10 @@
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
-from django.db.models import Prefetch, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -17,6 +18,7 @@ from notifications.models import Notification
 from notifications.services import (
     notify_admins_venue_submitted,
     notify_booking_cancelled,
+    notify_booking_checked_in,
     notify_booking_confirmed,
     notify_booking_payment_failed,
     notify_owner_booking_reserved,
@@ -32,7 +34,7 @@ from .khalti import (
     lookup_khalti_payment,
     npr_to_paisa,
 )
-from .models import Booking, BookingMessage, BookingSlot, Court, CourtSlot, Venue, VenuePhoto
+from .models import Booking, BookingCheckIn, BookingMessage, BookingSlot, Court, CourtFeedbackReport, CourtFeedbackReaction, CourtReview, CourtReviewComment, CourtSlot, Venue, VenuePhoto
 from .location import LocationProviderError, reverse_location, search_locations
 from .policies import build_cancellation_policy_snapshot, get_booking_start_at, get_cancellation_quote
 from .reference_data import (
@@ -45,7 +47,9 @@ from .reference_data import (
     SPORTSPOT_PLANNING_START_TIMES,
 )
 from .permissions import IsAdminRole, IsCourtOwner, IsPlayer
-from .serializers import AdminVenueSerializer, BookingMessageSerializer, BookingSerializer, CourtSerializer, PublicCourtDetailSerializer, PublicVenueSerializer, SlotSerializer, VenuePhotoSerializer, VenueSerializer
+from .serializers import AdminVenueSerializer, BookingMessageSerializer, BookingSerializer, BookingVerificationSerializer, CourtFeedbackReactionInputSerializer, CourtFeedbackReportInputSerializer, CourtReviewCommentSerializer, CourtReviewSerializer, CourtSerializer, PublicCourtDetailSerializer, PublicVenueSerializer, SlotSerializer, VenuePhotoSerializer, VenueSerializer
+from .services import get_booking_check_in_state, parse_booking_check_in_token, record_booking_check_in
+from sportspot_api.throttling import MutationThrottleMixin
 
 
 def readable_error(exc):
@@ -71,6 +75,11 @@ class OwnerVenueView(APIView):
         venue = Venue.objects.filter(owner=request.user).first()
         data = normalize_request_data(request.data)
         submit_for_review = parse_bool(data.pop("submit_for_review", False))
+        clear_photo_fields = [
+            field
+            for field in ["front_photo", "court_area_photo", "additional_photo"]
+            if parse_bool(data.pop(f"clear_{field}", False))
+        ]
         critical_changes = bool(venue and venue.status == Venue.Status.APPROVED and has_critical_venue_changes(venue, data))
 
         if critical_changes and not submit_for_review:
@@ -78,10 +87,48 @@ class OwnerVenueView(APIView):
                 {"detail": "These venue identity/legal changes require admin review. Use Submit Major Changes for Review."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if (
+            critical_changes
+            and venue
+            and has_coordinate_venue_change(venue, data)
+            and data.get("latitude") is not None
+            and data.get("longitude") is not None
+            and not parse_bool(data.get("location_confirmed"))
+        ):
+            return Response(
+                {"detail": "Confirm the new venue pin before submitting this location change for admin review."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        previous_photo_files = {
+            field: getattr(venue, field, None)
+            for field in ["front_photo", "court_area_photo", "additional_photo"]
+        }
         serializer = VenueSerializer(venue, data=data, partial=bool(venue), context={"request": request})
         serializer.is_valid(raise_exception=True)
         venue = serializer.save(owner=request.user)
+
+        # A blank multipart field is not enough to clear a FileField. Treat an
+        # explicit clear request as a deliberate owner action, and do not let
+        # it win over a replacement uploaded in the same request.
+        photo_fields_to_save = []
+        for field in clear_photo_fields:
+            if request.FILES.get(field):
+                continue
+            previous_file = previous_photo_files.get(field)
+            if previous_file and previous_file.name:
+                previous_file.storage.delete(previous_file.name)
+            setattr(venue, field, "")
+            photo_fields_to_save.append(field)
+
+        for field, previous_file in previous_photo_files.items():
+            replacement = request.FILES.get(field)
+            current_file = getattr(venue, field, None)
+            if replacement and previous_file and previous_file.name and current_file and previous_file.name != current_file.name:
+                previous_file.storage.delete(previous_file.name)
+
+        if photo_fields_to_save:
+            venue.save(update_fields=[*photo_fields_to_save, "updated_at"])
 
         if critical_changes and submit_for_review:
             venue.status = Venue.Status.PENDING
@@ -343,6 +390,8 @@ class OwnerVenuePhotoDeleteView(APIView):
 
     def delete(self, request, photo_id):
         photo = get_object_or_404(VenuePhoto, pk=photo_id, venue__owner=request.user)
+        if photo.image and photo.image.name:
+            photo.image.storage.delete(photo.image.name)
         photo.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -382,9 +431,21 @@ class OwnerCourtDetailView(APIView):
 
     def patch(self, request, court_id):
         court = get_owner_court(request.user, court_id)
-        serializer = CourtSerializer(court, data=request.data, partial=True, context={"request": request})
+        clear_photo = parse_bool(request.data.get("clear_court_photo", False))
+        data = request.data.copy()
+        data.pop("clear_court_photo", None)
+        previous_photo = court.court_photo
+        serializer = CourtSerializer(court, data=data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        court = serializer.save()
+        replacement = request.FILES.get("court_photo")
+        if clear_photo and not replacement:
+            if previous_photo and previous_photo.name:
+                previous_photo.storage.delete(previous_photo.name)
+            court.court_photo = ""
+            court.save(update_fields=["court_photo", "updated_at"])
+        elif replacement and previous_photo and previous_photo.name and court.court_photo and previous_photo.name != court.court_photo.name:
+            previous_photo.storage.delete(previous_photo.name)
         return Response({"court": CourtSerializer(court, context={"request": request}).data})
 
     def delete(self, request, court_id):
@@ -789,6 +850,217 @@ class OwnerCalendarView(APIView):
         )
 
 
+class OwnerReportsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+    allowed_periods = {7, 30, 90}
+    max_custom_days = 365
+
+    def get(self, request):
+        custom_start_value = request.query_params.get("start_date")
+        custom_end_value = request.query_params.get("end_date")
+        has_custom_range = custom_start_value is not None or custom_end_value is not None
+
+        if has_custom_range:
+            if not custom_start_value or not custom_end_value:
+                return Response(
+                    {"detail": "Enter both a custom start date and end date."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            start_date = parse_date_value(custom_start_value)
+            end_date = parse_date_value(custom_end_value)
+            if not start_date or not end_date:
+                return Response(
+                    {"detail": "Enter a valid start and end date in YYYY-MM-DD format."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if start_date > end_date:
+                return Response(
+                    {"detail": "Start date must be on or before the end date."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if end_date > timezone.localdate():
+                return Response(
+                    {"detail": "Reports cannot include future dates."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            period_days = (end_date - start_date).days + 1
+            if period_days > self.max_custom_days:
+                return Response(
+                    {"detail": f"Choose a custom range of {self.max_custom_days} days or fewer."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            period_mode = "custom"
+        else:
+            try:
+                period_days = int(request.query_params.get("period") or 30)
+            except (TypeError, ValueError):
+                period_days = 0
+
+            if period_days not in self.allowed_periods:
+                return Response(
+                    {"detail": "Choose a report period of 7, 30 or 90 days, or provide a valid custom date range."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            end_date = timezone.localdate()
+            start_date = end_date - timedelta(days=period_days - 1)
+            period_mode = "preset"
+
+        venue = get_owner_venue(request.user)
+        if not venue:
+            return Response(build_empty_owner_report(period_days, start_date, end_date, period_mode))
+
+        courts = list(Court.objects.filter(venue=venue).order_by("name"))
+        slots = list(
+            CourtSlot.objects.filter(court__venue=venue, date__range=(start_date, end_date))
+            .select_related("court")
+            .order_by("date", "start_time", "court__name")
+        )
+        bookings = list(
+            Booking.objects.filter(venue=venue)
+            .filter(Q(slot__date__range=(start_date, end_date)) | Q(slot_items__slot__date__range=(start_date, end_date)))
+            .select_related("court", "slot")
+            .distinct()
+        )
+        check_ins = list(
+            BookingCheckIn.objects.filter(
+                booking__venue=venue,
+                booking__slot__date__range=(start_date, end_date),
+            ).values_list("booking__court_id", flat=True)
+        )
+
+        summary = {
+            "booking_count": len(bookings),
+            "confirmed_booking_count": 0,
+            "completed_booking_count": 0,
+            "cancelled_booking_count": 0,
+            "expired_booking_count": 0,
+            "paid_booking_count": 0,
+            "paid_value": Decimal("0.00"),
+            "processed_refund_value": Decimal("0.00"),
+            "pending_refund_count": 0,
+            "pending_refund_value": Decimal("0.00"),
+            "check_in_count": len(check_ins),
+        }
+        court_data = {
+            court.id: {
+                "id": court.id,
+                "name": court.name,
+                "is_active": court.is_active,
+                "booking_count": 0,
+                "paid_booking_count": 0,
+                "paid_value": Decimal("0.00"),
+                "processed_refund_value": Decimal("0.00"),
+                "check_in_count": 0,
+                "published_slot_count": 0,
+                "booked_slot_count": 0,
+                "reserved_slot_count": 0,
+                "blocked_slot_count": 0,
+            }
+            for court in courts
+        }
+        daily_data = {
+            day: {
+                "date": day,
+                "booking_count": 0,
+                "paid_booking_count": 0,
+                "paid_value": Decimal("0.00"),
+                "booked_slot_count": 0,
+                "published_slot_count": 0,
+            }
+            for day in date_range(start_date, end_date)
+        }
+
+        completed_statuses = {Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED}
+        processed_refund_statuses = {Booking.PaymentStatus.REFUNDED, Booking.PaymentStatus.PARTIALLY_REFUNDED}
+        published_slot_statuses = {CourtSlot.Status.AVAILABLE, CourtSlot.Status.RESERVED, CourtSlot.Status.BOOKED}
+
+        for booking in bookings:
+            court_summary = court_data.get(booking.court_id)
+            day_summary = daily_data.get(booking.slot.date)
+            if court_summary:
+                court_summary["booking_count"] += 1
+            if day_summary:
+                day_summary["booking_count"] += 1
+
+            if booking.status in completed_statuses:
+                summary["confirmed_booking_count"] += 1
+            if booking.status == Booking.BookingStatus.COMPLETED:
+                summary["completed_booking_count"] += 1
+            if booking.status == Booking.BookingStatus.CANCELLED:
+                summary["cancelled_booking_count"] += 1
+            if booking.status == Booking.BookingStatus.EXPIRED:
+                summary["expired_booking_count"] += 1
+
+            is_paid_booking = booking.status in completed_statuses and booking.payment_status == Booking.PaymentStatus.PAID
+            if is_paid_booking:
+                summary["paid_booking_count"] += 1
+                summary["paid_value"] += booking.amount
+                if court_summary:
+                    court_summary["paid_booking_count"] += 1
+                    court_summary["paid_value"] += booking.amount
+                if day_summary:
+                    day_summary["paid_booking_count"] += 1
+                    day_summary["paid_value"] += booking.amount
+
+            if booking.refund_status == Booking.RefundStatus.PENDING_OWNER_ACTION:
+                summary["pending_refund_count"] += 1
+                summary["pending_refund_value"] += booking.refund_amount
+            if booking.payment_status in processed_refund_statuses:
+                summary["processed_refund_value"] += booking.refund_amount
+                if court_summary:
+                    court_summary["processed_refund_value"] += booking.refund_amount
+
+        check_in_counts = defaultdict(int)
+        for court_id in check_ins:
+            check_in_counts[court_id] += 1
+        for court_id, check_in_count in check_in_counts.items():
+            if court_id in court_data:
+                court_data[court_id]["check_in_count"] = check_in_count
+
+        for slot in slots:
+            court_summary = court_data.get(slot.court_id)
+            day_summary = daily_data.get(slot.date)
+            if slot.status in published_slot_statuses:
+                if court_summary:
+                    court_summary["published_slot_count"] += 1
+                if day_summary:
+                    day_summary["published_slot_count"] += 1
+            if slot.status == CourtSlot.Status.BOOKED:
+                if court_summary:
+                    court_summary["booked_slot_count"] += 1
+                if day_summary:
+                    day_summary["booked_slot_count"] += 1
+            if slot.status == CourtSlot.Status.RESERVED and court_summary:
+                court_summary["reserved_slot_count"] += 1
+            if slot.status == CourtSlot.Status.BLOCKED and court_summary:
+                court_summary["blocked_slot_count"] += 1
+
+        summary["published_slot_count"] = sum(item["published_slot_count"] for item in court_data.values())
+        summary["booked_slot_count"] = sum(item["booked_slot_count"] for item in court_data.values())
+        summary["reserved_slot_count"] = sum(item["reserved_slot_count"] for item in court_data.values())
+        summary["blocked_slot_count"] = sum(item["blocked_slot_count"] for item in court_data.values())
+        summary["utilization_percent"] = report_utilization(summary["booked_slot_count"], summary["published_slot_count"])
+
+        return Response(
+            {
+                "server_now": timezone.now().isoformat(),
+                "venue": {"id": venue.id, "name": venue.name, "area": venue.area, "city": venue.city, "status": venue.status},
+                "period": {
+                    "days": period_days,
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "mode": period_mode,
+                },
+                "summary": serialize_owner_report_summary(summary),
+                "courts": [serialize_owner_report_court(item) for item in court_data.values()],
+                "trend": [serialize_owner_report_day(item) for item in daily_data.values()],
+            }
+        )
+
+
 class OwnerCalendarBlockView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
 
@@ -942,10 +1214,80 @@ class OwnerBookingsView(APIView):
         venue = get_owner_venue(request.user)
         if not venue:
             return Response({"bookings": []})
-        bookings = Booking.objects.filter(venue=venue).select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos")
+        bookings = Booking.objects.filter(venue=venue).select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos", "check_in")
         for booking in bookings:
             refresh_booking_lifecycle(booking)
         return Response({"bookings": BookingSerializer(bookings, many=True, context={"request": request}).data})
+
+
+class OwnerBookingVerifyView(MutationThrottleMixin, APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+
+    def post(self, request):
+        token = str(request.data.get("token") or "").strip()
+        booking_code = "".join(str(request.data.get("booking_code") or "").split()).upper()
+        booking = None
+
+        if token:
+            parsed_token = parse_booking_check_in_token(token)
+            if not parsed_token:
+                return Response({"detail": "We could not verify that booking pass."}, status=status.HTTP_400_BAD_REQUEST)
+            booking_id, token_booking_code = parsed_token
+            booking = Booking.objects.select_related(
+                "player", "venue", "court", "slot"
+            ).prefetch_related("slot_items__slot").filter(
+                pk=booking_id,
+                booking_code=token_booking_code,
+                venue__owner=request.user,
+            ).first()
+        elif booking_code:
+            booking = Booking.objects.select_related(
+                "player", "venue", "court", "slot", "matchmaking_game"
+            ).prefetch_related("slot_items__slot").filter(
+                booking_code=booking_code,
+                venue__owner=request.user,
+            ).first()
+        else:
+            return Response({"detail": "Scan a booking pass or enter a booking code."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not booking:
+            return Response({"detail": "We could not find a booking for this venue."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Complete an ended booking before checking the pass, while still
+        # allowing the configured late-arrival grace period below.
+        refresh_booking_lifecycle(booking)
+
+        with transaction.atomic():
+            locked_booking = Booking.objects.select_for_update().select_related(
+                "player", "venue", "court", "slot"
+            ).prefetch_related("slot_items__slot").filter(
+                pk=booking.id,
+                venue__owner=request.user,
+            ).first()
+            if not locked_booking:
+                return Response({"detail": "We could not find a booking for this venue."}, status=status.HTTP_404_NOT_FOUND)
+
+            state = get_booking_check_in_state(locked_booking)
+            verification_payload = {
+                "valid": state["status"] in ["READY", "CHECKED_IN"],
+                "verification_status": state["status"],
+                "message": state["message"],
+                "booking": BookingVerificationSerializer(locked_booking).data,
+                "check_in": serialize_booking_check_in(state["check_in"]),
+            }
+            if state["status"] not in ["READY", "CHECKED_IN"]:
+                return Response(verification_payload, status=status.HTTP_409_CONFLICT)
+
+            check_in, created = record_booking_check_in(locked_booking, request.user)
+            verification_payload["verification_status"] = "CHECKED_IN"
+            verification_payload["valid"] = True
+            verification_payload["message"] = "Booking verified. Court access is confirmed for this booking."
+            verification_payload["check_in"] = serialize_booking_check_in(check_in)
+            verification_payload["already_checked_in"] = not created
+            if created:
+                notify_booking_checked_in(locked_booking, request.user)
+
+        return Response(verification_payload, status=status.HTTP_200_OK)
 
 
 class OwnerBookingMessageView(APIView):
@@ -1647,6 +1989,328 @@ class PublicCourtSlotsView(APIView):
         return Response({"slots": SlotSerializer(bookable_or_active_slots, many=True, context={"request": request}).data})
 
 
+class CourtReviewsView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, court_id):
+        court = get_object_or_404(get_public_courts(), pk=court_id)
+        return Response(build_court_reviews_payload(court, request))
+
+    def post(self, request, court_id):
+        permission_error = self._write_permission_error(request)
+        if permission_error:
+            return permission_error
+
+        with transaction.atomic():
+            court = get_object_or_404(
+                Court.objects.select_for_update().select_related("venue"),
+                pk=court_id,
+                venue__status=Venue.Status.APPROVED,
+                venue__is_active=True,
+                is_active=True,
+            )
+            if CourtReview.objects.filter(court=court, reviewer=request.user).exists():
+                return Response(
+                    {"detail": "You have already reviewed this court. Edit your existing review instead."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            booking_id = request.data.get("booking_id")
+            booking_queryset = Booking.objects.select_for_update().filter(
+                player=request.user,
+                court=court,
+                status=Booking.BookingStatus.COMPLETED,
+                payment_status=Booking.PaymentStatus.PAID,
+            )
+            if booking_id not in [None, ""]:
+                try:
+                    booking = booking_queryset.get(pk=int(booking_id))
+                except (TypeError, ValueError, Booking.DoesNotExist):
+                    return Response(
+                        {"detail": "Choose one of your completed paid bookings for this court."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            else:
+                booking = booking_queryset.order_by("-completed_at", "-id").first()
+
+            if not booking:
+                return Response(
+                    {"detail": "You can review this court after completing a paid booking here."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            serializer = CourtReviewSerializer(
+                data=request.data,
+                context={"request": request},
+            )
+            serializer.is_valid(raise_exception=True)
+            try:
+                review = serializer.save(
+                    reviewer=request.user,
+                    venue=court.venue,
+                    court=court,
+                    booking=booking,
+                )
+            except IntegrityError:
+                return Response(
+                    {"detail": "A review for this court already exists. Refresh the page to edit it."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        return Response(
+            {
+                "detail": "Your court review has been published.",
+                "review": CourtReviewSerializer(review, context={"request": request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    def patch(self, request, court_id):
+        return self._update(request, court_id)
+
+    def put(self, request, court_id):
+        return self._update(request, court_id)
+
+    def delete(self, request, court_id):
+        permission_error = self._write_permission_error(request)
+        if permission_error:
+            return permission_error
+        review = get_object_or_404(CourtReview, court_id=court_id, reviewer=request.user)
+        review.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _update(self, request, court_id):
+        permission_error = self._write_permission_error(request)
+        if permission_error:
+            return permission_error
+        review = get_object_or_404(
+            CourtReview.objects.select_related("court", "venue", "booking"),
+            court_id=court_id,
+            reviewer=request.user,
+        )
+        serializer = CourtReviewSerializer(
+            review,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        review = serializer.save()
+        return Response(
+            {
+                "detail": "Your court review has been updated.",
+                "review": CourtReviewSerializer(review, context={"request": request}).data,
+            }
+        )
+
+    @staticmethod
+    def _write_permission_error(request):
+        if not request.user.is_authenticated:
+            return Response(
+                {"detail": "Log in as a player to leave a court review."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        if request.user.role != "PLAYER":
+            return Response(
+                {"detail": "Only player accounts can leave court reviews."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
+
+class CourtReviewCommentsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def post(self, request, court_id):
+        with transaction.atomic():
+            court = get_object_or_404(
+                Court.objects.select_for_update().select_related("venue"),
+                pk=court_id,
+                venue__status=Venue.Status.APPROVED,
+                venue__is_active=True,
+                is_active=True,
+            )
+            booking = self._get_eligible_booking(request, court)
+            if not booking:
+                return Response(
+                    {"detail": "You can comment after completing a paid booking at this court."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            serializer = CourtReviewCommentSerializer(
+                data=request.data,
+                context={"request": request},
+            )
+            serializer.is_valid(raise_exception=True)
+            comment = serializer.save(
+                reviewer=request.user,
+                venue=court.venue,
+                court=court,
+                booking=booking,
+            )
+
+        return Response(
+            {
+                "detail": "Your court comment has been published.",
+                "comment": CourtReviewCommentSerializer(comment, context={"request": request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    def patch(self, request, court_id, comment_id):
+        comment = get_object_or_404(
+            CourtReviewComment.objects.select_related("court", "venue", "booking"),
+            pk=comment_id,
+            court_id=court_id,
+            reviewer=request.user,
+        )
+        serializer = CourtReviewCommentSerializer(
+            comment,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        comment = serializer.save()
+        return Response(
+            {
+                "detail": "Your court comment has been updated.",
+                "comment": CourtReviewCommentSerializer(comment, context={"request": request}).data,
+            }
+        )
+
+    def put(self, request, court_id, comment_id):
+        return self.patch(request, court_id, comment_id)
+
+    def delete(self, request, court_id, comment_id):
+        comment = get_object_or_404(
+            CourtReviewComment,
+            pk=comment_id,
+            court_id=court_id,
+            reviewer=request.user,
+        )
+        comment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @staticmethod
+    def _get_eligible_booking(request, court):
+        candidates = Booking.objects.select_for_update().filter(
+            player=request.user,
+            court=court,
+            status__in=[Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED],
+        )
+        for booking in candidates:
+            refresh_booking_lifecycle(booking)
+        return Booking.objects.select_for_update().filter(
+            player=request.user,
+            court=court,
+            status=Booking.BookingStatus.COMPLETED,
+            payment_status=Booking.PaymentStatus.PAID,
+        ).order_by("-completed_at", "-id").first()
+
+
+class CourtFeedbackReactionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, court_id):
+        if request.user.role != "PLAYER":
+            return Response(
+                {"detail": "Only player accounts can react to court feedback."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = CourtFeedbackReactionInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_type = serializer.validated_data["target_type"]
+        target_id = serializer.validated_data["target_id"]
+        reaction_value = serializer.validated_data["reaction"]
+
+        with transaction.atomic():
+            target = self._get_target(court_id, target_type, target_id)
+            reaction_filter = {"review": target} if target_type == "review" else {"comment": target}
+            existing = CourtFeedbackReaction.objects.select_for_update().filter(
+                reviewer=request.user,
+                **reaction_filter,
+            ).first()
+            if existing and existing.reaction == reaction_value:
+                existing.delete()
+                selected_reaction = None
+            elif existing:
+                existing.reaction = reaction_value
+                existing.save(update_fields=["reaction", "updated_at"])
+                selected_reaction = reaction_value
+            else:
+                CourtFeedbackReaction.objects.create(
+                    reviewer=request.user,
+                    reaction=reaction_value,
+                    **reaction_filter,
+                )
+                selected_reaction = reaction_value
+
+            counts = CourtFeedbackReaction.objects.filter(**reaction_filter).aggregate(
+                like_count=Count("id", filter=Q(reaction=CourtFeedbackReaction.Reaction.LIKE)),
+                dislike_count=Count("id", filter=Q(reaction=CourtFeedbackReaction.Reaction.DISLIKE)),
+            )
+
+        return Response(
+            {
+                "reaction": selected_reaction,
+                "like_count": counts["like_count"] or 0,
+                "dislike_count": counts["dislike_count"] or 0,
+            }
+        )
+
+    @staticmethod
+    def _get_target(court_id, target_type, target_id):
+        filters = {
+            "pk": target_id,
+            "court_id": court_id,
+            "court__venue__status": Venue.Status.APPROVED,
+            "court__venue__is_active": True,
+            "court__is_active": True,
+        }
+        if target_type == "review":
+            return get_object_or_404(CourtReview.objects.select_for_update(), **filters)
+        return get_object_or_404(CourtReviewComment.objects.select_for_update(), **filters)
+
+
+class CourtFeedbackReportView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, court_id):
+        serializer = CourtFeedbackReportInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_type = serializer.validated_data["target_type"]
+        target_id = serializer.validated_data["target_id"]
+        with transaction.atomic():
+            target = CourtFeedbackReactionView._get_target(court_id, target_type, target_id)
+            report_filter = {"review": target} if target_type == "review" else {"comment": target}
+
+            if CourtFeedbackReport.objects.filter(reporter=request.user, **report_filter).exists():
+                return Response(
+                    {"detail": "You have already reported this feedback."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            try:
+                CourtFeedbackReport.objects.create(
+                    reporter=request.user,
+                    reason=serializer.validated_data["reason"],
+                    details=serializer.validated_data.get("details", ""),
+                    **report_filter,
+                )
+            except IntegrityError:
+                return Response(
+                    {"detail": "You have already reported this feedback."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        return Response(
+            {"detail": "Thanks. Your report has been sent for review."},
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class BookingReserveView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
@@ -1785,7 +2449,7 @@ class PlayerBookingsView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPlayer]
 
     def get(self, request):
-        bookings = Booking.objects.filter(player=request.user).select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos")
+        bookings = Booking.objects.filter(player=request.user).select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos", "check_in")
         for booking in bookings:
             refresh_booking_lifecycle(booking)
         return Response({"bookings": BookingSerializer(bookings, many=True, context={"request": request}).data})
@@ -1795,7 +2459,7 @@ class BookingDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, booking_id):
-        booking = get_object_or_404(Booking.objects.select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos"), pk=booking_id)
+        booking = get_object_or_404(Booking.objects.select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos", "check_in"), pk=booking_id)
         if request.user.role == "PLAYER" and booking.player_id != request.user.id:
             return Response({"detail": "You can only view your own bookings."}, status=status.HTTP_403_FORBIDDEN)
         if request.user.role == "COURT_OWNER" and booking.venue.owner_id != request.user.id:
@@ -2682,6 +3346,97 @@ def get_public_courts():
     return Court.objects.filter(venue__status=Venue.Status.APPROVED, venue__is_active=True, is_active=True).select_related("venue").prefetch_related("slots")
 
 
+def build_court_reviews_payload(court, request):
+    reviews = list(_feedback_queryset(CourtReview.objects.filter(court=court), request))
+    comments = list(_feedback_queryset(CourtReviewComment.objects.filter(court=court), request))
+    average_rating = None
+    if reviews:
+        average_rating = str((Decimal(sum(review.rating for review in reviews)) / Decimal(len(reviews))).quantize(Decimal("0.01")))
+
+    eligible_booking = None
+    my_review = next(
+        (review for review in reviews if request.user.is_authenticated and review.reviewer_id == request.user.id),
+        None,
+    )
+    if request.user.is_authenticated and request.user.role == "PLAYER":
+        candidate_bookings = Booking.objects.filter(
+            player=request.user,
+            court=court,
+            status__in=[Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED],
+        ).order_by("-slot__date", "-slot__start_time", "-id")
+        for booking in candidate_bookings:
+            refresh_booking_lifecycle(booking)
+        eligible_booking = Booking.objects.filter(
+            player=request.user,
+            court=court,
+            status=Booking.BookingStatus.COMPLETED,
+            payment_status=Booking.PaymentStatus.PAID,
+        ).order_by("-completed_at", "-id").first()
+
+    if not request.user.is_authenticated:
+        eligibility_reason = "Log in as a player after booking this court to leave a review."
+    elif request.user.role != "PLAYER":
+        eligibility_reason = "Only players with a completed booking can review a court."
+    elif my_review:
+        eligibility_reason = "You have already reviewed this court. You can edit or delete your review."
+    elif eligible_booking:
+        eligibility_reason = ""
+    else:
+        eligibility_reason = "Complete a paid booking at this court to leave a review."
+
+    return {
+        "court": {"id": court.id, "name": court.name},
+        "summary": {
+            "average_rating": average_rating,
+            "review_count": len(reviews),
+            "comment_count": len(comments),
+            "distribution": [
+                {"rating": rating, "count": sum(review.rating == rating for review in reviews)}
+                for rating in range(5, 0, -1)
+            ],
+        },
+        "reviews": CourtReviewSerializer(reviews, many=True, context={"request": request}).data,
+        "comments": CourtReviewCommentSerializer(comments, many=True, context={"request": request}).data,
+        "my_review": CourtReviewSerializer(my_review, context={"request": request}).data if my_review else None,
+        "my_comments": CourtReviewCommentSerializer(
+            [comment for comment in comments if request.user.is_authenticated and comment.reviewer_id == request.user.id],
+            many=True,
+            context={"request": request},
+        ).data,
+        "eligibility": {
+            "can_review": bool(eligible_booking and not my_review),
+            "can_comment": bool(eligible_booking),
+            "reason": eligibility_reason,
+            "booking_id": eligible_booking.id if eligible_booking else None,
+            "booking_code": eligible_booking.booking_code if eligible_booking else "",
+        },
+    }
+
+
+def _feedback_queryset(queryset, request):
+    queryset = queryset.select_related("reviewer", "court").annotate(
+        like_count=Count(
+            "feedback_reactions",
+            filter=Q(feedback_reactions__reaction=CourtFeedbackReaction.Reaction.LIKE),
+            distinct=True,
+        ),
+        dislike_count=Count(
+            "feedback_reactions",
+            filter=Q(feedback_reactions__reaction=CourtFeedbackReaction.Reaction.DISLIKE),
+            distinct=True,
+        ),
+    ).order_by("-updated_at", "-id")
+    if request.user.is_authenticated:
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                "feedback_reactions",
+                queryset=CourtFeedbackReaction.objects.filter(reviewer=request.user),
+                to_attr="_viewer_feedback_reactions",
+            )
+        )
+    return queryset
+
+
 def get_public_venues(slot_date=None):
     active_courts = Court.objects.filter(is_active=True)
     if slot_date:
@@ -2929,6 +3684,13 @@ def normalize_request_data(data):
     for field in ["latitude", "longitude"]:
         if normalized.get(field) in ["", "null", "None"]:
             normalized[field] = None
+        elif normalized.get(field) is not None:
+            try:
+                normalized[field] = format(Decimal(str(normalized[field])).quantize(Decimal("0.000001")), "f")
+            except (InvalidOperation, TypeError, ValueError):
+                # Leave malformed coordinates untouched so the serializer can
+                # return its normal field-specific validation error.
+                pass
     if normalized.get("location_confirmed") in ["true", "True", "1", "on"]:
         normalized["location_confirmed"] = True
     if normalized.get("location_confirmed") in ["false", "False", "0", "off", ""]:
@@ -2943,6 +3705,99 @@ def parse_date_value(value):
         return datetime.strptime(str(value), "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def date_range(start_date, end_date):
+    current_date = start_date
+    while current_date <= end_date:
+        yield current_date
+        current_date += timedelta(days=1)
+
+
+def report_utilization(booked_slots, published_slots):
+    if not published_slots:
+        return 0
+    return round((booked_slots / published_slots) * 100, 1)
+
+
+def serialize_owner_report_summary(summary):
+    return {
+        **summary,
+        "paid_value": str(summary["paid_value"]),
+        "processed_refund_value": str(summary["processed_refund_value"]),
+        "pending_refund_value": str(summary["pending_refund_value"]),
+    }
+
+
+def serialize_owner_report_court(court_summary):
+    return {
+        **court_summary,
+        "paid_value": str(court_summary["paid_value"]),
+        "processed_refund_value": str(court_summary["processed_refund_value"]),
+        "utilization_percent": report_utilization(
+            court_summary["booked_slot_count"], court_summary["published_slot_count"]
+        ),
+    }
+
+
+def serialize_owner_report_day(day_summary):
+    return {
+        "date": day_summary["date"].isoformat(),
+        "booking_count": day_summary["booking_count"],
+        "paid_booking_count": day_summary["paid_booking_count"],
+        "paid_value": str(day_summary["paid_value"]),
+        "booked_slot_count": day_summary["booked_slot_count"],
+        "published_slot_count": day_summary["published_slot_count"],
+        "utilization_percent": report_utilization(
+            day_summary["booked_slot_count"], day_summary["published_slot_count"]
+        ),
+    }
+
+
+def build_empty_owner_report(period_days, start_date, end_date, period_mode="preset"):
+    summary = {
+        "booking_count": 0,
+        "confirmed_booking_count": 0,
+        "completed_booking_count": 0,
+        "cancelled_booking_count": 0,
+        "expired_booking_count": 0,
+        "paid_booking_count": 0,
+        "paid_value": Decimal("0.00"),
+        "processed_refund_value": Decimal("0.00"),
+        "pending_refund_count": 0,
+        "pending_refund_value": Decimal("0.00"),
+        "check_in_count": 0,
+        "published_slot_count": 0,
+        "booked_slot_count": 0,
+        "reserved_slot_count": 0,
+        "blocked_slot_count": 0,
+        "utilization_percent": 0,
+    }
+    return {
+        "server_now": timezone.now().isoformat(),
+        "venue": None,
+        "period": {
+            "days": period_days,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "mode": period_mode,
+        },
+        "summary": serialize_owner_report_summary(summary),
+        "courts": [],
+        "trend": [
+            serialize_owner_report_day(
+                {
+                    "date": day,
+                    "booking_count": 0,
+                    "paid_booking_count": 0,
+                    "paid_value": Decimal("0.00"),
+                    "booked_slot_count": 0,
+                    "published_slot_count": 0,
+                }
+            )
+            for day in date_range(start_date, end_date)
+        ],
+    }
 
 
 def slot_start_end_at(slot):
@@ -3077,20 +3932,37 @@ def refresh_booking_lifecycle(booking):
         booking.complete_if_finished()
 
 
+def serialize_booking_check_in(check_in):
+    if not check_in:
+        return None
+    return {
+        "status": check_in.status,
+        "checked_in_at": check_in.checked_in_at.isoformat(),
+        "checked_in_by_name": getattr(check_in.checked_in_by, "full_name", "") if check_in.checked_in_by_id else "",
+        "scan_count": check_in.scan_count,
+        "last_scanned_at": check_in.last_scanned_at.isoformat(),
+    }
+
+
 def has_critical_venue_changes(venue, data):
     critical_fields = ["name", "address", "city", "area", "map_location", "verification_document_type"]
     for field in critical_fields:
         if field in data and normalize_compare_value(getattr(venue, field)) != normalize_compare_value(data.get(field)):
             return True
-    if "latitude" in data or "longitude" in data:
-        try:
-            incoming_latitude = Decimal(str(data.get("latitude"))) if data.get("latitude") not in [None, ""] else None
-            incoming_longitude = Decimal(str(data.get("longitude"))) if data.get("longitude") not in [None, ""] else None
-        except (InvalidOperation, TypeError, ValueError):
-            return True
-        if incoming_latitude != venue.latitude or incoming_longitude != venue.longitude:
-            return True
+    if has_coordinate_venue_change(venue, data):
+        return True
     return bool(data.get("verification_document"))
+
+
+def has_coordinate_venue_change(venue, data):
+    if "latitude" not in data and "longitude" not in data:
+        return False
+    try:
+        incoming_latitude = Decimal(str(data.get("latitude"))) if data.get("latitude") not in [None, ""] else None
+        incoming_longitude = Decimal(str(data.get("longitude"))) if data.get("longitude") not in [None, ""] else None
+    except (InvalidOperation, TypeError, ValueError):
+        return True
+    return incoming_latitude != venue.latitude or incoming_longitude != venue.longitude
 
 
 def normalize_compare_value(value):

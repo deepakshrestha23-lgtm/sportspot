@@ -504,3 +504,89 @@ class PlayerSettingsApiTests(APITestCase):
         self.assertEqual(deactivate_response.status_code, 200)
         self.user.refresh_from_db()
         self.assertFalse(self.user.is_active)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class OwnerSettingsApiTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            email="settings-owner@example.com",
+            password="StrongPass123!",
+            full_name="Settings Owner",
+            phone="9800000111",
+            role="COURT_OWNER",
+            email_verified=True,
+            email_verified_at=timezone.now(),
+        )
+        self.client.force_authenticate(self.user)
+
+    def test_owner_can_load_account_and_owner_notifications(self):
+        response = self.client.get(reverse("auth-owner-settings"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["account"]["role"], "COURT_OWNER")
+        self.assertEqual(
+            set(response.data["notifications"]),
+            {"booking_updates", "cancellation_refunds", "email_notifications"},
+        )
+        self.assertNotIn("privacy", response.data)
+
+    def test_owner_can_update_account_and_relevant_notification_preferences(self):
+        account_response = self.client.patch(
+            reverse("auth-settings-account"),
+            {
+                "full_name": "Updated Owner",
+                "email": "settings-owner@example.com",
+                "phone": "9800000112",
+            },
+            format="json",
+        )
+        notification_response = self.client.patch(
+            reverse("auth-owner-settings-notifications"),
+            {
+                "booking_updates": False,
+                "cancellation_refunds": True,
+                "email_notifications": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(account_response.status_code, 200)
+        self.assertEqual(notification_response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.full_name, "Updated Owner")
+        self.assertEqual(self.user.phone, "9800000112")
+        settings = AccountSettings.objects.get(user=self.user)
+        self.assertFalse(settings.notify_booking_updates)
+        self.assertFalse(settings.email_notifications)
+
+    def test_owner_can_change_password_through_shared_security_flow(self):
+        response = self.client.post(
+            reverse("auth-settings-password"),
+            {
+                "current_password": "StrongPass123!",
+                "new_password": "NewOwnerPass456!",
+                "confirm_password": "NewOwnerPass456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewOwnerPass456!"))
+
+    def test_player_cannot_read_owner_settings_contract(self):
+        player = get_user_model().objects.create_user(
+            email="settings-player-owner-route@example.com",
+            password="StrongPass123!",
+            full_name="Settings Player",
+            phone="9800000113",
+            role="PLAYER",
+            email_verified=True,
+            email_verified_at=timezone.now(),
+        )
+        self.client.force_authenticate(player)
+
+        response = self.client.get(reverse("auth-owner-settings"))
+
+        self.assertEqual(response.status_code, 403)

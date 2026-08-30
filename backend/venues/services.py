@@ -1,11 +1,18 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from django.core.signing import BadSignature, Signer
 from django.db import transaction
 from django.utils import timezone
 
 from notifications.services import notify_booking_completed, notify_booking_payment_failed
 
-from .models import Booking, CourtSlot
+from .models import Booking, BookingCheckIn, CourtSlot
+from .policies import get_booking_start_at
+
+
+BOOKING_CHECK_IN_TOKEN_SALT = "sportspot.booking-check-in.v1"
+CHECK_IN_WINDOW_BEFORE = timedelta(hours=2)
+CHECK_IN_WINDOW_AFTER = timedelta(hours=2)
 
 
 def get_booking_slot_ids(booking):
@@ -22,6 +29,104 @@ def get_booking_end_at(booking):
         datetime.combine(last_slot.date, last_slot.end_time),
         timezone.get_current_timezone(),
     )
+
+
+def generate_booking_check_in_token(booking):
+    """Return an opaque, tamper-evident token without embedding private data."""
+    payload = f"v1|{booking.id}|{booking.booking_code}"
+    return Signer(salt=BOOKING_CHECK_IN_TOKEN_SALT).sign(payload)
+
+
+def parse_booking_check_in_token(token):
+    try:
+        payload = Signer(salt=BOOKING_CHECK_IN_TOKEN_SALT).unsign(str(token or "").strip())
+        version, booking_id, booking_code = payload.split("|", 2)
+        if version != "v1":
+            return None
+        return int(booking_id), booking_code
+    except (BadSignature, TypeError, ValueError):
+        return None
+
+
+def get_booking_check_in_window(booking):
+    start_at = get_booking_start_at(booking)
+    end_at = get_booking_end_at(booking)
+    if not start_at or not end_at:
+        return None, None
+    return start_at - CHECK_IN_WINDOW_BEFORE, end_at + CHECK_IN_WINDOW_AFTER
+
+
+def get_booking_check_in_state(booking, *, now=None):
+    now = now or timezone.now()
+    window_start, window_end = get_booking_check_in_window(booking)
+    check_in = getattr(booking, "check_in", None)
+
+    if booking.status not in [Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED] or booking.payment_status != Booking.PaymentStatus.PAID:
+        return {
+            "status": "NOT_AVAILABLE",
+            "message": "Check-in is available only for a paid confirmed booking.",
+            "window_start": window_start,
+            "window_end": window_end,
+            "check_in": check_in,
+        }
+    if check_in:
+        return {
+            "status": "CHECKED_IN",
+            "message": "This booking has already been checked in.",
+            "window_start": window_start,
+            "window_end": window_end,
+            "check_in": check_in,
+        }
+    if not window_start or not window_end:
+        return {
+            "status": "NOT_AVAILABLE",
+            "message": "The booking schedule is not available for check-in.",
+            "window_start": window_start,
+            "window_end": window_end,
+            "check_in": None,
+        }
+    if now < window_start:
+        return {
+            "status": "NOT_YET_OPEN",
+            "message": "Check-in opens two hours before the booking starts.",
+            "window_start": window_start,
+            "window_end": window_end,
+            "check_in": None,
+        }
+    if now > window_end:
+        return {
+            "status": "CLOSED",
+            "message": "The check-in window for this booking has closed.",
+            "window_start": window_start,
+            "window_end": window_end,
+            "check_in": None,
+        }
+    return {
+        "status": "READY",
+        "message": "This booking is ready for venue check-in.",
+        "window_start": window_start,
+        "window_end": window_end,
+        "check_in": None,
+    }
+
+
+def record_booking_check_in(booking, owner, *, now=None):
+    now = now or timezone.now()
+    check_in, created = BookingCheckIn.objects.select_for_update().get_or_create(
+        booking=booking,
+        defaults={
+            "status": BookingCheckIn.Status.CHECKED_IN,
+            "checked_in_at": now,
+            "checked_in_by": owner,
+            "scan_count": 1,
+            "last_scanned_at": now,
+        },
+    )
+    if not created:
+        check_in.scan_count += 1
+        check_in.last_scanned_at = now
+        check_in.save(update_fields=["scan_count", "last_scanned_at", "updated_at"])
+    return check_in, created
 
 
 def expire_reserved_booking(booking_id, *, now=None, notify=True):

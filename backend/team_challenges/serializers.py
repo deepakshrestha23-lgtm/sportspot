@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from teams.models import Team, TeamMember
+from players.models import ParticipationCommitment
 from venues.models import Booking
 from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
 
@@ -503,17 +504,42 @@ class TeamFixtureParticipantSerializer(serializers.ModelSerializer):
     team_name = serializers.CharField(source="team.name", read_only=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     sportspot_id = serializers.SerializerMethodField()
+    attendance = serializers.SerializerMethodField()
 
     class Meta:
         model = TeamFixtureParticipant
         fields = (
             "id", "team", "team_name", "player", "player_name", "sportspot_id",
             "status", "status_label", "attendance_recorded_at", "created_at",
+            "attendance",
         )
 
     def get_sportspot_id(self, participant):
         profile = getattr(participant.player, "player_profile", None)
         return profile.sportspot_id if profile else ""
+
+    def get_attendance(self, participant):
+        commitment = ParticipationCommitment.objects.filter(
+            player_id=participant.player_id,
+            source_type=ParticipationCommitment.SourceType.TEAM_FIXTURE,
+            source_id=participant.fixture_id,
+            source_participant_id=participant.id,
+        ).order_by("-source_version", "-id").first()
+        if not commitment:
+            return {"status": "NOT_CREATED", "review_deadline_at": None, "can_dispute": False}
+        request = self.context.get("request")
+        viewer = getattr(request, "user", None)
+        return {
+            "id": commitment.id,
+            "status": commitment.status,
+            "review_deadline_at": commitment.review_deadline_at.isoformat() if commitment.review_deadline_at else None,
+            "can_dispute": bool(
+                viewer
+                and viewer.id == participant.player_id
+                and commitment.status == ParticipationCommitment.Status.NO_SHOW_REPORTED
+                and (not commitment.review_deadline_at or commitment.review_deadline_at > timezone.now())
+            ),
+        }
 
 
 class TeamChallengeSerializer(serializers.ModelSerializer):

@@ -37,6 +37,7 @@ class Notification(models.Model):
         BOOKING_CANCELLED_BY_OWNER = "BOOKING_CANCELLED_BY_OWNER", "Booking Cancelled By Owner"
         BOOKING_REMINDER = "BOOKING_REMINDER", "Booking Reminder"
         BOOKING_COMPLETED = "BOOKING_COMPLETED", "Booking Completed"
+        BOOKING_CHECKED_IN = "BOOKING_CHECKED_IN", "Booking Checked In"
         REFUND_PENDING = "REFUND_PENDING", "Refund Pending"
         REFUND_APPROVED = "REFUND_APPROVED", "Refund Approved"
         REFUND_REJECTED = "REFUND_REJECTED", "Refund Rejected"

@@ -182,7 +182,7 @@ export default function OwnerCourtSlotsPage() {
       <OwnerPageHeader backHref="/dashboard/owner/courts" backLabel="Back to courts" description="Create a dated publishing window for this court, set its rate, and manage future availability." eyebrow="Venue Manager" title="Court Slots" />
 
       <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="sport-card">
+        <div className="owner-panel sport-card">
           <h2 className="text-xl font-black text-sportNavy">Generate Slots</h2>
           <p className="mt-2 text-sm text-slate-600">
             Set one weekly schedule and choose exactly how far ahead players should be able to book. Existing slots are kept, so generating again is safe.
@@ -268,7 +268,7 @@ export default function OwnerCourtSlotsPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="owner-panel rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-black text-sportNavy">Slots</h2>
             <input className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sportGreen" onChange={(event) => setDate(event.target.value)} type="date" value={date} />

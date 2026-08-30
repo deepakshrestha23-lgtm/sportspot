@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { api } from "@/lib/api";
 import { getApiErrorField, getApiErrorMessage } from "@/lib/apiErrors";
 import { clearAuthSession, saveCurrentUser } from "@/lib/auth";
@@ -416,7 +417,7 @@ function PlayerSettingsContent() {
                 Cancel
               </button>
               <button className="sport-primary-button min-h-11" disabled={!canSaveAccount || savingSection === "account"} onClick={saveAccount} type="button">
-                {savingSection === "account" ? "Saving..." : "Save Changes"}
+                {savingSection === "account" ? <LoadingIndicator label="Saving changes" size="sm" tone="inverse" /> : "Save Changes"}
               </button>
             </SectionActions>
           ) : null}
@@ -438,7 +439,7 @@ function PlayerSettingsContent() {
               Cancel
             </button>
             <button className="sport-primary-button" disabled={savingSection === "security"} onClick={changePassword} type="button">
-              {savingSection === "security" ? "Changing..." : "Change Password"}
+              {savingSection === "security" ? <LoadingIndicator label="Changing password" size="sm" tone="inverse" /> : "Change Password"}
             </button>
           </SectionActions>
         </SettingsCard>
@@ -461,7 +462,7 @@ function PlayerSettingsContent() {
               Cancel
             </button>
             <button className="sport-primary-button" disabled={savingSection === "notifications"} onClick={saveNotifications} type="button">
-              {savingSection === "notifications" ? "Saving..." : "Save Notification Preferences"}
+              {savingSection === "notifications" ? <LoadingIndicator label="Saving notification preferences" size="sm" tone="inverse" /> : "Save Notification Preferences"}
             </button>
           </SectionActions>
         </SettingsCard>
@@ -482,7 +483,7 @@ function PlayerSettingsContent() {
               Cancel
             </button>
             <button className="sport-primary-button" disabled={savingSection === "privacy"} onClick={savePrivacy} type="button">
-              {savingSection === "privacy" ? "Saving..." : "Save Privacy Settings"}
+              {savingSection === "privacy" ? <LoadingIndicator label="Saving privacy settings" size="sm" tone="inverse" /> : "Save Privacy Settings"}
             </button>
           </SectionActions>
         </SettingsCard>

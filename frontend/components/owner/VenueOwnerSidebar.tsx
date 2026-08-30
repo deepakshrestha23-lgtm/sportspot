@@ -22,11 +22,11 @@ export function VenueOwnerSidebar({ isLoading, venue }: { isLoading: boolean; ve
   const navItems = getOwnerDashboardNavItems(lifecycleState);
 
   return (
-    <aside className="hidden w-[256px] shrink-0 border-r border-slate-200/80 bg-white lg:block">
-      <div className="sticky top-[68px] flex h-[calc(100vh-68px)] flex-col px-4 py-5">
+    <aside className="owner-sidebar hidden w-[248px] shrink-0 border-r border-slate-200/80 bg-white lg:block">
+      <div className="sticky top-[64px] flex h-[calc(100vh-64px)] flex-col px-3 py-5">
         <VenueOwnerSidebarHeader />
 
-        <nav aria-label="Venue Manager" className="mt-5 space-y-1">
+        <nav aria-label="Venue Manager" className="mt-5 space-y-1.5">
           {isLoading ? <VenueOwnerSidebarSkeleton /> : navItems.map((item) => (
             <VenueOwnerSidebarItem isActive={isOwnerDashboardItemActive(pathname, item)} item={item} key={`${item.label}-${item.href}`} />
           ))}

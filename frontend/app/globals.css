@@ -88,6 +88,112 @@ a {
   }
 }
 
+@keyframes sportspot-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sport-loading-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.sport-loading-indicator-sm {
+  gap: 0.45rem;
+  font-size: 0.75rem;
+}
+
+.sport-loading-indicator-lg {
+  gap: 0.75rem;
+  font-size: 0.9375rem;
+}
+
+.sport-loading-spinner {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: sportspot-loading-spin 720ms linear infinite;
+}
+
+.sport-loading-spinner::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.2rem;
+  height: 0.2rem;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.sport-loading-indicator-sm .sport-loading-spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-width: 1.75px;
+}
+
+.sport-loading-indicator-sm .sport-loading-spinner::after {
+  width: 0.16rem;
+  height: 0.16rem;
+}
+
+.sport-loading-indicator-lg .sport-loading-spinner {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-width: 2.5px;
+}
+
+.sport-loading-indicator-lg .sport-loading-spinner::after {
+  width: 0.24rem;
+  height: 0.24rem;
+}
+
+.sport-loading-indicator-green {
+  color: var(--sport-green);
+}
+
+.sport-loading-indicator-muted {
+  color: #64748b;
+}
+
+.sport-loading-indicator-inverse {
+  color: #ffffff;
+}
+
+.sport-loading-screen {
+  display: grid;
+  min-height: min(42vh, 22rem);
+  place-items: center;
+  padding: 3rem 1rem;
+}
+
+.sport-loading-inline-panel {
+  display: grid;
+  min-height: 11rem;
+  place-items: center;
+  border: 1px solid var(--sport-line);
+  border-radius: 0.75rem;
+  background: var(--sport-surface);
+  padding: 2rem 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sport-loading-spinner {
+    animation: none;
+  }
+}
+
 .sportspot-reveal {
   animation: sportspot-reveal 700ms ease-out both;
 }
@@ -348,6 +454,2934 @@ a {
   background: var(--sport-green-soft);
 }
 
+/*
+ * Venue Manager is an operational workspace, so it uses the same restrained
+ * design language as the player workspace while keeping its denser layouts.
+ * The selector is intentionally scoped: public pages and older flows keep
+ * their existing presentation while owner routes are migrated safely.
+ */
+.owner-dashboard-theme {
+  --owner-panel: #ffffff;
+  --owner-panel-muted: #f7faf8;
+  --owner-border: #dce5de;
+  --owner-radius: 0.75rem;
+}
+
+.owner-dashboard-theme .sport-page-content {
+  max-width: 1280px;
+}
+
+.owner-dashboard-theme .sport-page-header {
+  padding-bottom: 0;
+}
+
+.owner-dashboard-theme .sport-page-title {
+  font-size: clamp(1.75rem, 2.1vw, 2.35rem);
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .sport-page-description {
+  max-width: 48rem;
+}
+
+.owner-dashboard-theme .font-black {
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .tracking-tight {
+  letter-spacing: 0;
+}
+
+.owner-dashboard-theme .rounded-lg,
+.owner-dashboard-theme .rounded-xl {
+  border-radius: var(--owner-radius);
+}
+
+.owner-dashboard-theme .rounded-2xl {
+  border-radius: 0.875rem;
+}
+
+.owner-dashboard-theme .shadow-sm {
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .shadow-md {
+  box-shadow: 0 2px 4px rgba(16, 32, 22, 0.05), 0 10px 26px rgba(16, 32, 22, 0.06);
+}
+
+.owner-dashboard-theme .border-slate-200,
+.owner-dashboard-theme .border-slate-300 {
+  border-color: var(--owner-border);
+}
+
+.owner-dashboard-theme .border-slate-100 {
+  border-color: #edf2ee;
+}
+
+.owner-dashboard-theme .border-green-100 {
+  border-color: #d9ece0;
+}
+
+.owner-dashboard-theme .bg-slate-50 {
+  background-color: var(--owner-panel-muted);
+}
+
+.owner-dashboard-theme .sport-surface,
+.owner-dashboard-theme .sport-card {
+  background-color: var(--owner-panel);
+  border-radius: var(--owner-radius);
+  border-color: var(--owner-border);
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .sport-empty-state {
+  background-color: var(--owner-panel);
+  border-color: #cbd8ce;
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-panel,
+.owner-dashboard-theme .owner-kpi-link,
+.owner-dashboard-theme .owner-error-panel {
+  border-radius: var(--owner-radius);
+  border-color: var(--owner-border);
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-kpi-link {
+  min-height: 9.5rem;
+}
+
+.owner-dashboard-theme .owner-kpi-link:hover {
+  transform: translateY(-2px);
+}
+
+.owner-dashboard-theme .owner-next-booking {
+  background: #087a3e;
+  border-radius: var(--owner-radius);
+  box-shadow: 0 8px 20px rgba(8, 122, 62, 0.14);
+}
+
+.owner-dashboard-theme .owner-venue-hero {
+  background: #0b1220;
+  border-radius: var(--owner-radius);
+  box-shadow: 0 8px 20px rgba(11, 18, 32, 0.1);
+}
+
+.owner-dashboard-theme .owner-venue-page {
+  --owner-muted-text: #68756d;
+}
+
+.owner-dashboard-theme .owner-venue-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--owner-border);
+  padding: 0 0 1rem;
+}
+
+.owner-dashboard-theme .owner-venue-status-context,
+.owner-dashboard-theme .owner-venue-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.owner-dashboard-theme .owner-venue-status-copy,
+.owner-dashboard-theme .owner-venue-status-actions {
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.owner-dashboard-theme .owner-venue-status-actions {
+  justify-content: flex-end;
+}
+
+.owner-dashboard-theme .owner-venue-status-actions > span + span {
+  border-left: 1px solid var(--owner-border);
+  padding-left: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-text-danger,
+.owner-dashboard-theme .owner-text-warning {
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-text-danger {
+  color: #b42318;
+}
+
+.owner-dashboard-theme .owner-text-danger:hover {
+  background: #fdebea;
+}
+
+.owner-dashboard-theme .owner-text-warning {
+  color: #996300;
+}
+
+.owner-dashboard-theme .owner-text-warning:hover {
+  background: #fff5dc;
+}
+
+.owner-dashboard-theme .owner-venue-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(19rem, 0.85fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-venue-main-column,
+.owner-dashboard-theme .owner-venue-side-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-venue-section {
+  min-width: 0;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+  padding: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-venue-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #edf2ee;
+  padding-bottom: 1rem;
+}
+
+.owner-dashboard-theme .owner-venue-section-header h2 {
+  color: var(--sport-navy);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-venue-section-header > div > p:last-child {
+  margin-top: 0.25rem;
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-section-kicker {
+  color: #597d65;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-venue-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-venue-info-item {
+  min-width: 0;
+  border: 1px solid #edf2ee;
+  border-radius: 0.625rem;
+  background: var(--owner-panel-muted);
+  padding: 0.85rem;
+}
+
+.owner-dashboard-theme .owner-venue-info-item > p:last-child {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-venue-notice,
+.owner-dashboard-theme .owner-venue-copy-block,
+.owner-dashboard-theme .owner-venue-empty {
+  margin-top: 1rem;
+  border-radius: 0.625rem;
+  background: var(--owner-panel-muted);
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  padding: 0.85rem;
+}
+
+.owner-dashboard-theme .owner-venue-notice {
+  border: 1px solid #ead9ad;
+  background: #fff9e9;
+  color: #785200;
+}
+
+.owner-dashboard-theme .owner-venue-photo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-venue-photo-gallery {
+  border: 1px solid #edf2ee;
+  border-radius: 0.625rem;
+  background: var(--owner-panel-muted);
+  padding: 0.85rem;
+}
+
+.owner-dashboard-theme .owner-venue-photo-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-venue-photo-thumb {
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  border-radius: 0.45rem;
+  object-fit: cover;
+}
+
+.owner-dashboard-theme .owner-venue-proof-row {
+  margin-top: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-venue-policy-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-venue-policy-list li {
+  display: flex;
+  gap: 0.6rem;
+  color: #405247;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-venue-policy-list li::before {
+  content: "✓";
+  flex: 0 0 auto;
+  color: var(--sport-green);
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-venue-checklist {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-venue-checklist-item {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-venue-checklist-item > span {
+  display: inline-flex;
+  height: 1.4rem;
+  width: 1.4rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cdd8d0;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-venue-checklist-item.is-done > span {
+  border-color: var(--sport-green);
+  background: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-venue-checklist-item p {
+  min-width: 0;
+  color: var(--sport-navy);
+  font-weight: 600;
+}
+
+.owner-dashboard-theme .owner-venue-checklist-item strong {
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-venue-checklist-item.is-done strong {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-venue-map {
+  overflow: hidden;
+  margin-top: 1rem;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.625rem;
+}
+
+.owner-dashboard-theme .owner-venue-map > * {
+  min-height: 15rem;
+}
+
+.owner-dashboard-theme .owner-venue-court-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-venue-court-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid #edf2ee;
+  padding: 0.7rem 0;
+}
+
+.owner-dashboard-theme .owner-venue-court-row:last-child {
+  border-bottom: 0;
+}
+
+.owner-dashboard-theme .owner-venue-court-row h3 {
+  overflow: hidden;
+  color: var(--sport-navy);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-venue-court-row p {
+  margin-top: 0.2rem;
+  color: var(--owner-muted-text);
+  font-size: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-venue-court-row a {
+  flex: 0 0 auto;
+  color: var(--sport-green);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-venue-full-button {
+  justify-content: center;
+  width: 100%;
+  margin-top: 0.85rem;
+}
+
+.owner-dashboard-theme .owner-court-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+  padding: 1rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-court-context h2 {
+  margin-top: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-court-context p:last-child {
+  margin-top: 0.25rem;
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-court-context-stats {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-court-stat {
+  min-width: 5.25rem;
+  border-left: 1px solid var(--owner-border);
+  padding-left: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-stat p {
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-court-stat strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-courts-loading {
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  color: var(--owner-muted-text);
+  padding: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-court-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-card {
+  overflow: hidden;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-court-card-media {
+  position: relative;
+  overflow: hidden;
+  background: #eef4f0;
+}
+
+.owner-dashboard-theme .owner-court-card-media img,
+.owner-dashboard-theme .owner-court-placeholder {
+  display: block;
+  aspect-ratio: 16 / 7;
+  width: 100%;
+  object-fit: cover;
+}
+
+.owner-dashboard-theme .owner-court-placeholder {
+  display: flex;
+  min-height: 8rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  background: #e8f4ed;
+  padding: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-placeholder span {
+  color: #4c7357;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-court-placeholder strong {
+  margin-top: 0.3rem;
+  color: var(--sport-navy);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-court-card-media > .owner-status {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-status-success {
+  border: 1px solid #bde5cc;
+  background: #e7f6ed;
+  color: #087a3e;
+}
+
+.owner-dashboard-theme .owner-court-card-body {
+  padding: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-card-heading h2 {
+  overflow: hidden;
+  color: var(--sport-navy);
+  font-size: 1rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-court-card-heading p {
+  margin-top: 0.25rem;
+  color: var(--owner-muted-text);
+  font-size: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-court-price {
+  flex: 0 0 auto;
+  color: var(--sport-green);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.owner-dashboard-theme .owner-court-description {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 0.85rem;
+  color: #52635a;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.owner-dashboard-theme .owner-court-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.85rem;
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-court-visibility {
+  margin-top: 0.85rem;
+  border-radius: 0.5rem;
+  background: var(--owner-panel-muted);
+  color: #52635a;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  padding: 0.65rem 0.75rem;
+}
+
+.owner-dashboard-theme .owner-court-warning {
+  margin-top: 0.65rem;
+  color: #785200;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-court-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  border-top: 1px solid #edf2ee;
+  padding-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-card-actions .owner-primary-button,
+.owner-dashboard-theme .owner-court-card-actions .owner-secondary-button {
+  min-height: 2.5rem;
+}
+
+.owner-dashboard-theme .owner-court-preview,
+.owner-dashboard-theme .owner-court-danger,
+.owner-dashboard-theme .owner-court-warning-action {
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-court-preview {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-court-danger {
+  color: #b42318;
+}
+
+.owner-dashboard-theme .owner-court-danger:hover {
+  background: #fdebea;
+}
+
+.owner-dashboard-theme .owner-court-warning-action {
+  color: #996300;
+}
+
+.owner-dashboard-theme .owner-court-warning-action:hover {
+  background: #fff5dc;
+}
+
+.owner-dashboard-theme .owner-court-edit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-edit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-edit-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.45rem;
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-court-edit-field-wide {
+  grid-column: 1 / -1;
+}
+
+.owner-dashboard-theme .owner-court-active-toggle {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.625rem;
+  background: var(--owner-panel-muted);
+  padding: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-court-active-toggle span {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-court-active-toggle small {
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.owner-dashboard-theme .owner-court-active-toggle input {
+  height: 1.15rem;
+  width: 1.15rem;
+  accent-color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-court-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  border-top: 1px solid #edf2ee;
+  padding-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-edit-photo {
+  margin-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-edit-photo > img,
+.owner-dashboard-theme .owner-court-edit-photo-empty {
+  display: flex;
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  object-fit: cover;
+}
+
+.owner-dashboard-theme .owner-court-edit-photo > img {
+  background: #eef4f0;
+}
+
+.owner-dashboard-theme .owner-court-edit-photo-empty {
+  border: 1px dashed #b7cfc0;
+  background: var(--owner-panel-muted);
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-court-edit-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.owner-dashboard-theme .owner-court-edit-photo-actions .owner-secondary-button {
+  cursor: pointer;
+}
+
+.owner-dashboard-theme .owner-court-photo-selection {
+  margin-top: 0.65rem;
+  color: var(--sport-green);
+  font-size: 0.75rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.owner-dashboard-theme .owner-court-create-card {
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+  padding: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-court-create-intro {
+  border-bottom: 1px solid #edf2ee;
+  padding-bottom: 1rem;
+}
+
+.owner-dashboard-theme .owner-court-create-intro h2 {
+  margin-top: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-court-create-intro p:last-child {
+  margin-top: 0.25rem;
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-court-create-upload {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px dashed #b7cfc0;
+  border-radius: 0.625rem;
+  background: var(--owner-panel-muted);
+  padding: 0.85rem;
+}
+
+.owner-dashboard-theme .owner-court-create-upload > span {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-court-create-upload small {
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.owner-dashboard-theme .owner-court-create-upload input {
+  max-width: 13rem;
+  color: var(--owner-muted-text);
+  font-size: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-court-create-upload em {
+  color: var(--sport-green);
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1023px) {
+  .owner-dashboard-theme .owner-venue-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-court-edit-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .owner-dashboard-theme .owner-venue-status-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-venue-status-actions {
+    justify-content: flex-start;
+  }
+
+  .owner-dashboard-theme .owner-venue-status-actions > span + span {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-venue-section-header {
+    display: block;
+  }
+
+  .owner-dashboard-theme .owner-venue-section-header > :last-child {
+    margin-top: 0.75rem;
+  }
+
+  .owner-dashboard-theme .owner-venue-info-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-venue-photo-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .owner-dashboard-theme .owner-court-context {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-court-context-stats {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .owner-dashboard-theme .owner-court-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-court-stat {
+    min-width: 0;
+    padding-left: 0.65rem;
+  }
+
+  .owner-dashboard-theme .owner-court-edit-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-court-edit-field-wide {
+    grid-column: auto;
+  }
+
+  .owner-dashboard-theme .owner-court-edit-actions {
+    justify-content: stretch;
+  }
+
+  .owner-dashboard-theme .owner-court-edit-actions > * {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+}
+
+.owner-dashboard-theme .owner-availability-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+  padding: 1rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-availability-context-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+}
+
+.owner-dashboard-theme .owner-availability-context-heading h2 {
+  color: var(--sport-navy);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-availability-context > div > p:last-child {
+  margin-top: 0.25rem;
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-availability-context-link,
+.owner-dashboard-theme .owner-availability-help-link,
+.owner-dashboard-theme .owner-availability-edit {
+  flex: 0 0 auto;
+  color: var(--sport-green);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-availability-context-link:hover,
+.owner-dashboard-theme .owner-availability-help-link:hover,
+.owner-dashboard-theme .owner-availability-edit:hover {
+  color: var(--sport-green-strong);
+}
+
+.owner-dashboard-theme .owner-availability-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-availability-stat {
+  min-width: 0;
+  padding: 1rem 1.1rem;
+}
+
+.owner-dashboard-theme .owner-availability-stat + .owner-availability-stat {
+  border-left: 1px solid #edf2ee;
+}
+
+.owner-dashboard-theme .owner-availability-stat span {
+  display: block;
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-availability-stat strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.owner-dashboard-theme .owner-availability-stat-success strong {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-availability-stat-warning strong {
+  color: #996300;
+}
+
+.owner-dashboard-theme .owner-availability-panel {
+  overflow: hidden;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-availability-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-availability-panel-header h2 {
+  margin-top: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-availability-panel-header p:last-child {
+  margin-top: 0.25rem;
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-availability-court-list {
+  border-top: 1px solid #edf2ee;
+}
+
+.owner-dashboard-theme .owner-availability-court-row {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1.1fr) minmax(20rem, 1.5fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-availability-court-row + .owner-availability-court-row {
+  border-top: 1px solid #edf2ee;
+}
+
+.owner-dashboard-theme .owner-availability-court-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-availability-court-mark {
+  display: flex;
+  flex: 0 0 auto;
+  height: 3.25rem;
+  width: 4.25rem;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid #d6e6da;
+  border-radius: 0.5rem;
+  background: #edf7f0;
+}
+
+.owner-dashboard-theme .owner-availability-court-mark img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+.owner-dashboard-theme .owner-availability-court-mark span {
+  color: var(--sport-green);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-availability-court-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.owner-dashboard-theme .owner-availability-court-title h3 {
+  overflow: hidden;
+  color: var(--sport-navy);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-availability-court-identity > div > p {
+  margin-top: 0.25rem;
+  color: var(--owner-muted-text);
+  font-size: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-availability-court-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-availability-court-details > div {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-availability-court-details span {
+  display: block;
+  color: var(--owner-muted-text);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-availability-court-details strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-availability-court-details strong.is-ready {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-availability-court-details strong.is-pending {
+  color: #996300;
+}
+
+.owner-dashboard-theme .owner-availability-court-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-availability-court-actions .owner-primary-button {
+  min-height: 2.5rem;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-availability-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid #edf2ee;
+  background: var(--owner-panel-muted);
+  padding: 1rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-availability-help > div {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-availability-help > div > p:last-child {
+  margin-top: 0.25rem;
+  color: #52635a;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-availability-loading,
+.owner-dashboard-theme .owner-availability-message {
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+  padding: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-availability-loading-heading,
+.owner-dashboard-theme .owner-availability-loading-stats,
+.owner-dashboard-theme .owner-availability-loading-rows {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-availability-loading-heading {
+  grid-template-columns: minmax(12rem, 0.7fr) minmax(16rem, 1fr) 8rem;
+}
+
+.owner-dashboard-theme .owner-availability-loading-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-availability-loading-rows {
+  margin-top: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-availability-loading span {
+  display: block;
+  height: 1rem;
+  border-radius: 0.35rem;
+  background: #edf2ee;
+}
+
+.owner-dashboard-theme .owner-availability-loading-heading span:first-child {
+  height: 2.25rem;
+}
+
+.owner-dashboard-theme .owner-availability-loading-stats span {
+  height: 4.5rem;
+}
+
+.owner-dashboard-theme .owner-availability-loading-rows span {
+  height: 5rem;
+}
+
+.owner-dashboard-theme .owner-availability-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-color: #f2c6c3;
+  background: #fff8f7;
+}
+
+.owner-dashboard-theme .owner-availability-message h2 {
+  margin-top: 0.25rem;
+  color: #8f2118;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-availability-message p:last-child {
+  margin-top: 0.25rem;
+  color: #a13b31;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 1100px) {
+  .owner-dashboard-theme .owner-availability-court-row {
+    grid-template-columns: minmax(13rem, 1fr) minmax(18rem, 1.4fr);
+  }
+
+  .owner-dashboard-theme .owner-availability-court-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 639px) {
+  .owner-dashboard-theme .owner-availability-context,
+  .owner-dashboard-theme .owner-availability-help,
+  .owner-dashboard-theme .owner-availability-message {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-availability-context-link,
+  .owner-dashboard-theme .owner-availability-help-link {
+    margin-top: 0.25rem;
+  }
+
+  .owner-dashboard-theme .owner-availability-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .owner-dashboard-theme .owner-availability-stat:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-availability-stat:nth-child(n + 3) {
+    border-top: 1px solid #edf2ee;
+  }
+
+  .owner-dashboard-theme .owner-availability-panel-header {
+    display: block;
+  }
+
+  .owner-dashboard-theme .owner-availability-panel-header > :last-child {
+    margin-top: 0.85rem;
+  }
+
+  .owner-dashboard-theme .owner-availability-court-row {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-availability-court-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem 0.75rem;
+  }
+
+  .owner-dashboard-theme .owner-availability-court-actions {
+    grid-column: auto;
+    justify-content: flex-start;
+  }
+
+  .owner-dashboard-theme .owner-availability-loading-heading,
+  .owner-dashboard-theme .owner-availability-loading-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.owner-dashboard-theme .owner-report-controls {
+  display: grid;
+  grid-template-columns: minmax(23rem, 0.72fr) minmax(0, 1.65fr);
+  align-items: center;
+  gap: 2rem 2.25rem;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+  padding: 1.35rem 1.5rem;
+}
+
+.owner-dashboard-theme .owner-report-period-summary {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-period-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.owner-dashboard-theme .owner-report-period-icon {
+  display: inline-flex;
+  flex: 0 0 3.6rem;
+  width: 3.6rem;
+  height: 3.6rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #eaf6ef;
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-report-period-icon .owner-report-control-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.owner-dashboard-theme .owner-report-period-heading-content {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.owner-dashboard-theme .owner-report-period-heading-content h2 {
+  margin: 0;
+  color: var(--sport-navy);
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.owner-dashboard-theme .owner-report-period-date {
+  margin-top: 1.15rem;
+  color: var(--sport-navy);
+  font-size: 1.3rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.owner-dashboard-theme .owner-report-period-description {
+  margin-top: 0.4rem;
+  color: var(--owner-muted-text);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-report-refresh-status {
+  color: var(--sport-green);
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-report-period-mode {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  border: 1px solid #bce6ca;
+  border-radius: 999px;
+  background: #eefaf2;
+  color: #087b3d;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.5rem;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-report-period-field {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-report-period-field > span:first-child,
+.owner-dashboard-theme .owner-report-date-field > span:first-child {
+  color: #52685d;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-report-select-wrap,
+.owner-dashboard-theme .owner-report-date-input-wrap {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-select-wrap > .owner-report-control-icon,
+.owner-dashboard-theme .owner-report-date-input-wrap > .owner-report-control-icon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0.8rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--sport-green);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.owner-dashboard-theme .owner-report-period-field select,
+.owner-dashboard-theme .owner-report-date-field input {
+  width: 100%;
+  min-height: 3rem;
+  min-width: 10.75rem;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.65rem;
+  background: #ffffff;
+  color: var(--sport-navy);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  outline: none;
+  padding: 0 0.75rem 0 2.35rem;
+  text-transform: none;
+}
+
+.owner-dashboard-theme .owner-report-period-field select:focus,
+.owner-dashboard-theme .owner-report-date-field input:focus {
+  border-color: var(--sport-green);
+  box-shadow: 0 0 0 3px var(--sport-focus);
+}
+
+.owner-dashboard-theme .owner-report-period-controls {
+  display: flex;
+  min-width: 0;
+  align-items: flex-end;
+  justify-content: flex-end;
+  border-left: 1px solid var(--owner-border);
+  padding-left: 2.25rem;
+}
+
+.owner-dashboard-theme .owner-report-period-controls.is-custom {
+  display: grid;
+  grid-template-columns: minmax(10.75rem, 1.05fr) minmax(8.75rem, 1fr) auto minmax(8.75rem, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-report-custom-range {
+  display: contents;
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-date-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: #5f7066;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-report-date-separator {
+  display: flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  padding-top: 1.15rem;
+  color: var(--owner-muted-text);
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-report-range-arrow-icon {
+  display: block;
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.owner-dashboard-theme .owner-report-custom-apply {
+  min-width: 7.25rem;
+  min-height: 3rem;
+  align-self: end;
+  justify-self: stretch;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-report-custom-apply .owner-report-control-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.owner-dashboard-theme .owner-report-custom-error {
+  grid-column: 2 / -1;
+  margin: 0;
+  padding-top: 0.1rem;
+  color: #a13b31;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.owner-dashboard-theme .owner-report-export-button {
+  gap: 0.45rem;
+}
+
+.owner-dashboard-theme .owner-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-report-metric {
+  min-width: 0;
+  min-height: 8.75rem;
+  padding: 1.1rem 1.15rem;
+}
+
+.owner-dashboard-theme .owner-report-metric + .owner-report-metric {
+  border-left: 1px solid #edf2ee;
+}
+
+.owner-dashboard-theme .owner-report-metric span {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-section-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.owner-dashboard-theme .owner-report-section-intro h2 {
+  margin-top: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 1.2rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.owner-dashboard-theme .owner-report-section-intro p:last-child {
+  margin-top: 0.3rem;
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-report-summary-period {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--owner-muted-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-report-summary-period > span {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-report-metric-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-report-metric-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.55rem;
+  background: #eef7f1;
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-report-metric-icon svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.owner-dashboard-theme .owner-report-metric strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.85rem;
+  color: var(--sport-navy);
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-report-metric small {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.35rem;
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-report-metric-primary strong,
+.owner-dashboard-theme .owner-report-metric-success strong {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-report-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(20rem, 0.8fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-report-grid-secondary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.owner-dashboard-theme .owner-report-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-report-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #edf2ee;
+  padding: 1.1rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-report-panel-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-direction: column;
+}
+
+.owner-dashboard-theme .owner-report-panel-header h2 {
+  margin-top: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-report-panel-header p:last-child {
+  margin-top: 0.25rem;
+  color: var(--owner-muted-text);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-report-panel-link,
+.owner-dashboard-theme .owner-report-court-link,
+.owner-dashboard-theme .owner-report-follow-up-row > a {
+  flex: 0 0 auto;
+  color: var(--sport-green);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-report-panel-link:hover,
+.owner-dashboard-theme .owner-report-court-link:hover,
+.owner-dashboard-theme .owner-report-follow-up-row > a:hover {
+  color: var(--sport-green-strong);
+}
+
+.owner-dashboard-theme .owner-report-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.5rem;
+  background: #f5f8f6;
+  padding: 0.2rem;
+}
+
+.owner-dashboard-theme .owner-report-segmented-control button {
+  min-height: 1.9rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--owner-muted-text);
+  cursor: pointer;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.3rem 0.55rem;
+}
+
+.owner-dashboard-theme .owner-report-segmented-control button:hover,
+.owner-dashboard-theme .owner-report-segmented-control button:focus-visible {
+  color: var(--sport-green);
+  outline: none;
+}
+
+.owner-dashboard-theme .owner-report-segmented-control button.is-active {
+  background: #ffffff;
+  color: var(--sport-green);
+  box-shadow: 0 1px 2px rgba(9, 36, 25, 0.1);
+}
+
+.owner-dashboard-theme .owner-report-chart-wrap {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-chart-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem 0;
+}
+
+.owner-dashboard-theme .owner-report-chart-summary strong {
+  color: var(--sport-navy);
+  font-size: 1.2rem;
+  font-weight: 750;
+}
+
+.owner-dashboard-theme .owner-report-chart-summary span {
+  color: var(--owner-muted-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.owner-dashboard-theme .owner-report-chart {
+  min-height: 15rem;
+  padding: 1.25rem 1.25rem 1rem;
+}
+
+.owner-dashboard-theme .owner-report-bars {
+  display: grid;
+  height: 12.5rem;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.45rem;
+  border-bottom: 1px solid var(--owner-border);
+  padding: 0 0.15rem;
+}
+
+.owner-dashboard-theme .owner-report-bar-column {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.owner-dashboard-theme .owner-report-bar-track {
+  display: flex;
+  height: 9.5rem;
+  width: 100%;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.owner-dashboard-theme .owner-report-bar-track span {
+  display: block;
+  width: min(1.25rem, 100%);
+  min-height: 0.25rem;
+  border-radius: 0.35rem 0.35rem 0 0;
+  background: var(--sport-green);
+  transition: height 180ms ease, background-color 180ms ease;
+}
+
+.owner-dashboard-theme .owner-report-bar-column:hover .owner-report-bar-track span {
+  background: var(--sport-green-strong);
+}
+
+.owner-dashboard-theme .owner-report-bar-column strong {
+  color: var(--sport-navy);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-report-bar-column small {
+  overflow: hidden;
+  width: 100%;
+  color: var(--owner-muted-text);
+  font-size: 0.625rem;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-report-court-list,
+.owner-dashboard-theme .owner-report-follow-up-list {
+  display: grid;
+}
+
+.owner-dashboard-theme .owner-report-court-head {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1.25fr) minmax(9rem, 1.15fr) minmax(4rem, 0.6fr) minmax(5.75rem, 0.9fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  border-bottom: 1px solid #edf2ee;
+  color: var(--owner-muted-text);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.7rem 1.25rem;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-report-court-row,
+.owner-dashboard-theme .owner-report-follow-up-row {
+  display: grid;
+  align-items: center;
+  gap: 0.85rem;
+  border-bottom: 1px solid #edf2ee;
+  padding: 0.9rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-report-court-row:last-child,
+.owner-dashboard-theme .owner-report-follow-up-row:last-child {
+  border-bottom: 0;
+}
+
+.owner-dashboard-theme .owner-report-court-row {
+  grid-template-columns: minmax(7rem, 1.25fr) minmax(9rem, 1.15fr) minmax(4rem, 0.6fr) minmax(5.75rem, 0.9fr) auto;
+}
+
+.owner-dashboard-theme .owner-report-court-name,
+.owner-dashboard-theme .owner-report-court-utilization,
+.owner-dashboard-theme .owner-report-court-stat,
+.owner-dashboard-theme .owner-report-follow-up-row > div {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-court-name strong,
+.owner-dashboard-theme .owner-report-court-stat strong,
+.owner-dashboard-theme .owner-report-follow-up-row strong {
+  display: block;
+  overflow: hidden;
+  color: var(--sport-navy);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-report-court-name span,
+.owner-dashboard-theme .owner-report-court-stat span,
+.owner-dashboard-theme .owner-report-follow-up-row > div > span {
+  display: block;
+  overflow: hidden;
+  color: var(--owner-muted-text);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-report-progress {
+  height: 0.4rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8efea;
+}
+
+.owner-dashboard-theme .owner-report-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-report-court-utilization strong {
+  display: inline-block;
+  margin-top: 0.35rem;
+  color: var(--sport-green);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-report-court-utilization small {
+  margin-left: 0.35rem;
+  color: var(--owner-muted-text);
+  font-size: 0.625rem;
+}
+
+.owner-dashboard-theme .owner-report-court-name span,
+.owner-dashboard-theme .owner-report-follow-up-row > div > span {
+  margin-top: 0.2rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.owner-dashboard-theme .owner-report-court-stat strong {
+  margin-top: 0.2rem;
+}
+
+.owner-dashboard-theme .owner-report-court-stat:nth-child(2) strong {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-report-outcomes {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 0.15rem 0;
+}
+
+.owner-dashboard-theme .owner-report-outcome-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding: 1rem 1.25rem 0.65rem;
+}
+
+.owner-dashboard-theme .owner-report-outcome-summary strong {
+  color: var(--sport-navy);
+  font-size: 1.45rem;
+  font-weight: 750;
+}
+
+.owner-dashboard-theme .owner-report-outcome-summary span {
+  color: var(--owner-muted-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.owner-dashboard-theme .owner-report-outcome-track {
+  display: flex;
+  height: 0.5rem;
+  overflow: hidden;
+  margin: 0 1.25rem 0.35rem;
+  border-radius: 999px;
+  background: #edf2ee;
+}
+
+.owner-dashboard-theme .owner-report-outcome-segment {
+  display: block;
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-outcome {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+}
+
+.owner-dashboard-theme .owner-report-outcome-dot {
+  display: block;
+  flex: 0 0 auto;
+  height: 0.5rem;
+  width: 0.5rem;
+  margin-top: 0.3rem;
+  border-radius: 999px;
+  background: #aab8ae;
+}
+
+.owner-dashboard-theme .owner-report-outcome-success { background: var(--sport-green); }
+.owner-dashboard-theme .owner-report-outcome-primary { background: #3b82f6; }
+.owner-dashboard-theme .owner-report-outcome-warning { background: #c58a20; }
+.owner-dashboard-theme .owner-report-outcome-muted { background: #aab8ae; }
+.owner-dashboard-theme .owner-report-outcome-pending { background: #6b8fc4; }
+
+.owner-dashboard-theme .owner-report-outcome strong {
+  display: block;
+  color: var(--sport-navy);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-report-outcome p {
+  margin-top: 0.2rem;
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.owner-dashboard-theme .owner-report-follow-up-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.owner-dashboard-theme .owner-report-follow-up-row strong.is-warning {
+  color: #996300;
+}
+
+.owner-dashboard-theme .owner-report-follow-up-row strong.is-success {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-report-empty {
+  display: flex;
+  min-height: 8rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-direction: column;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.owner-dashboard-theme .owner-report-empty p {
+  color: var(--owner-muted-text);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-report-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  border-top: 1px solid var(--owner-border);
+  padding-top: 0.9rem;
+  color: var(--owner-muted-text);
+  font-size: 0.6875rem;
+  line-height: 1.6;
+}
+
+.owner-dashboard-theme .owner-report-footer details {
+  max-width: 48rem;
+}
+
+.owner-dashboard-theme .owner-report-footer summary {
+  color: var(--sport-green);
+  cursor: pointer;
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+.owner-dashboard-theme .owner-report-footer details p {
+  margin-top: 0.35rem;
+}
+
+.owner-dashboard-theme .owner-reports-loading,
+.owner-dashboard-theme .owner-report-message {
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+  padding: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-reports-loading {
+  display: grid;
+  gap: 1rem;
+}
+
+.owner-dashboard-theme .owner-report-loading-heading,
+.owner-dashboard-theme .owner-report-loading-metrics span,
+.owner-dashboard-theme .owner-report-loading-panel {
+  display: block;
+  border-radius: 0.45rem;
+  background: linear-gradient(90deg, #edf2ee 25%, #f7faf8 37%, #edf2ee 63%);
+  background-size: 400% 100%;
+  animation: owner-report-skeleton 1.35s ease-in-out infinite;
+}
+
+.owner-dashboard-theme .owner-report-loading-heading {
+  height: 8rem;
+}
+
+.owner-dashboard-theme .owner-report-loading-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-report-loading-metrics span {
+  height: 7rem;
+}
+
+.owner-dashboard-theme .owner-report-loading-panel {
+  height: 16rem;
+}
+
+@keyframes owner-report-skeleton {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.owner-dashboard-theme .owner-report-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-color: #f2c6c3;
+  background: #fff8f7;
+}
+
+.owner-dashboard-theme .owner-report-message h2 {
+  margin-top: 0.25rem;
+  color: #8f2118;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-report-message p:last-child {
+  margin-top: 0.25rem;
+  color: #a13b31;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 1100px) {
+  .owner-dashboard-theme .owner-report-controls {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls {
+    width: 100%;
+    border-top: 1px solid var(--owner-border);
+    border-left: 0;
+    justify-content: flex-start;
+    padding-top: 1.25rem;
+    padding-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-report-period-field select,
+  .owner-dashboard-theme .owner-report-date-field input {
+    min-width: 0;
+  }
+
+  .owner-dashboard-theme .owner-report-grid,
+  .owner-dashboard-theme .owner-report-grid-secondary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-report-court-row {
+    grid-template-columns: minmax(8rem, 1.2fr) minmax(8rem, 1fr) repeat(2, minmax(4rem, 0.8fr)) auto;
+  }
+
+  .owner-dashboard-theme .owner-report-court-head {
+    grid-template-columns: minmax(8rem, 1.2fr) minmax(8rem, 1fr) repeat(2, minmax(4rem, 0.8fr)) auto;
+  }
+}
+
+@media (max-width: 639px) {
+  .owner-dashboard-theme .owner-report-controls,
+  .owner-dashboard-theme .owner-report-message {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-report-section-intro,
+  .owner-dashboard-theme .owner-report-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-report-period-field {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .owner-dashboard-theme .owner-report-period-field select {
+    flex: 1;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls.is-custom {
+    display: flex;
+    gap: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-report-custom-range {
+    display: grid;
+    width: 100%;
+    align-items: flex-end;
+    gap: 0.75rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .owner-dashboard-theme .owner-report-date-field {
+    min-width: 0;
+  }
+
+  .owner-dashboard-theme .owner-report-date-field input {
+    width: 100%;
+  }
+
+  .owner-dashboard-theme .owner-report-custom-apply {
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+
+  .owner-dashboard-theme .owner-report-custom-error {
+    grid-column: 1 / -1;
+  }
+
+  .owner-dashboard-theme .owner-report-date-separator {
+    display: none;
+  }
+
+  .owner-dashboard-theme .owner-report-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .owner-dashboard-theme .owner-report-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-report-metric:nth-child(n + 3) {
+    border-top: 1px solid #edf2ee;
+  }
+
+  .owner-dashboard-theme .owner-report-metric {
+    min-height: 7.75rem;
+    padding-inline: 0.9rem;
+  }
+
+  .owner-dashboard-theme .owner-report-metric small {
+    white-space: normal;
+  }
+
+  .owner-dashboard-theme .owner-report-panel-header {
+    display: block;
+  }
+
+  .owner-dashboard-theme .owner-report-panel-header > :last-child {
+    display: inline-block;
+    margin-top: 0.75rem;
+  }
+
+  .owner-dashboard-theme .owner-report-panel-actions {
+    display: flex;
+    align-items: flex-start;
+  }
+
+  .owner-dashboard-theme .owner-report-chart-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .owner-dashboard-theme .owner-report-chart {
+    min-height: 13rem;
+    padding-inline: 0.75rem;
+  }
+
+  .owner-dashboard-theme .owner-report-bars {
+    gap: 0.2rem;
+  }
+
+  .owner-dashboard-theme .owner-report-court-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.65rem;
+    padding-inline: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-report-court-head {
+    display: none;
+  }
+
+  .owner-dashboard-theme .owner-report-court-name,
+  .owner-dashboard-theme .owner-report-court-utilization,
+  .owner-dashboard-theme .owner-report-court-link {
+    grid-column: 1 / -1;
+  }
+
+  .owner-dashboard-theme .owner-report-court-stat {
+    grid-column: auto;
+  }
+
+  .owner-dashboard-theme .owner-report-court-link {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .owner-dashboard-theme .owner-report-outcomes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .owner-dashboard-theme .owner-report-outcome {
+    padding-inline: 0.9rem;
+  }
+
+  .owner-dashboard-theme .owner-report-outcome:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-report-outcome:nth-child(n + 3) {
+    border-top: 1px solid #edf2ee;
+  }
+
+  .owner-dashboard-theme .owner-report-follow-up-row {
+    padding-inline: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-reports-loading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-report-loading-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.owner-dashboard-theme .owner-alert {
+  border-radius: var(--owner-radius);
+  box-shadow: none;
+}
+
+.owner-dashboard-theme .owner-status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-status-neutral {
+  border: 1px solid #dce5de;
+  background: #f7faf8;
+  color: #68756d;
+}
+
+.owner-dashboard-theme .owner-status-danger {
+  border: 1px solid #f2c6c3;
+  background: #fdebea;
+  color: #b42318;
+}
+
+.owner-dashboard-theme .owner-status-warning {
+  border: 1px solid #ead9ad;
+  background: #fff5dc;
+  color: #785200;
+}
+
+.owner-dashboard-theme .owner-action-row {
+  display: flex;
+  min-height: 5.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0;
+  color: var(--sport-navy);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.owner-dashboard-theme .owner-action-row:hover {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-action-row strong,
+.owner-dashboard-theme .owner-action-row small {
+  display: block;
+}
+
+.owner-dashboard-theme .owner-action-row strong {
+  font-size: 0.9375rem;
+}
+
+.owner-dashboard-theme .owner-action-row small {
+  margin-top: 0.25rem;
+  color: #68756d;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-action-tile {
+  display: flex;
+  min-height: 6.5rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.625rem;
+  padding: 1rem;
+  color: var(--sport-navy);
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.owner-dashboard-theme .owner-action-tile:hover {
+  border-color: #a9d8b8;
+  background: #f7faf8;
+}
+
+.owner-dashboard-theme .owner-action-tile strong {
+  font-size: 0.9375rem;
+}
+
+.owner-dashboard-theme .owner-action-tile span {
+  color: #68756d;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-empty-icon {
+  display: inline-flex;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cfe5d6;
+  border-radius: 0.625rem;
+  background: #eaf5ee;
+  color: var(--sport-green);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.owner-dashboard-theme .owner-booking-toolbar {
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+  padding: 1rem 1.25rem 0;
+}
+
+.owner-dashboard-theme .owner-booking-toolbar-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+
+.owner-dashboard-theme .owner-booking-filters {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  border-top: 1px solid #edf2ee;
+  padding-top: 0.75rem;
+  scrollbar-width: thin;
+}
+
+.owner-dashboard-theme .owner-booking-filter {
+  display: inline-flex;
+  min-height: 2.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+  padding: 0.55rem 0.75rem;
+  color: #68756d;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.owner-dashboard-theme .owner-booking-filter:hover {
+  background: #f7faf8;
+  color: var(--sport-navy);
+}
+
+.owner-dashboard-theme .owner-booking-filter[aria-selected="true"] {
+  background: var(--sport-green-soft);
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-booking-filter-count {
+  display: inline-flex;
+  min-width: 1.35rem;
+  min-height: 1.35rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #edf2ee;
+  color: #68756d;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-booking-filter[aria-selected="true"] .owner-booking-filter-count {
+  background: #ffffff;
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-booking-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-booking-record {
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: #ffffff;
+  box-shadow: var(--sport-shadow);
+  padding: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-booking-record:hover {
+  border-color: #c4d9ca;
+}
+
+.owner-dashboard-theme .owner-booking-record-main {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1.25fr) minmax(9rem, 0.9fr) minmax(13rem, 1.25fr) minmax(8.5rem, 0.85fr) auto;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-booking-player {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-booking-avatar {
+  display: inline-flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--sport-green-soft);
+  color: var(--sport-green);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-booking-code,
+.owner-dashboard-theme .owner-booking-label {
+  color: #68756d;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-booking-code {
+  color: var(--sport-green);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.045em;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-booking-total {
+  text-align: right;
+}
+
+.owner-dashboard-theme .owner-booking-record-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  border-top: 1px solid #edf2ee;
+  padding-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-booking-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.owner-dashboard-theme .owner-booking-status,
+.owner-dashboard-theme .owner-booking-checkin {
+  display: inline-flex;
+  min-height: 1.9rem;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.owner-dashboard-theme .owner-booking-status-neutral {
+  background: #f1f4f2;
+  color: #5c6961;
+}
+
+.owner-dashboard-theme .owner-booking-status-success {
+  background: #e7f6ed;
+  color: #087a3e;
+}
+
+.owner-dashboard-theme .owner-booking-status-warning {
+  background: #fff5dc;
+  color: #996300;
+}
+
+.owner-dashboard-theme .owner-booking-status-danger {
+  background: #fdebea;
+  color: #b42318;
+}
+
+.owner-dashboard-theme .owner-booking-status-info {
+  background: #e9f1ff;
+  color: #2458a6;
+}
+
+.owner-dashboard-theme .owner-booking-checkin {
+  background: #e7f6ed;
+  color: #087a3e;
+}
+
+.owner-dashboard-theme .owner-booking-loading {
+  color: #68756d;
+}
+
+.owner-dashboard-theme .owner-photo-manager {
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: var(--owner-panel-muted);
+  padding: 1rem;
+}
+
+.owner-dashboard-theme .owner-photo-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.6rem;
+  border-radius: 999px;
+  background: #edf2ee;
+  color: #68756d;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-photo-count-ready {
+  background: #e7f6ed;
+  color: #087a3e;
+}
+
+.owner-dashboard-theme .owner-photo-count-required {
+  background: #fdebea;
+  color: #b42318;
+}
+
+.owner-dashboard-theme .owner-photo-upload-button {
+  display: inline-flex;
+  min-height: 2.5rem;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  background: var(--sport-green);
+  color: #ffffff;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  transition: background-color 160ms ease;
+}
+
+.owner-dashboard-theme .owner-photo-upload-button:hover {
+  background: #066b36;
+}
+
+.owner-dashboard-theme .owner-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-photo-tile {
+  overflow: hidden;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.625rem;
+  background: #ffffff;
+}
+
+.owner-dashboard-theme .owner-photo-image {
+  display: block;
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  object-fit: cover;
+}
+
+.owner-dashboard-theme .owner-photo-tile-footer {
+  display: flex;
+  min-height: 4.5rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-photo-tile-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.owner-dashboard-theme .owner-photo-action {
+  display: inline-flex;
+  min-height: 1.9rem;
+  cursor: pointer;
+  align-items: center;
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-photo-action-replace {
+  border: 1px solid #cfe5d6;
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-photo-action-replace:hover {
+  background: #eaf5ee;
+}
+
+.owner-dashboard-theme .owner-photo-action-remove {
+  border: 1px solid #f2c6c3;
+  background: #ffffff;
+  color: #b42318;
+}
+
+.owner-dashboard-theme .owner-photo-action-remove:hover {
+  background: #fdebea;
+}
+
+.owner-dashboard-theme .owner-photo-add {
+  display: flex;
+  min-height: 100%;
+  aspect-ratio: 4 / 3;
+  cursor: pointer;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #b7cfc0;
+  border-radius: 0.625rem;
+  background: #ffffff;
+  text-align: center;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.owner-dashboard-theme .owner-photo-add:hover {
+  border-color: var(--sport-green);
+  background: #f0faf3;
+}
+
+.owner-dashboard-theme .owner-photo-add-icon {
+  display: inline-flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  background: #eaf5ee;
+  color: var(--sport-green);
+}
+
+@media (max-width: 1023px) {
+  .owner-dashboard-theme .owner-booking-record-main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-booking-player {
+    grid-column: 1 / -1;
+  }
+
+  .owner-dashboard-theme .owner-booking-total {
+    text-align: left;
+  }
+}
+
+@media (max-width: 639px) {
+  .owner-dashboard-theme .owner-booking-toolbar {
+    padding-inline: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-booking-record {
+    padding: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-booking-record-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-booking-record-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-booking-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .owner-dashboard-theme .owner-photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .owner-dashboard-theme .owner-photo-tile-footer {
+    display: block;
+  }
+
+  .owner-dashboard-theme .owner-photo-tile-actions {
+    justify-content: flex-start;
+    margin-top: 0.65rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .owner-dashboard-theme .owner-photo-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.owner-dashboard-theme .sport-primary-button,
+.owner-dashboard-theme .owner-primary-button,
+.owner-dashboard-theme .sport-secondary-button,
+.owner-dashboard-theme .owner-secondary-button {
+  border-radius: 0.5rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .sport-input,
+.owner-dashboard-theme .calendar-field input,
+.owner-dashboard-theme .calendar-field select,
+.owner-dashboard-theme .calendar-field textarea {
+  border-radius: 0.5rem;
+}
+
+.owner-dashboard-theme .owner-sidebar {
+  background: #ffffff;
+}
+
+@media (max-width: 1023px) {
+  .owner-dashboard-main {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+  }
+}
+
 .dashboard-settings-tabs {
   overflow-x: auto;
   scrollbar-width: thin;
@@ -365,6 +3399,574 @@ a {
 .dashboard-settings-tabs > div > button[aria-current="page"] {
   background: var(--sport-green-soft);
   color: var(--sport-green);
+}
+
+/* Owner settings are account-focused; operational controls remain linked to
+ * the workspaces that can explain and audit their effect on bookings. */
+.owner-dashboard-theme .owner-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(14rem, 16rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-settings-nav,
+.owner-dashboard-theme .owner-settings-card,
+.owner-dashboard-theme .owner-settings-error {
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: var(--owner-panel);
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-settings-nav {
+  position: sticky;
+  top: 5.5rem;
+  overflow: hidden;
+}
+
+.owner-dashboard-theme .owner-settings-nav-heading {
+  border-bottom: 1px solid #edf2ee;
+  padding: 1.1rem 1rem 1rem;
+}
+
+.owner-dashboard-theme .owner-settings-nav-heading > p:last-child {
+  margin-top: 0.35rem;
+  color: #68756d;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-settings-nav-list {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.65rem;
+}
+
+.owner-dashboard-theme .owner-settings-nav-item {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+  padding: 0.7rem;
+  text-align: left;
+  color: #68756d;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.owner-dashboard-theme .owner-settings-nav-item:hover {
+  border-color: #d9ece0;
+  background: #f7faf8;
+  color: var(--sport-navy);
+}
+
+.owner-dashboard-theme .owner-settings-nav-item.is-active {
+  border-color: #c8e6d2;
+  background: var(--sport-green-soft);
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-settings-nav-icon {
+  display: inline-flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.45rem;
+  background: #f1f5f2;
+  color: #829188;
+}
+
+.owner-dashboard-theme .owner-settings-nav-item.is-active .owner-settings-nav-icon {
+  background: #ffffff;
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-settings-nav-item strong,
+.owner-dashboard-theme .owner-settings-nav-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.owner-dashboard-theme .owner-settings-nav-item strong {
+  color: currentColor;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-settings-nav-item small {
+  margin-top: 0.2rem;
+  color: #829188;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.owner-dashboard-theme .owner-settings-nav-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  border-top: 1px solid #edf2ee;
+  padding: 0.9rem 1rem 1rem;
+}
+
+.owner-dashboard-theme .owner-settings-nav-note > span:last-child {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-settings-nav-note strong {
+  color: var(--sport-navy);
+  font-size: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-settings-nav-note small {
+  color: #829188;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.owner-dashboard-theme .owner-settings-status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: 0.25rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--sport-green);
+  box-shadow: 0 0 0 4px var(--sport-green-soft);
+}
+
+.owner-dashboard-theme .owner-settings-content {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-settings-unsaved {
+  margin-bottom: 0.85rem;
+  border: 1px solid #edd7a2;
+  border-radius: 0.55rem;
+  background: #fff9e8;
+  padding: 0.75rem 0.9rem;
+  color: #795a11;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.owner-dashboard-theme .owner-settings-card {
+  padding: 1.35rem 1.5rem;
+}
+
+.owner-dashboard-theme .owner-settings-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #edf2ee;
+  padding-bottom: 1.1rem;
+}
+
+.owner-dashboard-theme .owner-settings-card-header h2 {
+  color: var(--sport-navy);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.owner-dashboard-theme .owner-settings-card-header p {
+  max-width: 42rem;
+  margin-top: 0.35rem;
+  color: #68756d;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.owner-dashboard-theme .owner-settings-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  padding-top: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-settings-field {
+  display: block;
+  min-width: 0;
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-settings-field > input,
+.owner-dashboard-theme .owner-settings-readonly {
+  display: flex;
+  width: 100%;
+  min-height: 2.75rem;
+  align-items: center;
+  margin-top: 0.45rem;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.5rem;
+  background: #ffffff;
+  padding: 0.65rem 0.8rem;
+  color: var(--sport-navy);
+  font-size: 0.875rem;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.owner-dashboard-theme .owner-settings-readonly {
+  background: var(--owner-panel-muted);
+  color: #68756d;
+}
+
+.owner-dashboard-theme .owner-settings-field > input:focus {
+  border-color: var(--sport-green);
+  box-shadow: 0 0 0 3px var(--sport-focus);
+}
+
+.owner-dashboard-theme .owner-settings-field > input.has-error {
+  border-color: #dc9b9b;
+}
+
+.owner-dashboard-theme .owner-settings-error-text {
+  display: block;
+  margin-top: 0.35rem;
+  color: #b42318;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.owner-dashboard-theme .owner-settings-attention {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  align-items: end;
+  gap: 1rem;
+  margin-top: 1rem;
+  border: 1px solid #edd7a2;
+  border-radius: 0.55rem;
+  background: #fff9e8;
+  padding: 0.9rem;
+}
+
+.owner-dashboard-theme .owner-settings-attention > p {
+  color: #795a11;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-settings-status-note {
+  margin-top: 1rem;
+  border: 1px solid;
+  border-radius: 0.55rem;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-settings-status-note.success {
+  border-color: #bde5cb;
+  background: #f0fbf4;
+  color: #166534;
+}
+
+.owner-dashboard-theme .owner-settings-status-note.warning {
+  border-color: #edd7a2;
+  background: #fff9e8;
+  color: #795a11;
+}
+
+.owner-dashboard-theme .owner-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+  border-top: 1px solid #edf2ee;
+  padding-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-settings-text-button {
+  margin-top: 0.65rem;
+  color: var(--sport-green);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-settings-text-button:hover {
+  color: var(--sport-green-strong);
+}
+
+.owner-dashboard-theme .owner-settings-password-grid {
+  display: grid;
+  gap: 1rem;
+  padding-top: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-settings-password-requirements {
+  margin-top: 1rem;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.55rem;
+  background: var(--owner-panel-muted);
+  padding: 0.9rem;
+}
+
+.owner-dashboard-theme .owner-settings-password-requirements > strong {
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-settings-password-requirements > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  margin-top: 0.65rem;
+}
+
+.owner-dashboard-theme .owner-settings-password-requirements span {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #68756d;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.owner-dashboard-theme .owner-settings-password-requirements b {
+  display: inline-flex;
+  height: 1.2rem;
+  width: 1.2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #9aa69e;
+  font-size: 0.55rem;
+}
+
+.owner-dashboard-theme .owner-settings-password-requirements span.met {
+  color: #166534;
+}
+
+.owner-dashboard-theme .owner-settings-password-requirements span.met b {
+  background: #dff4e6;
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-settings-switch-list {
+  padding-top: 0.35rem;
+}
+
+.owner-dashboard-theme .owner-settings-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #edf2ee;
+  padding: 1rem 0;
+}
+
+.owner-dashboard-theme .owner-settings-switch-row:last-child {
+  border-bottom: 0;
+}
+
+.owner-dashboard-theme .owner-settings-switch-row strong {
+  color: var(--sport-navy);
+  font-size: 0.875rem;
+}
+
+.owner-dashboard-theme .owner-settings-switch-row p {
+  max-width: 42rem;
+  margin-top: 0.25rem;
+  color: #68756d;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-settings-switch {
+  position: relative;
+  height: 1.75rem;
+  width: 3rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #cbd5cf;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.owner-dashboard-theme .owner-settings-switch:focus-visible {
+  box-shadow: 0 0 0 3px var(--sport-focus);
+}
+
+.owner-dashboard-theme .owner-settings-switch.is-on {
+  background: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-settings-switch span {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.25rem;
+  height: 1.25rem;
+  width: 1.25rem;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(16, 32, 22, 0.18);
+  transition: left 160ms ease;
+}
+
+.owner-dashboard-theme .owner-settings-switch.is-on span {
+  left: 1.5rem;
+}
+
+.owner-dashboard-theme .owner-settings-operation-list {
+  display: grid;
+  gap: 0.55rem;
+  padding-top: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-settings-operation-link {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.55rem;
+  padding: 0.8rem;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.owner-dashboard-theme .owner-settings-operation-link:hover {
+  border-color: #b9dfc5;
+  background: #f7fcf8;
+}
+
+.owner-dashboard-theme .owner-settings-operation-icon {
+  display: inline-flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: var(--sport-green-soft);
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-settings-operation-link strong,
+.owner-dashboard-theme .owner-settings-operation-link small {
+  display: block;
+}
+
+.owner-dashboard-theme .owner-settings-operation-link strong {
+  color: var(--sport-navy);
+  font-size: 0.875rem;
+}
+
+.owner-dashboard-theme .owner-settings-operation-link small {
+  margin-top: 0.2rem;
+  color: #68756d;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-settings-operation-arrow {
+  color: #829188;
+  font-size: 1.15rem;
+}
+
+.owner-dashboard-theme .owner-settings-operation-note {
+  margin-top: 1rem;
+  border-left: 3px solid #b9dfc5;
+  background: var(--owner-panel-muted);
+  padding: 0.8rem 0.9rem;
+}
+
+.owner-dashboard-theme .owner-settings-operation-note strong {
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-settings-operation-note p {
+  margin-top: 0.25rem;
+  color: #68756d;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-settings-error {
+  padding: 1.5rem;
+  color: #b42318;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+@media (max-width: 1023px) {
+  .owner-dashboard-theme .owner-settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-settings-nav {
+    position: static;
+  }
+
+  .owner-dashboard-theme .owner-settings-nav-list {
+    display: flex;
+    overflow-x: auto;
+    gap: 0.4rem;
+    scrollbar-width: thin;
+  }
+
+  .owner-dashboard-theme .owner-settings-nav-item {
+    min-width: 13rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .owner-dashboard-theme .owner-settings-card {
+    padding: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-settings-card-header {
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-settings-card-header .owner-secondary-button {
+    width: 100%;
+  }
+
+  .owner-dashboard-theme .owner-settings-field-grid,
+  .owner-dashboard-theme .owner-settings-password-requirements > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-settings-attention {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-settings-switch-row {
+    align-items: flex-start;
+  }
+
+  .owner-dashboard-theme .owner-settings-actions {
+    flex-direction: column-reverse;
+  }
+
+  .owner-dashboard-theme .owner-settings-actions > button {
+    width: 100%;
+  }
+
+  .owner-dashboard-theme .owner-settings-operation-link {
+    grid-template-columns: 2.25rem minmax(0, 1fr) auto;
+    gap: 0.65rem;
+    padding: 0.7rem;
+  }
+
+  .owner-dashboard-theme .owner-settings-operation-icon {
+    height: 2.25rem;
+    width: 2.25rem;
+  }
 }
 
 @media (max-width: 1023px) {
@@ -418,4 +4020,1046 @@ a {
   margin: 7px auto;
   border-radius: 50%;
   background: #ffffff;
+}
+
+/* Owner refunds: one operational workspace with compact, decision-ready rows. */
+.owner-dashboard-theme .owner-refunds-page {
+  --owner-refund-muted: #68756d;
+  --owner-refund-line: #e6ede8;
+}
+
+.owner-dashboard-theme .owner-refund-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: var(--owner-panel);
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-refund-summary-item {
+  position: relative;
+  display: flex;
+  min-height: 7.25rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 1.25rem 1.5rem 1.2rem;
+}
+
+.owner-dashboard-theme .owner-refund-summary-item + .owner-refund-summary-item {
+  border-left: 1px solid var(--owner-refund-line);
+}
+
+.owner-dashboard-theme .owner-refund-summary-item::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.2rem;
+  background: #dce5de;
+  content: "";
+}
+
+.owner-dashboard-theme .owner-refund-summary-warning::before {
+  background: #d99700;
+}
+
+.owner-dashboard-theme .owner-refund-summary-success::before {
+  background: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-refund-summary-info::before {
+  background: #416fbe;
+}
+
+.owner-dashboard-theme .owner-refund-summary-label,
+.owner-dashboard-theme .owner-refund-label,
+.owner-dashboard-theme .owner-refund-fact > span,
+.owner-dashboard-theme .owner-refund-history > div > span {
+  color: var(--owner-refund-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-refund-summary-item strong {
+  color: var(--sport-navy);
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.owner-dashboard-theme .owner-refund-summary-item > span:last-child {
+  color: var(--owner-refund-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-refund-summary-warning strong {
+  color: #8a5900;
+}
+
+.owner-dashboard-theme .owner-refund-workspace {
+  overflow: hidden;
+  border: 1px solid var(--owner-border);
+  border-radius: var(--owner-radius);
+  background: var(--owner-panel);
+  box-shadow: var(--sport-shadow);
+}
+
+.owner-dashboard-theme .owner-refund-workspace-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.35rem 1.5rem 1.15rem;
+}
+
+.owner-dashboard-theme .owner-refund-workspace-header h2 {
+  margin-top: 0.3rem;
+  color: var(--sport-navy);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.owner-dashboard-theme .owner-refund-workspace-header p:last-child {
+  margin-top: 0.35rem;
+  color: var(--owner-refund-muted);
+  font-size: 0.875rem;
+}
+
+.owner-dashboard-theme .owner-refund-count {
+  flex: 0 0 auto;
+  border: 1px solid var(--owner-border);
+  border-radius: 999px;
+  background: #f7faf8;
+  padding: 0.4rem 0.7rem;
+  color: var(--owner-refund-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-refund-filters {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  border-top: 1px solid var(--owner-refund-line);
+  border-bottom: 1px solid var(--owner-refund-line);
+  padding: 0 1.25rem;
+  scrollbar-width: thin;
+}
+
+.owner-dashboard-theme .owner-refund-filter {
+  display: inline-flex;
+  min-height: 3.25rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 2px solid transparent;
+  padding: 0.7rem 0.75rem;
+  color: var(--owner-refund-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.owner-dashboard-theme .owner-refund-filter:hover {
+  background: #f7faf8;
+  color: var(--sport-navy);
+}
+
+.owner-dashboard-theme .owner-refund-filter[aria-selected="true"] {
+  border-bottom-color: var(--sport-green);
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-refund-filter-count {
+  display: inline-flex;
+  min-width: 1.35rem;
+  min-height: 1.35rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #edf2ee;
+  color: var(--owner-refund-muted);
+  font-size: 0.6875rem;
+}
+
+.owner-dashboard-theme .owner-refund-filter[aria-selected="true"] .owner-refund-filter-count {
+  background: var(--sport-green-soft);
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-refund-list {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.owner-dashboard-theme .owner-refund-record {
+  border: 1px solid var(--owner-border);
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(16, 32, 22, 0.035), 0 5px 16px rgba(16, 32, 22, 0.035);
+  padding: 1.25rem 1.35rem;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.owner-dashboard-theme .owner-refund-record:hover {
+  border-color: #c4d9ca;
+  box-shadow: 0 2px 4px rgba(16, 32, 22, 0.04), 0 9px 22px rgba(16, 32, 22, 0.055);
+}
+
+.owner-dashboard-theme .owner-refund-record-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--owner-refund-line);
+  padding-bottom: 1.1rem;
+}
+
+.owner-dashboard-theme .owner-refund-primary {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1.1fr) minmax(13rem, 0.9fr);
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.owner-dashboard-theme .owner-refund-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.owner-dashboard-theme .owner-refund-avatar {
+  display: inline-flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--sport-green-soft);
+  color: var(--sport-green);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-refund-code {
+  overflow: hidden;
+  color: var(--sport-green);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-refund-identity h3 {
+  margin-top: 0.2rem;
+  overflow: hidden;
+  color: var(--sport-navy);
+  font-size: 1.125rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-refund-identity > div > p:last-child,
+.owner-dashboard-theme .owner-refund-schedule > span:last-child {
+  margin-top: 0.2rem;
+  color: var(--owner-refund-muted);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-refund-schedule,
+.owner-dashboard-theme .owner-refund-status-block,
+.owner-dashboard-theme .owner-refund-total {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-refund-financial {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+  border-left: 1px solid var(--owner-refund-line);
+  padding-left: 1.5rem;
+}
+
+.owner-dashboard-theme .owner-refund-schedule strong,
+.owner-dashboard-theme .owner-refund-total > strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--sport-navy);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.owner-dashboard-theme .owner-refund-total {
+  text-align: right;
+}
+
+.owner-dashboard-theme .owner-refund-status-block .owner-refund-status {
+  margin-top: 0.45rem;
+}
+
+.owner-dashboard-theme .owner-refund-total > strong {
+  color: var(--sport-green);
+  font-size: 1.15rem;
+}
+
+.owner-dashboard-theme .owner-refund-status {
+  display: inline-flex;
+  min-height: 1.8rem;
+  align-items: center;
+  margin-top: 0.5rem;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.owner-dashboard-theme .owner-refund-status-success {
+  background: #e7f6ed;
+  color: #087a3e;
+}
+
+.owner-dashboard-theme .owner-refund-status-warning {
+  background: #fff5dc;
+  color: #8a5900;
+}
+
+.owner-dashboard-theme .owner-refund-status-danger {
+  background: #fdebea;
+  color: #b42318;
+}
+
+.owner-dashboard-theme .owner-refund-status-neutral {
+  background: #f1f4f2;
+  color: #5c6961;
+}
+
+.owner-dashboard-theme .owner-refund-facts {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.8fr) minmax(9rem, 0.9fr) minmax(9rem, 0.9fr) minmax(15rem, 1.6fr);
+  margin-top: 1.25rem;
+  border-radius: 0.625rem;
+  background: #f7faf8;
+  padding: 0.9rem 1rem;
+}
+
+.owner-dashboard-theme .owner-refund-fact {
+  min-width: 0;
+  padding-right: 1rem;
+}
+
+.owner-dashboard-theme .owner-refund-fact + .owner-refund-fact {
+  border-left: 1px solid var(--owner-refund-line);
+  padding-left: 1rem;
+}
+
+.owner-dashboard-theme .owner-refund-fact strong {
+  display: block;
+  margin-top: 0.35rem;
+  overflow-wrap: anywhere;
+  color: var(--sport-navy);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-refund-fact strong.is-emphasis {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-refund-policy-note {
+  margin-top: 1rem;
+  border-left: 3px solid #b9d7c2;
+  background: transparent;
+  padding: 0.25rem 0.9rem;
+}
+
+.owner-dashboard-theme .owner-refund-policy-note > span {
+  color: var(--owner-refund-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.owner-dashboard-theme .owner-refund-policy-note p {
+  margin-top: 0.25rem;
+  color: #435247;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.owner-dashboard-theme .owner-refund-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 1.05fr);
+  align-items: start;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--owner-refund-line);
+  padding-top: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-refund-action-copy h4 {
+  margin-top: 0.3rem;
+  color: var(--sport-navy);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-refund-action-copy > p:last-child {
+  max-width: 34rem;
+  margin-top: 0.35rem;
+  color: var(--owner-refund-muted);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.owner-dashboard-theme .owner-refund-action-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-refund-note-field {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-refund-note-field textarea {
+  min-height: 4.25rem;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--owner-border);
+  border-radius: 0.5rem;
+  background: #ffffff;
+  padding: 0.65rem 0.75rem;
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.owner-dashboard-theme .owner-refund-note-field textarea:focus {
+  border-color: var(--sport-green);
+  box-shadow: 0 0 0 3px var(--sport-focus);
+}
+
+.owner-dashboard-theme .owner-refund-note-field small {
+  color: var(--owner-refund-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.owner-dashboard-theme .owner-refund-note-field textarea:not(:placeholder-shown) + small {
+  color: var(--sport-green);
+}
+
+.owner-dashboard-theme .owner-refund-action-form > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.owner-dashboard-theme .owner-refund-history {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(12rem, 1fr) minmax(10rem, 0.8fr);
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--owner-refund-line);
+  padding-top: 1rem;
+}
+
+.owner-dashboard-theme .owner-refund-history > div {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-refund-history > div + div {
+  border-left: 1px solid var(--owner-refund-line);
+  padding-left: 1.25rem;
+}
+
+.owner-dashboard-theme .owner-refund-history strong {
+  display: block;
+  margin-top: 0.35rem;
+  overflow-wrap: anywhere;
+  color: var(--sport-navy);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.owner-dashboard-theme .owner-refund-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 0 1.5rem;
+  padding: 2.5rem 0;
+}
+
+.owner-dashboard-theme .owner-refund-empty-mark {
+  position: relative;
+  display: inline-flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--sport-green-soft);
+  color: var(--sport-green);
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+
+.owner-dashboard-theme .owner-refund-empty-mark::after {
+  width: 0.75rem;
+  height: 0.4rem;
+  border-bottom: 2px solid var(--sport-green);
+  border-left: 2px solid var(--sport-green);
+  content: "";
+  transform: translateY(-0.1rem) rotate(-45deg);
+}
+
+.owner-dashboard-theme .owner-refund-empty h3 {
+  color: var(--sport-navy);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.owner-dashboard-theme .owner-refund-empty p {
+  margin-top: 0.25rem;
+  color: var(--owner-refund-muted);
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-refund-loading {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 0.8fr 1fr;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.owner-dashboard-theme .owner-refund-loading span {
+  display: block;
+  height: 5rem;
+  border-radius: 0.5rem;
+  background: #edf2ee;
+  animation: owner-refund-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.owner-dashboard-theme .owner-refund-loading span:nth-child(2) {
+  animation-delay: 100ms;
+}
+
+.owner-dashboard-theme .owner-refund-loading span:nth-child(3) {
+  animation-delay: 200ms;
+}
+
+.owner-dashboard-theme .owner-refund-loading span:nth-child(4) {
+  animation-delay: 300ms;
+}
+
+@keyframes owner-refund-pulse {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 1023px) {
+  .owner-dashboard-theme .owner-refund-record-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-refund-financial {
+    border-top: 1px solid var(--owner-refund-line);
+    border-left: 0;
+    padding-top: 1rem;
+    padding-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-refund-total {
+    text-align: left;
+  }
+
+  .owner-dashboard-theme .owner-refund-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 0;
+  }
+
+  .owner-dashboard-theme .owner-refund-fact:nth-child(3) {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-refund-fact:nth-child(3),
+  .owner-dashboard-theme .owner-refund-fact:nth-child(4) {
+    border-top: 1px solid var(--owner-refund-line);
+    padding-top: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-fact:nth-child(4) {
+    padding-left: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-action {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .owner-dashboard-theme .owner-refund-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-refund-summary-item {
+    min-height: 5.75rem;
+    padding: 1rem 1.25rem 1rem 1.4rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-summary-item + .owner-refund-summary-item {
+    border-top: 1px solid var(--owner-refund-line);
+    border-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-refund-workspace-header {
+    flex-direction: column;
+    padding-inline: 1.1rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-filters {
+    padding-inline: 0.85rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-list {
+    padding-inline: 1.1rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-record {
+    padding: 1.1rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-primary,
+  .owner-dashboard-theme .owner-refund-facts,
+  .owner-dashboard-theme .owner-refund-history {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-refund-financial {
+    align-items: flex-start;
+    flex-direction: column-reverse;
+    gap: 0.9rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-total > strong {
+    display: inline-block;
+    margin-right: 0.5rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-fact,
+  .owner-dashboard-theme .owner-refund-fact:nth-child(4),
+  .owner-dashboard-theme .owner-refund-history > div + div {
+    border-top: 1px solid var(--owner-refund-line);
+    border-left: 0;
+    padding-top: 0.85rem;
+    padding-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-refund-fact:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .owner-dashboard-theme .owner-refund-history {
+    gap: 0.85rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-action-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .owner-dashboard-theme .owner-refund-action-form > button {
+    width: 100%;
+  }
+
+  .owner-dashboard-theme .owner-refund-empty {
+    align-items: flex-start;
+    margin-inline: 1.1rem;
+    padding-block: 2rem;
+  }
+
+  .owner-dashboard-theme .owner-refund-loading {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding-inline: 1.1rem;
+  }
+}
+
+/* Reports use a single reading order: controls, snapshot, trend, inventory, then actions. */
+.owner-dashboard-theme .owner-reports-page {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.owner-dashboard-theme .owner-reports-page .owner-page-header {
+  margin-bottom: 0;
+}
+
+.owner-dashboard-theme .owner-report-controls {
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 1rem 2rem;
+  padding: 1rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-report-period-icon {
+  flex-basis: 2.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.owner-dashboard-theme .owner-report-period-icon .owner-report-control-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.owner-dashboard-theme .owner-report-period-heading-content h2 {
+  font-size: 1.125rem;
+  line-height: 1.25;
+}
+
+.owner-dashboard-theme .owner-report-period-date {
+  margin-top: 0.7rem;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.owner-dashboard-theme .owner-report-period-description {
+  max-width: 34rem;
+  margin-top: 0.3rem;
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-report-period-controls {
+  min-height: 4.75rem;
+  align-items: flex-end;
+  padding-left: 2rem;
+}
+
+.owner-dashboard-theme .owner-report-period-controls.is-custom {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto minmax(0, 1fr) minmax(5.75rem, auto);
+  gap: 0.6rem;
+  justify-content: stretch;
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-period-field,
+.owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-date-field,
+.owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-date-input-wrap {
+  min-width: 0;
+  width: 100%;
+}
+
+.owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-period-field select,
+.owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-date-field input {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-custom-apply {
+  width: 100%;
+  min-width: 5.75rem;
+  padding-inline: 0.7rem;
+}
+
+.owner-dashboard-theme .owner-report-period-controls:not(.is-custom) .owner-report-period-field {
+  max-width: 26rem;
+  margin-left: auto;
+}
+
+.owner-dashboard-theme .owner-report-period-field select,
+.owner-dashboard-theme .owner-report-date-field input {
+  min-height: 2.75rem;
+  border-radius: 0.55rem;
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-report-summary-section {
+  min-width: 0;
+}
+
+.owner-dashboard-theme .owner-report-section-intro {
+  margin-bottom: 0.75rem;
+}
+
+.owner-dashboard-theme .owner-report-section-intro h2 {
+  font-size: 1.125rem;
+}
+
+.owner-dashboard-theme .owner-report-metrics {
+  box-shadow: 0 1px 2px rgba(16, 32, 22, 0.04);
+}
+
+.owner-dashboard-theme .owner-report-metric {
+  min-height: 7.75rem;
+  padding: 1rem 1.1rem;
+}
+
+.owner-dashboard-theme .owner-report-metric strong {
+  margin-top: 0.7rem;
+  font-size: 1.3rem;
+}
+
+.owner-dashboard-theme .owner-report-metric small {
+  min-height: 2.25em;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  white-space: normal;
+}
+
+.owner-dashboard-theme .owner-report-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.owner-dashboard-theme .owner-report-stack > .owner-report-panel {
+  width: 100%;
+}
+
+.owner-dashboard-theme .owner-report-panel {
+  box-shadow: 0 1px 2px rgba(16, 32, 22, 0.04);
+}
+
+.owner-dashboard-theme .owner-report-panel-header {
+  min-height: 4.75rem;
+  align-items: center;
+  padding: 1rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-report-panel-header h2 {
+  font-size: 1.0625rem;
+}
+
+.owner-dashboard-theme .owner-report-chart {
+  min-height: 17.5rem;
+  overflow-x: auto;
+  padding: 1.1rem 1.25rem 1rem;
+}
+
+.owner-dashboard-theme .owner-report-bars {
+  height: 14rem;
+  min-width: 42rem;
+}
+
+.owner-dashboard-theme .owner-report-bar-track {
+  height: 10.75rem;
+}
+
+.owner-dashboard-theme .owner-report-court-list {
+  width: 100%;
+}
+
+.owner-dashboard-theme .owner-report-court-head,
+.owner-dashboard-theme .owner-report-court-row {
+  grid-template-columns: minmax(11rem, 1.2fr) minmax(16rem, 1.8fr) minmax(6rem, 0.65fr) minmax(9rem, 0.9fr) auto;
+}
+
+.owner-dashboard-theme .owner-report-court-head {
+  gap: 1rem;
+  padding: 0.7rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-report-court-row {
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.owner-dashboard-theme .owner-report-court-name strong,
+.owner-dashboard-theme .owner-report-court-stat strong {
+  font-size: 0.8125rem;
+}
+
+.owner-dashboard-theme .owner-report-court-stat:last-of-type strong {
+  overflow-wrap: anywhere;
+}
+
+.owner-dashboard-theme .owner-report-grid-secondary {
+  gap: 1.5rem;
+}
+
+.owner-dashboard-theme .owner-report-outcomes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.owner-dashboard-theme .owner-report-outcome {
+  border-left: 1px solid #edf2ee;
+}
+
+.owner-dashboard-theme .owner-report-outcome:nth-child(3n + 1) {
+  border-left: 0;
+}
+
+.owner-dashboard-theme .owner-report-outcome:nth-child(n + 4) {
+  border-top: 1px solid #edf2ee;
+}
+
+.owner-dashboard-theme .owner-report-footer {
+  margin-top: -0.5rem;
+}
+
+@media (max-width: 980px) {
+  .owner-dashboard-theme .owner-report-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls {
+    min-height: 0;
+    border-top: 1px solid var(--owner-border);
+    border-left: 0;
+    padding-top: 1rem;
+    padding-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls.is-custom {
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-period-field {
+    width: 100%;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-custom-range {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-date-separator {
+    display: none;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-custom-apply,
+  .owner-dashboard-theme .owner-report-period-controls.is-custom .owner-report-custom-error {
+    grid-column: 1 / -1;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls:not(.is-custom) .owner-report-period-field {
+    width: min(100%, 26rem);
+    margin-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-report-court-head,
+  .owner-dashboard-theme .owner-report-court-row {
+    grid-template-columns: minmax(9rem, 1.1fr) minmax(12rem, 1.6fr) minmax(5rem, 0.65fr) minmax(8rem, 0.9fr) auto;
+  }
+}
+
+@media (max-width: 639px) {
+  .owner-dashboard-theme .owner-reports-page {
+    gap: 1.5rem;
+  }
+
+  .owner-dashboard-theme .owner-report-controls {
+    padding: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-report-period-heading-row {
+    gap: 0.65rem;
+  }
+
+  .owner-dashboard-theme .owner-report-period-icon {
+    flex-basis: 2.4rem;
+    width: 2.4rem;
+    height: 2.4rem;
+  }
+
+  .owner-dashboard-theme .owner-report-period-date {
+    margin-top: 0.6rem;
+    font-size: 0.95rem;
+  }
+
+  .owner-dashboard-theme .owner-report-period-controls.is-custom {
+    display: flex;
+  }
+
+  .owner-dashboard-theme .owner-report-custom-range {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .owner-dashboard-theme .owner-report-panel-header {
+    min-height: 0;
+    padding: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-report-chart {
+    min-height: 15rem;
+    padding-inline: 0.75rem;
+  }
+
+  .owner-dashboard-theme .owner-report-bars {
+    min-width: 34rem;
+  }
+
+  .owner-dashboard-theme .owner-report-court-head {
+    display: none;
+  }
+
+  .owner-dashboard-theme .owner-report-court-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem 1rem;
+    padding: 1rem;
+  }
+
+  .owner-dashboard-theme .owner-report-court-name,
+  .owner-dashboard-theme .owner-report-court-utilization,
+  .owner-dashboard-theme .owner-report-court-link {
+    grid-column: 1 / -1;
+  }
+
+  .owner-dashboard-theme .owner-report-court-link {
+    justify-self: start;
+  }
+
+  .owner-dashboard-theme .owner-report-outcomes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .owner-dashboard-theme .owner-report-outcome,
+  .owner-dashboard-theme .owner-report-outcome:nth-child(3n + 1) {
+    border-left: 1px solid #edf2ee;
+  }
+
+  .owner-dashboard-theme .owner-report-outcome:nth-child(2n + 1) {
+    border-left: 0;
+  }
+
+  .owner-dashboard-theme .owner-report-outcome:nth-child(n + 3) {
+    border-top: 1px solid #edf2ee;
+  }
 }
