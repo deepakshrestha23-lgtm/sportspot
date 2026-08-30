@@ -1151,6 +1151,50 @@ def get_challenge_fixture_room(challenge_id, actor):
     ).get(pk=fixture.pk)
 
 
+def team_fixture_chat_access_level(fixture_id, actor):
+    """Return the same access state as the private fixture room for chat."""
+    fixture = (
+        TeamFixture.objects.select_related(
+            "challenge__challenger_team",
+            "challenge__challenged_team",
+        )
+        .filter(pk=fixture_id)
+        .first()
+    )
+    if not fixture:
+        return "NOT_FOUND"
+    if not getattr(actor, "is_authenticated", False) or getattr(actor, "role", None) != "PLAYER":
+        return "NONE"
+
+    challenge = fixture.challenge
+    is_captain = any(
+        _active_registered_captain(team) and team.captain_id == actor.id
+        for team in [challenge.challenger_team, challenge.challenged_team]
+        if team
+    )
+    is_participant = TeamFixtureParticipant.objects.filter(
+        fixture=fixture,
+        player=actor,
+        status__in=[
+            TeamFixtureParticipant.Status.SELECTED,
+            TeamFixtureParticipant.Status.ATTENDED,
+            TeamFixtureParticipant.Status.ABSENT,
+        ],
+    ).exists()
+    if not is_captain and not is_participant:
+        return "NONE"
+
+    if fixture.status == TeamFixture.Status.AWAITING_COURT:
+        return "PLANNING"
+    if fixture.status == TeamFixture.Status.RECONFIRMATION_REQUIRED:
+        return "RECONFIRMATION"
+    if fixture.status == TeamFixture.Status.SCHEDULED:
+        return "CONFIRMED"
+    if fixture.status == TeamFixture.Status.IN_PROGRESS:
+        return "IN_PROGRESS"
+    return "READ_ONLY"
+
+
 @transaction.atomic
 def add_fixture_participant(fixture_id, actor, player_id):
     fixture = _fixture_for_update(fixture_id)

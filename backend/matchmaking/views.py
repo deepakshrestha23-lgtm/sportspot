@@ -19,6 +19,7 @@ from team_challenges.services import synchronize_confirmed_team_challenges
 from teams.serializers import TeamMemberSerializer
 from venues.models import Booking
 from venues.permissions import IsPlayer
+from sportspot_api.chat import can_edit_chat_message
 from sportspot_api.throttling import MutationThrottleMixin
 
 from .models import ACTIVE_PARTICIPANT_STATUSES, Game, GameChatMessage, JoinRequest, JoinRequestEvent
@@ -774,6 +775,57 @@ class GameChatView(MutationThrottleMixin, APIView):
         if access_level == "NONE":
             return Response({"detail": "You do not have access to this game chat."}, status=status.HTTP_403_FORBIDDEN)
         return access_level
+
+
+class GameChatMessageDetailView(GameChatView):
+    def patch(self, request, game_id, message_id):
+        game = get_game_or_none(game_id)
+        access_level = self._room_access(game, request)
+        if isinstance(access_level, Response):
+            return access_level
+        if access_level == "READ_ONLY":
+            return Response({"detail": "This game room is read-only."}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload_serializer = GameChatMessageCreateSerializer(data=request.data)
+        payload_serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                message = GameChatMessage.objects.select_for_update().filter(game=game, pk=message_id).first()
+                if not message:
+                    return Response({"detail": "Message not found."}, status=status.HTTP_404_NOT_FOUND)
+                if message.sender_id != request.user.id:
+                    return Response({"detail": "You can only edit your own messages."}, status=status.HTTP_403_FORBIDDEN)
+                if message.deleted_at:
+                    return Response({"detail": "Deleted messages cannot be edited."}, status=status.HTTP_400_BAD_REQUEST)
+                if not can_edit_chat_message(message, request.user):
+                    return Response({"detail": "Messages can only be edited within 15 minutes of sending."}, status=status.HTTP_400_BAD_REQUEST)
+                message.body = payload_serializer.validated_data["body"]
+                message.edited_at = timezone.now()
+                message.save(update_fields=["body", "edited_at", "updated_at"])
+                transaction.on_commit(lambda updated_message=message: publish_game_chat_message(updated_message))
+        except IntegrityError:
+            return Response({"detail": "We could not update that message. Please try again."}, status=status.HTTP_409_CONFLICT)
+
+        return Response({"message": GameChatMessageSerializer(message, context={"request": request}).data})
+
+    def delete(self, request, game_id, message_id):
+        game = get_game_or_none(game_id)
+        access_level = self._room_access(game, request)
+        if isinstance(access_level, Response):
+            return access_level
+
+        with transaction.atomic():
+            message = GameChatMessage.objects.select_for_update().filter(game=game, pk=message_id).first()
+            if not message:
+                return Response({"detail": "Message not found."}, status=status.HTTP_404_NOT_FOUND)
+            if message.sender_id != request.user.id:
+                return Response({"detail": "You can only delete your own messages."}, status=status.HTTP_403_FORBIDDEN)
+            if not message.deleted_at:
+                message.deleted_at = timezone.now()
+                message.save(update_fields=["deleted_at", "updated_at"])
+                transaction.on_commit(lambda deleted_message=message: publish_game_chat_message(deleted_message))
+
+        return Response({"message": GameChatMessageSerializer(message, context={"request": request}).data})
 
 
 def base_game_queryset():

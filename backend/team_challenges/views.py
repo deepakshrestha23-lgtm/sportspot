@@ -1,5 +1,5 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -10,9 +10,17 @@ from rest_framework.views import APIView
 from teams.models import Team, TeamMember
 from venues.permissions import IsPlayer
 from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
+from sportspot_api.chat import can_edit_chat_message
 from sportspot_api.throttling import MutationThrottleMixin
 
-from .models import ACTIVE_CHALLENGE_STATUSES, OpenChallengeResponse, TeamChallenge, TeamFixture
+from .realtime import publish_fixture_chat_message
+from .models import (
+    ACTIVE_CHALLENGE_STATUSES,
+    OpenChallengeResponse,
+    TeamChallenge,
+    TeamFixture,
+    TeamFixtureChatMessage,
+)
 from .serializers import (
     ChallengeBookingAttachSerializer,
     ChallengeCounterSerializer,
@@ -28,6 +36,8 @@ from .serializers import (
     TeamChallengeSerializer,
     TeamChallengeFilterSerializer,
     TeamFixtureSerializer,
+    TeamFixtureChatMessageCreateSerializer,
+    TeamFixtureChatMessageSerializer,
     FixtureEligiblePlayerSerializer,
     FixtureAttendanceSerializer,
     FixtureParticipantCreateSerializer,
@@ -53,6 +63,7 @@ from .services import (
     submit_fixture_result,
     confirm_fixture_result,
     get_challenge_fixture_room,
+    team_fixture_chat_access_level,
     eligible_fixture_players,
 )
 
@@ -593,6 +604,150 @@ class ChallengeFixtureRoomView(APIView):
             "challenge": TeamChallengeSerializer(challenge, context={"request": request}).data,
             "fixture": TeamFixtureSerializer(fixture, context={"request": request}).data,
         })
+
+
+class FixtureChatView(MutationThrottleMixin, APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def get(self, request, fixture_id):
+        access_level = self._room_access(fixture_id, request)
+        if isinstance(access_level, Response):
+            return access_level
+
+        try:
+            limit = int(request.query_params.get("limit", "50"))
+        except (TypeError, ValueError):
+            limit = 50
+        limit = max(min(limit, 100), 1)
+
+        before = request.query_params.get("before")
+        if before:
+            try:
+                before = int(before)
+                if before <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return Response({"detail": "The message cursor is invalid."}, status=status.HTTP_400_BAD_REQUEST)
+
+        messages_query = TeamFixtureChatMessage.objects.filter(fixture_id=fixture_id).select_related("sender")
+        if before:
+            messages_query = messages_query.filter(id__lt=before)
+        rows = list(messages_query.order_by("-created_at", "-id")[: limit + 1])
+        has_more = len(rows) > limit
+        messages = list(reversed(rows[:limit]))
+        return Response({
+            "messages": TeamFixtureChatMessageSerializer(messages, many=True, context={"request": request}).data,
+            "has_more": has_more,
+            "next_before": messages[0].id if has_more and messages else None,
+            "room_access": access_level,
+        })
+
+    def post(self, request, fixture_id):
+        access_level = self._room_access(fixture_id, request)
+        if isinstance(access_level, Response):
+            return access_level
+        if access_level == "READ_ONLY":
+            return Response({"detail": "This team match room is read-only."}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload_serializer = TeamFixtureChatMessageCreateSerializer(data=request.data)
+        payload_serializer.is_valid(raise_exception=True)
+        body = payload_serializer.validated_data["body"]
+        client_message_id = payload_serializer.validated_data.get("client_message_id", "")
+        message = None
+        created = False
+
+        try:
+            with transaction.atomic():
+                if client_message_id:
+                    message = TeamFixtureChatMessage.objects.filter(
+                        fixture_id=fixture_id,
+                        sender=request.user,
+                        client_message_id=client_message_id,
+                    ).select_related("sender").first()
+                if message:
+                    if message.body != body:
+                        return Response({"detail": "This message retry does not match the original message."}, status=status.HTTP_409_CONFLICT)
+                else:
+                    sender_name = (request.user.full_name or request.user.email).strip()[:120]
+                    message = TeamFixtureChatMessage.objects.create(
+                        fixture_id=fixture_id,
+                        sender=request.user,
+                        sender_name=sender_name,
+                        body=body,
+                        client_message_id=client_message_id,
+                    )
+                    created = True
+                    transaction.on_commit(lambda created_message=message: publish_fixture_chat_message(created_message))
+        except IntegrityError:
+            message = TeamFixtureChatMessage.objects.filter(
+                fixture_id=fixture_id,
+                sender=request.user,
+                client_message_id=client_message_id,
+            ).select_related("sender").first()
+            if not message or message.body != body:
+                return Response({"detail": "We could not save that message. Please try again."}, status=status.HTTP_409_CONFLICT)
+
+        return Response({
+            "message": TeamFixtureChatMessageSerializer(message, context={"request": request}).data,
+            "created": created,
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    def _room_access(self, fixture_id, request):
+        access_level = team_fixture_chat_access_level(fixture_id, request.user)
+        if access_level == "NOT_FOUND":
+            return Response({"detail": "This team match is no longer available."}, status=status.HTTP_404_NOT_FOUND)
+        if access_level == "NONE":
+            return Response({"detail": "You do not have access to this team match chat."}, status=status.HTTP_403_FORBIDDEN)
+        return access_level
+
+
+class FixtureChatMessageDetailView(FixtureChatView):
+    def patch(self, request, fixture_id, message_id):
+        access_level = self._room_access(fixture_id, request)
+        if isinstance(access_level, Response):
+            return access_level
+        if access_level == "READ_ONLY":
+            return Response({"detail": "This team match room is read-only."}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload_serializer = TeamFixtureChatMessageCreateSerializer(data=request.data)
+        payload_serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                message = TeamFixtureChatMessage.objects.select_for_update().filter(fixture_id=fixture_id, pk=message_id).first()
+                if not message:
+                    return Response({"detail": "Message not found."}, status=status.HTTP_404_NOT_FOUND)
+                if message.sender_id != request.user.id:
+                    return Response({"detail": "You can only edit your own messages."}, status=status.HTTP_403_FORBIDDEN)
+                if message.deleted_at:
+                    return Response({"detail": "Deleted messages cannot be edited."}, status=status.HTTP_400_BAD_REQUEST)
+                if not can_edit_chat_message(message, request.user):
+                    return Response({"detail": "Messages can only be edited within 15 minutes of sending."}, status=status.HTTP_400_BAD_REQUEST)
+                message.body = payload_serializer.validated_data["body"]
+                message.edited_at = timezone.now()
+                message.save(update_fields=["body", "edited_at", "updated_at"])
+                transaction.on_commit(lambda updated_message=message: publish_fixture_chat_message(updated_message))
+        except IntegrityError:
+            return Response({"detail": "We could not update that message. Please try again."}, status=status.HTTP_409_CONFLICT)
+
+        return Response({"message": TeamFixtureChatMessageSerializer(message, context={"request": request}).data})
+
+    def delete(self, request, fixture_id, message_id):
+        access_level = self._room_access(fixture_id, request)
+        if isinstance(access_level, Response):
+            return access_level
+
+        with transaction.atomic():
+            message = TeamFixtureChatMessage.objects.select_for_update().filter(fixture_id=fixture_id, pk=message_id).first()
+            if not message:
+                return Response({"detail": "Message not found."}, status=status.HTTP_404_NOT_FOUND)
+            if message.sender_id != request.user.id:
+                return Response({"detail": "You can only delete your own messages."}, status=status.HTTP_403_FORBIDDEN)
+            if not message.deleted_at:
+                message.deleted_at = timezone.now()
+                message.save(update_fields=["deleted_at", "updated_at"])
+                transaction.on_commit(lambda deleted_message=message: publish_fixture_chat_message(deleted_message))
+
+        return Response({"message": TeamFixtureChatMessageSerializer(message, context={"request": request}).data})
 
 
 class FixtureEligiblePlayersView(APIView):

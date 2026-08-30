@@ -15,3 +15,11 @@ export function getGameChatWebSocketUrl(gameId: number) {
   url.search = "";
   return url.toString();
 }
+
+export function getTeamFixtureChatWebSocketUrl(fixtureId: number) {
+  const url = new URL(apiBaseUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/ws/team-fixtures/${fixtureId}/chat/`;
+  url.search = "";
+  return url.toString();
+}

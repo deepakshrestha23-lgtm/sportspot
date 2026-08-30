@@ -23,6 +23,8 @@ from .views import (
     FixtureResultConfirmView,
     FixtureResultView,
     ChallengeFixtureRoomView,
+    FixtureChatView,
+    FixtureChatMessageDetailView,
     ChallengeReferenceDataView,
     FixtureEligiblePlayersView,
 )
@@ -46,6 +48,8 @@ urlpatterns = [
     path("challenges/<int:challenge_id>/attach-booking/", ChallengeBookingAttachView.as_view(), name="team-challenge-attach-booking"),
     path("challenges/<int:challenge_id>/cancel/", ChallengeCancelView.as_view(), name="team-challenge-cancel"),
     path("challenges/<int:challenge_id>/room/", ChallengeFixtureRoomView.as_view(), name="team-challenge-room"),
+    path("fixtures/<int:fixture_id>/chat/", FixtureChatView.as_view(), name="team-fixture-chat"),
+    path("fixtures/<int:fixture_id>/chat/<int:message_id>/", FixtureChatMessageDetailView.as_view(), name="team-fixture-chat-message"),
     path("fixtures/<int:fixture_id>/eligible-players/", FixtureEligiblePlayersView.as_view(), name="team-fixture-eligible-players"),
     path("fixtures/<int:fixture_id>/participants/", FixtureParticipantCreateView.as_view(), name="team-fixture-participant-create"),
     path("fixtures/<int:fixture_id>/participants/<int:participant_id>/remove/", FixtureParticipantRemoveView.as_view(), name="team-fixture-participant-remove"),

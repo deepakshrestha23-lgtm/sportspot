@@ -19,6 +19,7 @@ from .models import (
     JoinRequestEvent,
 )
 from players.models import ParticipationCommitment
+from sportspot_api.chat import can_edit_chat_message, chat_edit_deadline
 from .services import (
     add_initial_participants,
     booking_end_at,
@@ -35,8 +36,11 @@ from .services import (
 
 class GameChatMessageSerializer(serializers.ModelSerializer):
     sender_id = serializers.IntegerField(source="sender.id", read_only=True, allow_null=True)
+    body = serializers.SerializerMethodField()
     is_mine = serializers.SerializerMethodField()
     is_deleted = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
+    edit_deadline_at = serializers.SerializerMethodField()
 
     class Meta:
         model = GameChatMessage
@@ -49,6 +53,8 @@ class GameChatMessageSerializer(serializers.ModelSerializer):
             "edited_at",
             "is_deleted",
             "is_mine",
+            "can_edit",
+            "edit_deadline_at",
         )
         read_only_fields = fields
 
@@ -58,6 +64,18 @@ class GameChatMessageSerializer(serializers.ModelSerializer):
 
     def get_is_deleted(self, message):
         return message.deleted_at is not None
+
+    def get_body(self, message):
+        return "This message was deleted." if message.deleted_at else message.body
+
+    def get_can_edit(self, message):
+        request = self.context.get("request")
+        return bool(request and can_edit_chat_message(message, request.user))
+
+    def get_edit_deadline_at(self, message):
+        if message.deleted_at:
+            return None
+        return chat_edit_deadline(message).isoformat()
 
 
 class GameChatMessageCreateSerializer(serializers.Serializer):

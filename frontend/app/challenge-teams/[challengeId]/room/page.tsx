@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import BackButton from "@/components/BackButton";
+import GameRoomChat from "@/components/player-dashboard/GameRoomChat";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateTimeInNepal } from "@/lib/dates";
@@ -23,11 +24,26 @@ export default function TeamChallengeRoomPage() {
   const [disputeReason, setDisputeReason] = useState("");
   const [isDisputing, setIsDisputing] = useState(false);
   const [resultDraft, setResultDraft] = useState("");
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     void loadRoom();
   }, [params.challengeId]);
+
+  useEffect(() => {
+    if (!isChatOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsChatOpen(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isChatOpen]);
 
   async function loadRoom() {
     setIsLoading(true);
@@ -140,13 +156,24 @@ export default function TeamChallengeRoomPage() {
               <h1 className="sport-page-title mt-1">{challenge.challenger_team.name} <span className="text-slate-400">vs</span> {challenge.challenged_team?.name || "Opposing team"}</h1>
               <p className="sport-page-description">{roomDescription(roomState, Boolean(booking))}</p>
             </div>
-            <span className={`sport-status ${roomState === "READ_ONLY" ? "border-slate-200 bg-slate-100 text-slate-700" : roomState === "RECONFIRMATION" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-sportGreen"}`}>{roomStateLabel(roomState)}</span>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <button aria-controls="challenge-room-chat" aria-expanded={isChatOpen} className="sport-secondary-button" onClick={() => setIsChatOpen(true)} type="button"><ChatIcon /> Chat</button>
+                <span className={`sport-status ${roomState === "READ_ONLY" ? "border-slate-200 bg-slate-100 text-slate-700" : roomState === "RECONFIRMATION" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-sportGreen"}`}>{roomStateLabel(roomState)}</span>
+              </div>
           </div>
         </header>
 
         {roomState === "PLANNING" ? <RoomNotice tone="blue" title="Planning Room" text="Both teams can coordinate here while the court is being arranged. A booking has not been attached yet." /> : null}
         {roomState === "RECONFIRMATION" ? <RoomNotice tone="amber" title="Schedule confirmation needed" text="The match plan changed. Review the latest schedule with your captain before the response deadline." /> : null}
         {isReadOnly ? <RoomNotice tone="slate" title={fixture.status === "COMPLETED" ? "Match history" : "Match closed"} text="This room is read-only. The roster, schedule and result remain available for your records." /> : null}
+
+        <section className="sport-surface flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5" aria-label="Team match chat">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-50 text-sportGreen"><ChatIcon /></span>
+            <div className="min-w-0"><p className="sport-eyebrow">Room communication</p><h2 className="mt-1 text-base font-black text-sportNavy">Coordinate with both teams</h2><p className="mt-1 text-sm font-semibold text-slate-600">Arrival updates, equipment, and match-day details belong here.</p></div>
+          </div>
+          <button aria-controls="challenge-room-chat" aria-expanded={isChatOpen} className="sport-primary-button w-full shrink-0 sm:w-auto" onClick={() => setIsChatOpen(true)} type="button"><ChatIcon /> {isReadOnly ? "View chat" : "Open chat"}</button>
+        </section>
 
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-5">
@@ -186,6 +213,7 @@ export default function TeamChallengeRoomPage() {
             </div>
           </aside>
         </section>
+        {isChatOpen ? <div className="fixed inset-0 z-50" role="presentation"><button aria-label="Close match chat" className="absolute inset-0 bg-sportNavy/35 backdrop-blur-[2px]" onClick={() => setIsChatOpen(false)} type="button" /><aside aria-labelledby="game-chat-heading" aria-modal="true" className="absolute inset-x-0 bottom-0 flex max-h-[88vh] flex-col overflow-y-auto rounded-t-2xl border border-slate-200 bg-white shadow-2xl sm:inset-y-4 sm:right-4 sm:left-auto sm:bottom-auto sm:w-[min(430px,calc(100vw-2rem))] sm:rounded-2xl" id="challenge-room-chat" role="dialog"><GameRoomChat canSend={!isReadOnly} embedded onClose={() => setIsChatOpen(false)} target={{ kind: "fixture", id: fixture.id }} /></aside></div> : null}
       </div>
     </main>
   );
@@ -259,6 +287,10 @@ function RoomNotice({ tone, title, text }: { tone: "blue" | "amber" | "slate"; t
     slate: "border-slate-200 bg-slate-100 text-slate-800",
   };
   return <section className={`rounded-xl border px-4 py-3 ${styles[tone]}`}><p className="text-sm font-black">{title}</p><p className="mt-1 text-sm leading-6">{text}</p></section>;
+}
+
+function ChatIcon() {
+  return <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18"><path d="M20 11.5a7.5 7.5 0 0 1-8 7.5 8.4 8.4 0 0 1-3.2-.6L4 20l1.4-3.5A7.5 7.5 0 1 1 20 11.5Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" stroke="currentColor" strokeLinecap="round" strokeWidth="2.4" /></svg>;
 }
 
 function RoomSkeleton() {

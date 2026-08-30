@@ -219,6 +219,8 @@ export type GameChatMessage = {
   edited_at: string | null;
   is_deleted: boolean;
   is_mine: boolean;
+  can_edit: boolean;
+  edit_deadline_at: string | null;
 };
 export type GameChatResponse = {
   messages: GameChatMessage[];

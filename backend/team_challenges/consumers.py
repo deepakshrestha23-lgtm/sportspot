@@ -9,13 +9,13 @@ from django.utils import timezone
 from accounts.authentication import VerifiedJWTAuthentication
 from sportspot_api.chat import can_edit_chat_message
 
-from .models import Game, GameChatMessage
-from .realtime import chat_message_payload, game_chat_group_name
-from .services import game_room_access_level
+from .models import TeamFixtureChatMessage
+from .realtime import fixture_chat_group_name, fixture_chat_message_payload
+from .services import team_fixture_chat_access_level
 
 
-class GameChatConsumer(AsyncJsonWebsocketConsumer):
-    """Authenticated, durable chat for one game room."""
+class TeamFixtureChatConsumer(AsyncJsonWebsocketConsumer):
+    """Authenticated, durable chat for one team fixture room."""
 
     authentication_timeout_seconds = 10
     max_message_length = 1000
@@ -23,7 +23,7 @@ class GameChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def connect(self):
         try:
-            self.game_id = int(self.scope["url_route"]["kwargs"]["game_id"])
+            self.fixture_id = int(self.scope["url_route"]["kwargs"]["fixture_id"])
         except (KeyError, TypeError, ValueError):
             await self.close(code=4404)
             return
@@ -67,7 +67,7 @@ class GameChatConsumer(AsyncJsonWebsocketConsumer):
                 return
 
             self.room_access = room_access
-            self.group_name = game_chat_group_name(self.game_id)
+            self.group_name = fixture_chat_group_name(self.fixture_id)
             await self.channel_layer.group_add(self.group_name, self.channel_name)
             self.authentication_timeout_task.cancel()
             self.token_expiry_task = asyncio.create_task(
@@ -126,7 +126,6 @@ class GameChatConsumer(AsyncJsonWebsocketConsumer):
                 "type": "chat.message",
                 "message": {**result["message"], "is_mine": True},
             })
-        return
 
     async def disconnect(self, close_code):
         for task_name in ("authentication_timeout_task", "token_expiry_task"):
@@ -171,11 +170,7 @@ class GameChatConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _get_room_access(self):
-        try:
-            game = Game.objects.select_related("team").get(pk=self.game_id)
-        except Game.DoesNotExist:
-            return "NOT_FOUND"
-        return game_room_access_level(game, self.user)
+        return team_fixture_chat_access_level(self.fixture_id, self.user)
 
     @database_sync_to_async
     def _create_message(self, body, client_message_id):
@@ -188,48 +183,46 @@ class GameChatConsumer(AsyncJsonWebsocketConsumer):
         if len(client_message_id) > 64:
             return {"kind": "error", "code": "INVALID_MESSAGE", "message": "The message could not be sent. Please try again."}
 
-        try:
-            game = Game.objects.select_related("team").get(pk=self.game_id)
-        except Game.DoesNotExist:
-            return {"kind": "error", "code": "GAME_NOT_FOUND", "message": "This game room is no longer available."}
-        room_access = game_room_access_level(game, self.user)
+        room_access = team_fixture_chat_access_level(self.fixture_id, self.user)
+        if room_access == "NOT_FOUND":
+            return {"kind": "error", "code": "FIXTURE_NOT_FOUND", "message": "This team match room is no longer available."}
         if room_access == "NONE":
-            return {"kind": "error", "code": "ROOM_ACCESS_REVOKED", "message": "You no longer have access to this game room."}
+            return {"kind": "error", "code": "ROOM_ACCESS_REVOKED", "message": "You no longer have access to this team match room."}
         if room_access == "READ_ONLY":
-            return {"kind": "error", "code": "ROOM_READ_ONLY", "message": "This game room is read-only."}
+            return {"kind": "error", "code": "ROOM_READ_ONLY", "message": "This team match room is read-only."}
 
         if client_message_id:
-            existing = GameChatMessage.objects.filter(
-                game=game,
+            existing = TeamFixtureChatMessage.objects.filter(
+                fixture_id=self.fixture_id,
                 sender=self.user,
                 client_message_id=client_message_id,
             ).first()
             if existing:
                 if existing.body != body:
                     return {"kind": "error", "code": "INVALID_MESSAGE", "message": "This message retry does not match the original message."}
-                return {"kind": "message", "changed": False, "message": chat_message_payload(existing)}
+                return {"kind": "message", "changed": False, "message": fixture_chat_message_payload(existing)}
 
         sender_name = (self.user.full_name or self.user.email).strip()
         try:
             with transaction.atomic():
-                message = GameChatMessage.objects.create(
-                    game=game,
+                message = TeamFixtureChatMessage.objects.create(
+                    fixture_id=self.fixture_id,
                     sender=self.user,
                     sender_name=sender_name[:120],
                     body=body,
                     client_message_id=client_message_id,
                 )
         except IntegrityError:
-            existing = GameChatMessage.objects.filter(
-                game=game,
+            existing = TeamFixtureChatMessage.objects.filter(
+                fixture_id=self.fixture_id,
                 sender=self.user,
                 client_message_id=client_message_id,
             ).first()
             if not existing:
                 return {"kind": "error", "code": "MESSAGE_NOT_SAVED", "message": "We could not save that message. Please try again."}
-            return {"kind": "message", "changed": False, "message": chat_message_payload(existing)}
+            return {"kind": "message", "changed": False, "message": fixture_chat_message_payload(existing)}
 
-        return {"kind": "message", "changed": True, "message": chat_message_payload(message)}
+        return {"kind": "message", "changed": True, "message": fixture_chat_message_payload(message)}
 
     @database_sync_to_async
     def _edit_message(self, message_id, body):
@@ -239,18 +232,16 @@ class GameChatConsumer(AsyncJsonWebsocketConsumer):
         if len(body) > self.max_message_length:
             return {"kind": "error", "code": "MESSAGE_TOO_LONG", "message": "Messages must be 1,000 characters or fewer."}
 
-        try:
-            game = Game.objects.select_related("team").get(pk=self.game_id)
-        except Game.DoesNotExist:
-            return {"kind": "error", "code": "GAME_NOT_FOUND", "message": "This game room is no longer available."}
-        room_access = game_room_access_level(game, self.user)
+        room_access = team_fixture_chat_access_level(self.fixture_id, self.user)
+        if room_access == "NOT_FOUND":
+            return {"kind": "error", "code": "FIXTURE_NOT_FOUND", "message": "This team match room is no longer available."}
         if room_access == "NONE":
-            return {"kind": "error", "code": "ROOM_ACCESS_REVOKED", "message": "You no longer have access to this game room."}
+            return {"kind": "error", "code": "ROOM_ACCESS_REVOKED", "message": "You no longer have access to this team match room."}
         if room_access == "READ_ONLY":
-            return {"kind": "error", "code": "ROOM_READ_ONLY", "message": "This game room is read-only."}
+            return {"kind": "error", "code": "ROOM_READ_ONLY", "message": "This team match room is read-only."}
 
         with transaction.atomic():
-            message = GameChatMessage.objects.select_for_update().filter(game=game, pk=message_id).first()
+            message = TeamFixtureChatMessage.objects.select_for_update().filter(fixture_id=self.fixture_id, pk=message_id).first()
             if not message:
                 return {"kind": "error", "code": "MESSAGE_NOT_FOUND", "message": "Message not found."}
             if message.sender_id != self.user.id:
@@ -262,26 +253,24 @@ class GameChatConsumer(AsyncJsonWebsocketConsumer):
             message.body = body
             message.edited_at = timezone.now()
             message.save(update_fields=["body", "edited_at", "updated_at"])
-            return {"kind": "message", "changed": True, "message": chat_message_payload(message)}
+            return {"kind": "message", "changed": True, "message": fixture_chat_message_payload(message)}
 
     @database_sync_to_async
     def _delete_message(self, message_id):
-        try:
-            game = Game.objects.select_related("team").get(pk=self.game_id)
-        except Game.DoesNotExist:
-            return {"kind": "error", "code": "GAME_NOT_FOUND", "message": "This game room is no longer available."}
-        room_access = game_room_access_level(game, self.user)
+        room_access = team_fixture_chat_access_level(self.fixture_id, self.user)
+        if room_access == "NOT_FOUND":
+            return {"kind": "error", "code": "FIXTURE_NOT_FOUND", "message": "This team match room is no longer available."}
         if room_access == "NONE":
-            return {"kind": "error", "code": "ROOM_ACCESS_REVOKED", "message": "You no longer have access to this game room."}
+            return {"kind": "error", "code": "ROOM_ACCESS_REVOKED", "message": "You no longer have access to this team match room."}
 
         with transaction.atomic():
-            message = GameChatMessage.objects.select_for_update().filter(game=game, pk=message_id).first()
+            message = TeamFixtureChatMessage.objects.select_for_update().filter(fixture_id=self.fixture_id, pk=message_id).first()
             if not message:
                 return {"kind": "error", "code": "MESSAGE_NOT_FOUND", "message": "Message not found."}
             if message.sender_id != self.user.id:
                 return {"kind": "error", "code": "MESSAGE_NOT_OWNED", "message": "You can only delete your own messages."}
             if message.deleted_at:
-                return {"kind": "message", "changed": False, "message": chat_message_payload(message)}
+                return {"kind": "message", "changed": False, "message": fixture_chat_message_payload(message)}
             message.deleted_at = timezone.now()
             message.save(update_fields=["deleted_at", "updated_at"])
-            return {"kind": "message", "changed": True, "message": chat_message_payload(message)}
+            return {"kind": "message", "changed": True, "message": fixture_chat_message_payload(message)}

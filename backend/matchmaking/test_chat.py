@@ -104,6 +104,39 @@ class GameChatApiTests(APITestCase):
         self.assertEqual(blocked.status_code, 400, blocked.data)
         self.assertEqual(len(history.data["messages"]), 1)
 
+    def test_author_can_edit_then_soft_delete_a_message(self):
+        self.client.force_authenticate(self.host)
+        created = self.client.post(self.url, {"body": "Meet at 5:45", "client_message_id": "edit-1"}, format="json")
+        message_id = created.data["message"]["id"]
+        detail_url = reverse("matchmaking-game-chat-message", args=[self.game.id, message_id])
+
+        edited = self.client.patch(detail_url, {"body": "Meet at 5:30"}, format="json")
+        self.assertEqual(edited.status_code, 200, edited.data)
+        self.assertEqual(edited.data["message"]["body"], "Meet at 5:30")
+        self.assertTrue(edited.data["message"]["edited_at"])
+        self.assertTrue(edited.data["message"]["can_edit"])
+
+        deleted = self.client.delete(detail_url)
+        self.assertEqual(deleted.status_code, 200, deleted.data)
+        self.assertTrue(deleted.data["message"]["is_deleted"])
+        self.assertEqual(deleted.data["message"]["body"], "This message was deleted.")
+        self.assertIsNotNone(GameChatMessage.objects.get(pk=message_id).deleted_at)
+
+    def test_edit_window_and_message_ownership_are_enforced(self):
+        self.client.force_authenticate(self.host)
+        created = self.client.post(self.url, {"body": "Old message", "client_message_id": "edit-2"}, format="json")
+        message_id = created.data["message"]["id"]
+        GameChatMessage.objects.filter(pk=message_id).update(created_at=timezone.now() - timedelta(minutes=16))
+        detail_url = reverse("matchmaking-game-chat-message", args=[self.game.id, message_id])
+
+        expired = self.client.patch(detail_url, {"body": "Too late"}, format="json")
+        self.assertEqual(expired.status_code, 400, expired.data)
+        self.assertIn("15 minutes", expired.data["detail"])
+
+        self.client.force_authenticate(self.participant)
+        self.assertEqual(self.client.patch(detail_url, {"body": "Not mine"}, format="json").status_code, 403)
+        self.assertEqual(self.client.delete(detail_url).status_code, 403)
+
 
 class GameChatRealtimeTests(TransactionTestCase):
     def setUp(self):
@@ -140,9 +173,28 @@ class GameChatRealtimeTests(TransactionTestCase):
         self.assertEqual(host_event["type"], "chat.message")
         self.assertEqual(host_event["message"]["body"], "We are live")
         self.assertEqual(player_event, host_event | {"message": {**host_event["message"], "is_mine": False}})
+        message_id = host_event["message"]["id"]
+
+        await host_communicator.send_json_to({"type": "message.edit", "message_id": message_id, "body": "We are live and edited"})
+        host_edit = await host_communicator.receive_json_from()
+        player_edit = await player_communicator.receive_json_from()
+        self.assertEqual(host_edit["message"]["body"], "We are live and edited")
+        self.assertTrue(host_edit["message"]["edited_at"])
+        self.assertEqual(player_edit, host_edit | {"message": {**host_edit["message"], "is_mine": False}})
+
+        await host_communicator.send_json_to({"type": "message.delete", "message_id": message_id})
+        host_delete = await host_communicator.receive_json_from()
+        player_delete = await player_communicator.receive_json_from()
+        self.assertTrue(host_delete["message"]["is_deleted"])
+        self.assertEqual(host_delete["message"]["body"], "This message was deleted.")
+        self.assertEqual(player_delete, host_delete | {"message": {**host_delete["message"], "is_mine": False}})
         @database_sync_to_async
         def message_was_persisted():
-            return GameChatMessage.objects.filter(game=self.game, body="We are live").exists()
+            return GameChatMessage.objects.filter(
+                game=self.game,
+                body="We are live and edited",
+                deleted_at__isnull=False,
+            ).exists()
 
         self.assertTrue(await message_was_persisted())
 

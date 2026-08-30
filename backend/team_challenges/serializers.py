@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from teams.models import Team, TeamMember
 from players.models import ParticipationCommitment
+from sportspot_api.chat import can_edit_chat_message, chat_edit_deadline
 from venues.models import Booking
 from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
 
@@ -11,6 +12,7 @@ from .models import (
     OpenChallengeResponse,
     TeamChallenge,
     TeamFixture,
+    TeamFixtureChatMessage,
     TeamFixtureParticipant,
 )
 
@@ -361,6 +363,64 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
                 and not fixture.result_confirmed_at
             ),
         }
+
+
+class TeamFixtureChatMessageSerializer(serializers.ModelSerializer):
+    sender_id = serializers.IntegerField(source="sender.id", read_only=True, allow_null=True)
+    body = serializers.SerializerMethodField()
+    is_mine = serializers.SerializerMethodField()
+    is_deleted = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
+    edit_deadline_at = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TeamFixtureChatMessage
+        fields = (
+            "id",
+            "sender_id",
+            "sender_name",
+            "body",
+            "created_at",
+            "edited_at",
+            "is_deleted",
+            "is_mine",
+            "can_edit",
+            "edit_deadline_at",
+        )
+        read_only_fields = fields
+
+    def get_is_mine(self, message):
+        request = self.context.get("request")
+        return bool(request and request.user.is_authenticated and message.sender_id == request.user.id)
+
+    def get_is_deleted(self, message):
+        return message.deleted_at is not None
+
+    def get_body(self, message):
+        return "This message was deleted." if message.deleted_at else message.body
+
+    def get_can_edit(self, message):
+        request = self.context.get("request")
+        return bool(request and can_edit_chat_message(message, request.user))
+
+    def get_edit_deadline_at(self, message):
+        if message.deleted_at:
+            return None
+        return chat_edit_deadline(message).isoformat()
+
+
+class TeamFixtureChatMessageCreateSerializer(serializers.Serializer):
+    body = serializers.CharField(max_length=1000)
+    client_message_id = serializers.CharField(max_length=64, required=False, allow_blank=True)
+
+    def validate_body(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Message cannot be empty.")
+        return value
+
+    def validate_client_message_id(self, value):
+        return value.strip()
 
 
 class MyTeamFixtureSerializer(serializers.ModelSerializer):

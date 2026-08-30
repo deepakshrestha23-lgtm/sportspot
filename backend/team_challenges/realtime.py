@@ -8,11 +8,11 @@ from sportspot_api.chat import chat_edit_deadline
 logger = logging.getLogger(__name__)
 
 
-def game_chat_group_name(game_id):
-    return f"matchmaking.game.{game_id}.chat"
+def fixture_chat_group_name(fixture_id):
+    return f"team_challenges.fixture.{fixture_id}.chat"
 
 
-def chat_message_payload(message):
+def fixture_chat_message_payload(message):
     return {
         "id": message.id,
         "sender_id": message.sender_id,
@@ -25,23 +25,23 @@ def chat_message_payload(message):
     }
 
 
-def publish_game_chat_message(message):
-    """Broadcast a persisted message; REST remains the source of truth."""
+def publish_fixture_chat_message(message):
+    """Broadcast a persisted fixture message; REST remains the source of truth."""
     channel_layer = get_channel_layer()
     if channel_layer is None:
         return False
 
     try:
         async_to_sync(channel_layer.group_send)(
-            game_chat_group_name(message.game_id),
+            fixture_chat_group_name(message.fixture_id),
             {
                 "type": "chat.message",
-                "message": chat_message_payload(message),
+                "message": fixture_chat_message_payload(message),
             },
         )
     except Exception:
         logger.warning(
-            "Real-time game chat delivery was unavailable for message %s.",
+            "Real-time fixture chat delivery was unavailable for message %s.",
             message.id,
             exc_info=True,
         )

@@ -13,7 +13,7 @@ from teams.models import Team, TeamMember
 from venues.models import Booking, Court, CourtSlot, Venue
 from matchmaking.services import booking_end_at, get_booking_start_at, player_has_overlapping_commitment
 
-from .models import ChallengeEvent, ChallengeProposal, OpenChallengeResponse, TeamChallenge, TeamFixture, TeamFixtureParticipant
+from .models import ChallengeEvent, ChallengeProposal, OpenChallengeResponse, TeamChallenge, TeamFixture, TeamFixtureChatMessage, TeamFixtureParticipant
 from .services import (
     counter_challenge,
     cancel_challenges_for_booking,
@@ -898,3 +898,50 @@ class TeamChallengeServiceTests(TestCase):
                 status=TeamFixtureParticipant.Status.SELECTED,
             ).exists()
         )
+
+    @patch("team_challenges.services.notify_challenge_received")
+    @patch("team_challenges.services.notify_challenge_status")
+    @patch("team_challenges.services.notify_challenge_decision")
+    def test_fixture_chat_is_private_idempotent_and_readable_by_authorised_players(self, _decision, _status, _received):
+        challenge = create_challenge(self.challenge_data(request_id="fixture-chat-access"), self.host)
+        decide_challenge(challenge.pk, self.opponent, "ACCEPT")
+
+        client = APIClient()
+        client.force_authenticate(self.host)
+        url = f"/api/team-challenges/fixtures/{challenge.fixture.id}/chat/"
+        first = client.post(url, {"body": "Meet 15 minutes early", "client_message_id": "fixture-chat-1"}, format="json")
+        retry = client.post(url, {"body": "Meet 15 minutes early", "client_message_id": "fixture-chat-1"}, format="json")
+
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertFalse(retry.data["created"])
+        self.assertEqual(TeamFixtureChatMessage.objects.filter(fixture=challenge.fixture).count(), 1)
+
+        client.force_authenticate(self.opponent)
+        history = client.get(url)
+        self.assertEqual(history.status_code, 200, history.data)
+        self.assertEqual(history.data["room_access"], "PLANNING")
+        self.assertEqual(history.data["messages"][0]["body"], "Meet 15 minutes early")
+
+    @patch("team_challenges.services.notify_challenge_received")
+    @patch("team_challenges.services.notify_challenge_status")
+    @patch("team_challenges.services.notify_challenge_decision")
+    def test_fixture_chat_rejects_outsiders_and_locks_after_cancellation(self, _decision, _status, _received):
+        challenge = create_challenge(self.challenge_data(request_id="fixture-chat-closed"), self.host)
+        decide_challenge(challenge.pk, self.opponent, "ACCEPT")
+        url = f"/api/team-challenges/fixtures/{challenge.fixture.id}/chat/"
+        client = APIClient()
+        client.force_authenticate(self.member)
+        self.assertEqual(client.get(url).status_code, 403)
+        self.assertEqual(client.post(url, {"body": "Not allowed"}, format="json").status_code, 403)
+
+        client.force_authenticate(self.host)
+        self.assertEqual(client.post(url, {"body": "History"}, format="json").status_code, 201)
+        challenge.fixture.status = TeamFixture.Status.CANCELLED
+        challenge.fixture.save(update_fields=["status", "updated_at"])
+
+        history = client.get(url)
+        blocked = client.post(url, {"body": "Too late"}, format="json")
+        self.assertEqual(history.status_code, 200, history.data)
+        self.assertEqual(history.data["room_access"], "READ_ONLY")
+        self.assertEqual(blocked.status_code, 400, blocked.data)
