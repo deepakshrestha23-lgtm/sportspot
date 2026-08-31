@@ -11,7 +11,7 @@ from sportspot_api.chat import can_edit_chat_message
 
 from .models import TeamFixtureChatMessage
 from .realtime import fixture_chat_group_name, fixture_chat_message_payload
-from .services import team_fixture_chat_access_level
+from .services import notify_fixture_chat_message, team_fixture_chat_access_level
 
 
 class TeamFixtureChatConsumer(AsyncJsonWebsocketConsumer):
@@ -212,6 +212,7 @@ class TeamFixtureChatConsumer(AsyncJsonWebsocketConsumer):
                     body=body,
                     client_message_id=client_message_id,
                 )
+                notify_fixture_chat_message(message)
         except IntegrityError:
             existing = TeamFixtureChatMessage.objects.filter(
                 fixture_id=self.fixture_id,
@@ -249,7 +250,7 @@ class TeamFixtureChatConsumer(AsyncJsonWebsocketConsumer):
             if message.deleted_at:
                 return {"kind": "error", "code": "MESSAGE_DELETED", "message": "Deleted messages cannot be edited."}
             if not can_edit_chat_message(message, self.user):
-                return {"kind": "error", "code": "EDIT_WINDOW_EXPIRED", "message": "Messages can only be edited within 15 minutes of sending."}
+                return {"kind": "error", "code": "EDIT_WINDOW_EXPIRED", "message": "This message can no longer be edited."}
             message.body = body
             message.edited_at = timezone.now()
             message.save(update_fields=["body", "edited_at", "updated_at"])

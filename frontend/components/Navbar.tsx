@@ -9,6 +9,7 @@ import NotificationCenter from "@/components/NotificationCenter";
 import { api } from "@/lib/api";
 import { clearAuthSession, getCurrentUser } from "@/lib/auth";
 import type { User } from "@/types/auth";
+import type { NotificationPreview } from "@/types/notification";
 import type { Booking, Venue, VenueStatus } from "@/types/venue";
 
 export default function Navbar() {
@@ -18,7 +19,7 @@ export default function Navbar() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [unseenNotificationsCount, setUnseenNotificationsCount] = useState(0);
-  const [notificationToast, setNotificationToast] = useState("");
+  const [notificationToast, setNotificationToast] = useState<NotificationPreview | null>(null);
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const [ownerVenueStatus, setOwnerVenueStatus] = useState<VenueStatus | "NONE">("NONE");
   const [pendingReservation, setPendingReservation] = useState<Booking | null>(null);
@@ -104,10 +105,10 @@ export default function Navbar() {
     router.push("/");
   }
 
-  const handleNewNotification = useCallback((title: string) => {
-    setNotificationToast(title);
+  const handleNewNotification = useCallback((notification: NotificationPreview) => {
+    setNotificationToast(notification);
     setHasNewNotification(true);
-    window.setTimeout(() => setNotificationToast(""), 3500);
+    window.setTimeout(() => setNotificationToast(null), 5000);
     window.setTimeout(() => setHasNewNotification(false), 1800);
   }, []);
 
@@ -212,9 +213,11 @@ export default function Navbar() {
         />
       ) : null}
       {notificationToast ? (
-        <div aria-live="polite" className="fixed right-4 top-20 z-40 max-w-sm rounded-xl border border-green-200 bg-white px-4 py-3 shadow-xl">
-          <p className="text-xs font-black uppercase text-sportGreen">New notification</p>
-          <p className="mt-1 text-sm font-bold text-sportNavy">{notificationToast}</p>
+        <div aria-live="polite" className="fixed right-4 top-20 z-40 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-green-200 bg-white p-4 shadow-xl" role="status">
+          <p className="text-xs font-black uppercase tracking-[0.12em] text-sportGreen">{notificationToast.notification_type === "CHAT_MESSAGE_RECEIVED" ? "New chat message" : "New notification"}</p>
+          <p className="mt-1 text-sm font-black text-sportNavy">{notificationToast.title}</p>
+          <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-600">{notificationToast.message}</p>
+          {notificationToast.action_url ? <Link className="mt-3 inline-flex min-h-9 items-center rounded-md bg-sportGreen px-3 text-xs font-black text-white hover:bg-green-700" href={notificationToast.action_url} onClick={() => setNotificationToast(null)}>{notificationToast.notification_type === "CHAT_MESSAGE_RECEIVED" ? "Open chat" : "Open notification"}</Link> : null}
         </div>
       ) : null}
       {user?.role === "PLAYER" && pendingReservation && now && dismissedReservationId !== pendingReservation.id && !pathname.startsWith("/dashboard/player/bookings/payment/") ? (

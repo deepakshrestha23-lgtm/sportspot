@@ -64,12 +64,28 @@ class UnseenNotificationCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        latest = Notification.objects.filter(recipient=request.user).only("id", "title", "created_at").first()
+        latest = Notification.objects.filter(recipient=request.user).only(
+            "id",
+            "title",
+            "message",
+            "action_url",
+            "notification_type",
+            "category",
+            "created_at",
+        ).first()
         return Response(
             {
                 "unseen_count": unseen_count_for(request.user),
                 "latest_notification": (
-                    {"id": latest.id, "title": latest.title, "created_at": latest.created_at}
+                    {
+                        "id": latest.id,
+                        "title": latest.title,
+                        "message": latest.message,
+                        "action_url": latest.action_url,
+                        "notification_type": latest.notification_type,
+                        "category": latest.category,
+                        "created_at": latest.created_at,
+                    }
                     if latest
                     else None
                 ),

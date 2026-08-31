@@ -119,6 +119,7 @@ class AccountSettings(models.Model):
     notify_join_requests = models.BooleanField(default=True)
     notify_team_challenges = models.BooleanField(default=True)
     notify_game_updates = models.BooleanField(default=True)
+    notify_chat_messages = models.BooleanField(default=True)
     notify_booking_updates = models.BooleanField(default=True)
     notify_cancellation_refunds = models.BooleanField(default=True)
     notify_rating_reminders = models.BooleanField(default=True)

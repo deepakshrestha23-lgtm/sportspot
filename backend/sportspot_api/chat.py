@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 
-CHAT_EDIT_WINDOW = timedelta(minutes=15)
+CHAT_EDIT_WINDOW = timedelta(minutes=5)
 
 
 def chat_edit_deadline(message):

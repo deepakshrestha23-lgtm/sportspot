@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from notifications.models import Notification
-from notifications.services import create_notification, mark_related_action_state
+from notifications.services import create_notification, mark_related_action_state, notify_chat_message
 from players.models import PlayerProfile
 from teams.models import Team, TeamMember
 from venues.models import Booking
@@ -2249,6 +2249,32 @@ def notify_booking_attached(game, material_change=False):
             },
             deduplication_key=f"game:{game.id}:guest-schedule:{game.booking_id}",
         )
+
+
+def notify_game_chat_message(message):
+    """Notify every registered player who can currently open this game room."""
+    game = Game.objects.only("id", "title", "host_id").get(pk=message.game_id)
+    recipient_ids = set(
+        GameParticipant.objects.filter(
+            game_id=game.id,
+            user__isnull=False,
+            status__in=ACTIVE_PARTICIPANT_STATUSES,
+        ).values_list("user_id", flat=True)
+    )
+    recipient_ids.add(game.host_id)
+    preview = message.body if len(message.body) <= 180 else f"{message.body[:177].rstrip()}..."
+    recipients = get_user_model().objects.filter(id__in=recipient_ids, is_active=True).order_by()
+    return notify_chat_message(
+        recipients=recipients,
+        actor=message.sender,
+        title=f"New message in {game.title}"[:120],
+        message=f"{message.sender_name}: {preview}",
+        action_url=f"/dashboard/player/games/{game.id}/room",
+        related_entity_type="game_chat_message",
+        related_entity_id=message.id,
+        metadata={"game_id": game.id, "chat_message_id": message.id, "room_kind": "game"},
+        deduplication_prefix=f"game-chat-message:{message.id}",
+    )
 
 
 def notify_reconfirmation_response(game, participant, response):

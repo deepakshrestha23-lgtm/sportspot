@@ -280,6 +280,7 @@ class AccountSettingsSerializer(serializers.ModelSerializer):
             "notify_join_requests",
             "notify_team_challenges",
             "notify_game_updates",
+            "notify_chat_messages",
             "notify_booking_updates",
             "notify_cancellation_refunds",
             "notify_rating_reminders",
@@ -320,6 +321,7 @@ class PlayerSettingsSerializer(serializers.Serializer):
             "join_requests": settings.notify_join_requests,
             "team_challenges": settings.notify_team_challenges,
             "game_updates": settings.notify_game_updates,
+            "chat_messages": settings.notify_chat_messages,
             "booking_updates": settings.notify_booking_updates,
             "cancellation_refunds": settings.notify_cancellation_refunds,
             "rating_reminders": settings.notify_rating_reminders,
@@ -445,6 +447,7 @@ class NotificationSettingsSerializer(serializers.Serializer):
     join_requests = serializers.BooleanField()
     team_challenges = serializers.BooleanField()
     game_updates = serializers.BooleanField()
+    chat_messages = serializers.BooleanField(required=False, default=True)
     booking_updates = serializers.BooleanField()
     cancellation_refunds = serializers.BooleanField()
     rating_reminders = serializers.BooleanField()
@@ -457,13 +460,15 @@ class NotificationSettingsSerializer(serializers.Serializer):
             "join_requests": "notify_join_requests",
             "team_challenges": "notify_team_challenges",
             "game_updates": "notify_game_updates",
+            "chat_messages": "notify_chat_messages",
             "booking_updates": "notify_booking_updates",
             "cancellation_refunds": "notify_cancellation_refunds",
             "rating_reminders": "notify_rating_reminders",
             "email_notifications": "email_notifications",
         }
         for source, target in mapping.items():
-            setattr(settings, target, self.validated_data[source])
+            if source in self.validated_data:
+                setattr(settings, target, self.validated_data[source])
         settings.save(update_fields=[*mapping.values(), "updated_at"])
         return settings
 
@@ -481,7 +486,8 @@ class OwnerNotificationSettingsSerializer(serializers.Serializer):
             "email_notifications": "email_notifications",
         }
         for source, target in mapping.items():
-            setattr(settings, target, self.validated_data[source])
+            if source in self.validated_data:
+                setattr(settings, target, self.validated_data[source])
         settings.save(update_fields=[*mapping.values(), "updated_at"])
         return settings
 

@@ -11,6 +11,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from notifications.models import Notification
 from players.models import PlayerProfile
 from sportspot_api.asgi import application
 from teams.models import Team, TeamMember
@@ -99,6 +100,11 @@ class TeamFixtureChatRealtimeTests(TransactionTestCase):
             f"/ws/team-fixtures/{fixture_id}/chat/",
             headers=[(b"origin", b"http://localhost:3000")],
         )
+        notification_communicator = WebsocketCommunicator(
+            application,
+            "/ws/notifications/",
+            headers=[(b"origin", b"http://localhost:3000")],
+        )
         for communicator, user in ((host_communicator, self.host), (opponent_communicator, self.opponent)):
             connected, _ = await communicator.connect()
             self.assertTrue(connected)
@@ -110,6 +116,14 @@ class TeamFixtureChatRealtimeTests(TransactionTestCase):
             self.assertEqual(ready["type"], "ready")
             self.assertEqual(ready["room_access"], "PLANNING")
 
+        connected, _ = await notification_communicator.connect()
+        self.assertTrue(connected)
+        self.assertEqual((await notification_communicator.receive_json_from())["type"], "authenticate")
+        refresh = RefreshToken.for_user(self.opponent)
+        refresh["auth_version"] = self.opponent.auth_version
+        await notification_communicator.send_json_to({"type": "authenticate", "access_token": str(refresh.access_token)})
+        self.assertEqual((await notification_communicator.receive_json_from())["type"], "ready")
+
         await host_communicator.send_json_to({
             "type": "message.send",
             "body": "Both captains are connected",
@@ -120,6 +134,19 @@ class TeamFixtureChatRealtimeTests(TransactionTestCase):
         self.assertEqual(host_event["type"], "chat.message")
         self.assertEqual(host_event["message"]["body"], "Both captains are connected")
         self.assertEqual(opponent_event, host_event | {"message": {**host_event["message"], "is_mine": False}})
+        @database_sync_to_async
+        def notification_id_for_message():
+            return Notification.objects.get(
+                recipient=self.opponent,
+                related_entity_type="fixture_chat_message",
+                related_entity_id=host_event["message"]["id"],
+            ).id
+
+        notification_event = await notification_communicator.receive_json_from()
+        self.assertEqual(
+            notification_event,
+            {"type": "notification.created", "notification_id": await notification_id_for_message()},
+        )
         message_id = host_event["message"]["id"]
 
         await host_communicator.send_json_to({"type": "message.edit", "message_id": message_id, "body": "Both captains are ready"})
@@ -147,6 +174,7 @@ class TeamFixtureChatRealtimeTests(TransactionTestCase):
         self.assertTrue(await message_was_persisted())
         await host_communicator.disconnect()
         await opponent_communicator.disconnect()
+        await notification_communicator.disconnect()
 
 
 class TeamFixtureChatApiTests(APITestCase):
@@ -233,16 +261,31 @@ class TeamFixtureChatApiTests(APITestCase):
         self.assertEqual(deleted.data["message"]["body"], "This message was deleted.")
         self.assertIsNotNone(TeamFixtureChatMessage.objects.get(pk=message_id).deleted_at)
 
+    def test_fixture_chat_notifies_the_other_captain_with_a_room_link(self):
+        self.client.force_authenticate(self.host)
+
+        response = self.client.post(self.url, {"body": "Meet at the entrance", "client_message_id": "fixture-notification-1"}, format="json")
+
+        self.assertEqual(response.status_code, 201, response.data)
+        notification = Notification.objects.get(
+            notification_type=Notification.NotificationType.CHAT_MESSAGE_RECEIVED,
+            related_entity_type="fixture_chat_message",
+            related_entity_id=response.data["message"]["id"],
+        )
+        self.assertEqual(notification.recipient, self.opponent)
+        self.assertEqual(notification.actor, self.host)
+        self.assertEqual(notification.action_url, f"/challenge-teams/{self.fixture.challenge_id}/room")
+
     def test_fixture_edit_window_and_message_ownership_are_enforced(self):
         self.client.force_authenticate(self.host)
         created = self.client.post(self.url, {"body": "Old fixture message", "client_message_id": "fixture-edit-2"}, format="json")
         message_id = created.data["message"]["id"]
-        TeamFixtureChatMessage.objects.filter(pk=message_id).update(created_at=timezone.now() - timedelta(minutes=16))
+        TeamFixtureChatMessage.objects.filter(pk=message_id).update(created_at=timezone.now() - timedelta(minutes=6))
         detail_url = reverse("team-fixture-chat-message", args=[self.fixture.id, message_id])
 
         expired = self.client.patch(detail_url, {"body": "Too late"}, format="json")
         self.assertEqual(expired.status_code, 400, expired.data)
-        self.assertIn("15 minutes", expired.data["detail"])
+        self.assertIn("no longer", expired.data["detail"])
 
         self.client.force_authenticate(self.opponent)
         self.assertEqual(self.client.patch(detail_url, {"body": "Not mine"}, format="json").status_code, 403)

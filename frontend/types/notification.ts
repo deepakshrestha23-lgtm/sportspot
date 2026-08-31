@@ -22,6 +22,7 @@ export type NotificationType =
   | "MATCH_REMINDER"
   | "GAME_ROOM_CREATED"
   | "GAME_ROOM_UPDATED"
+  | "CHAT_MESSAGE_RECEIVED"
   | "RATING_REQUIRED"
   | "BOOKING_RESERVED"
   | "BOOKING_CONFIRMED"
@@ -94,11 +95,19 @@ export interface NotificationsResponse {
 
 export interface NotificationCountResponse {
   unseen_count: number;
-  latest_notification: {
+  latest_notification: NotificationPreview & {
     id: number;
-    title: string;
     created_at: string;
   } | null;
+}
+
+export interface NotificationPreview {
+  id: number;
+  title: string;
+  message: string;
+  action_url: string;
+  notification_type: NotificationType;
+  category: NotificationCategory;
 }
 
 export interface NotificationActionResponse {

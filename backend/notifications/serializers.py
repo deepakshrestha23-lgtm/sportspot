@@ -130,5 +130,6 @@ def get_open_action_label(notification_type):
         Notification.NotificationType.REFUND_PENDING: "Process Refund",
         Notification.NotificationType.REFUND_REJECTED: "View Refund Status",
         Notification.NotificationType.REFUND_COMPLETED: "View Booking",
+        Notification.NotificationType.CHAT_MESSAGE_RECEIVED: "Open chat",
     }
     return labels.get(notification_type, "Open")

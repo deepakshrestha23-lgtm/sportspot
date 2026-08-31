@@ -86,12 +86,6 @@ export default function GameRoomChat({
     return Date.parse(message.edit_deadline_at) > editNow;
   }
 
-  function editTimeRemaining(message: GameChatMessage) {
-    if (!message.edit_deadline_at) return "15m left";
-    const remainingMinutes = Math.max(0, Math.ceil((Date.parse(message.edit_deadline_at) - editNow) / 60000));
-    return remainingMinutes ? `${remainingMinutes}m left` : "Window closed";
-  }
-
   useEffect(() => {
     let active = true;
 
@@ -271,7 +265,7 @@ export default function GameRoomChat({
   function startEditing(message: GameChatMessage) {
     if (!canEditMessage(message)) {
       setOpenMenuId(null);
-      setChatError("Messages can only be edited within 15 minutes of sending.");
+      setChatError("This message can no longer be edited.");
       return;
     }
     setOpenMenuId(null);
@@ -303,7 +297,7 @@ export default function GameRoomChat({
     const body = editDraft.trim();
     if (!body || messageAction) return;
     if (!canEditMessage(message)) {
-      setChatError("Messages can only be edited within 15 minutes of sending.");
+      setChatError("This message can no longer be edited.");
       return;
     }
 
@@ -367,7 +361,6 @@ export default function GameRoomChat({
           {isLoading ? <div className="space-y-3" aria-label="Loading chat" role="status"><div className="h-12 w-3/4 animate-pulse rounded-xl bg-white" /><div className="ml-auto h-12 w-2/3 animate-pulse rounded-xl bg-green-100" /></div> : messages.length ? <div className="space-y-3">{messages.map((message) => <ChatMessage
             canEdit={canEditMessage(message)}
             editDraft={editDraft}
-            editTimeRemaining={editTimeRemaining(message)}
             isDeleting={deleteMessageId === message.id}
             isEditing={editingMessageId === message.id}
             isMessageAction={messageAction?.id === message.id}
@@ -406,7 +399,6 @@ function CloseIcon() {
 type ChatMessageProps = {
   canEdit: boolean;
   editDraft: string;
-  editTimeRemaining: string;
   isDeleting: boolean;
   isEditing: boolean;
   isMessageAction: boolean;
@@ -425,7 +417,6 @@ type ChatMessageProps = {
 function ChatMessage({
   canEdit,
   editDraft,
-  editTimeRemaining,
   isDeleting,
   isEditing,
   isMessageAction,
@@ -441,30 +432,20 @@ function ChatMessage({
   openMenu,
 }: ChatMessageProps) {
   const initials = message.sender_name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-  return <div className={`flex items-end gap-2 ${message.is_mine ? "justify-end" : ""}`}>
+  return <div className={`group flex items-end gap-2 ${message.is_mine ? "justify-end" : ""}`}>
     {!message.is_mine ? <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100 text-xs font-black text-green-800">{initials || "SP"}</span> : null}
-    <div className="relative max-w-[82%]" data-chat-menu>
-      {message.is_mine && !message.is_deleted ? <button
-        aria-expanded={openMenu}
-        aria-haspopup="menu"
-        aria-label="Message actions"
-        className="absolute right-2 top-[-0.6rem] z-10 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-green-300 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200"
-        disabled={isMessageAction}
-        onClick={onToggleMenu}
-        title="Message actions"
-        type="button"
-      ><MoreIcon /></button> : null}
-      {openMenu && message.is_mine && !message.is_deleted ? <div className="absolute right-0 top-8 z-20 min-w-44 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl" role="menu">
-        <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canEdit || isMessageAction} onClick={onEdit} role="menuitem" title={canEdit ? `Edit message · ${editTimeRemaining}` : "The edit window has closed"} type="button"><PencilIcon /><span>{canEdit ? `Edit · ${editTimeRemaining}` : "Edit window closed"}</span></button>
-        <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-black text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50" disabled={isMessageAction} onClick={onRequestDelete} role="menuitem" type="button"><TrashIcon /><span>Delete message</span></button>
-      </div> : null}
-      <div className={`rounded-2xl px-3.5 py-2.5 ${message.is_mine ? "rounded-br-md bg-sportGreen text-white" : "rounded-bl-md bg-white text-sportNavy shadow-sm"}`}>
+    <div className={`flex max-w-[82%] items-end gap-2 ${message.is_mine ? "flex-row-reverse" : ""}`}>
+      <div className={`min-w-0 rounded-2xl ${isEditing ? "border border-green-200 bg-white p-2 shadow-sm" : message.is_mine ? "rounded-br-md bg-sportGreen px-3.5 py-2.5 text-white" : "rounded-bl-md bg-white px-3.5 py-2.5 text-sportNavy shadow-sm"}`}>
         {!message.is_mine ? <p className="text-xs font-black text-green-800">{message.sender_name}</p> : null}
-        {isEditing ? <form className="min-w-[14rem]" onSubmit={onSubmitEdit}>
-          <label><span className="sr-only">Edit message</span><textarea autoFocus className="min-h-20 w-full resize-none rounded-lg border border-green-200 bg-white px-2.5 py-2 text-sm font-semibold leading-5 text-sportNavy outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100" maxLength={1000} onChange={(event) => onChangeEdit(event.target.value)} value={editDraft} /></label>
+        {isEditing ? <form className="w-[min(20rem,calc(100vw-5rem))]" onSubmit={onSubmitEdit}>
+          <div className="flex items-center justify-between gap-3 px-1 pb-2">
+            <p className="text-xs font-black text-sportNavy">Edit message</p>
+            <span className="text-[0.68rem] font-bold text-slate-400">{editDraft.length}/1,000</span>
+          </div>
+          <label><span className="sr-only">Edit message</span><textarea autoFocus className="min-h-20 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-sm font-semibold leading-5 text-sportNavy outline-none focus:border-green-500 focus:bg-white focus:ring-2 focus:ring-green-100" maxLength={1000} onChange={(event) => onChangeEdit(event.target.value)} value={editDraft} /></label>
           <div className="mt-2 flex items-center justify-end gap-2">
-            <button className="rounded-lg px-2.5 py-1.5 text-xs font-black text-green-50 hover:bg-white/10" onClick={onCancelEdit} type="button">Cancel</button>
-            <button className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-black text-sportGreen disabled:cursor-not-allowed disabled:opacity-50" disabled={!editDraft.trim() || isMessageAction} type="submit">{isMessageAction ? "Saving..." : "Save"}</button>
+            <button className="rounded-lg px-2.5 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-100" onClick={onCancelEdit} type="button">Cancel</button>
+            <button className="rounded-lg bg-sportGreen px-3 py-1.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!editDraft.trim() || isMessageAction} type="submit">{isMessageAction ? "Saving..." : "Save"}</button>
           </div>
         </form> : <>
           <p className={`whitespace-pre-wrap break-words text-sm font-semibold leading-5 ${message.is_deleted ? "italic opacity-75" : ""}`}>{message.body}</p>
@@ -474,13 +455,30 @@ function ChatMessage({
           </p>
         </>}
       </div>
-      {isDeleting ? <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-900 shadow-sm">
-        <p className="font-black">Delete this message?</p>
-        <p className="mt-1 leading-5">It will be replaced with a deleted-message notice for everyone in the room.</p>
-        <div className="mt-2 flex justify-end gap-2">
-          <button className="rounded-lg px-2.5 py-1.5 font-black text-red-800 hover:bg-red-100" disabled={isMessageAction} onClick={onCancelDelete} type="button">Cancel</button>
-          <button className="rounded-lg bg-red-700 px-2.5 py-1.5 font-black text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={isMessageAction} onClick={onConfirmDelete} type="button">{isMessageAction ? "Deleting..." : "Delete"}</button>
-        </div>
+      {message.is_mine && !message.is_deleted ? <div className="relative shrink-0 self-end" data-chat-menu>
+        <button
+          aria-expanded={openMenu || isDeleting}
+          aria-haspopup="menu"
+          aria-label="Message actions"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-green-300 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+          disabled={isMessageAction}
+          onClick={onToggleMenu}
+          title="Message actions"
+          type="button"
+        ><MoreIcon /></button>
+        {openMenu ? <div className="absolute bottom-10 left-0 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl" role="menu">
+          <p className="px-2.5 pb-1.5 pt-1 text-[0.64rem] font-black uppercase tracking-[0.12em] text-slate-400">Message actions</p>
+          {canEdit ? <button aria-label="Edit message" className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50" disabled={isMessageAction} onClick={onEdit} role="menuitem" title="Edit message" type="button"><PencilIcon /><span className="min-w-0 flex-1">Edit message</span></button> : null}
+          <button aria-label="Delete message" className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-black text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50" disabled={isMessageAction} onClick={onRequestDelete} role="menuitem" type="button"><TrashIcon /><span>Delete message</span></button>
+        </div> : null}
+        {isDeleting ? <div aria-label="Confirm message deletion" className="absolute bottom-10 right-0 z-20 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-red-200 bg-white p-3 shadow-xl" role="alertdialog">
+          <p className="text-xs font-black text-slate-900">Delete this message?</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">Everyone in the room will see a deleted-message notice.</p>
+          <div className="mt-3 flex justify-end gap-2">
+            <button className="rounded-lg px-2.5 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-100" disabled={isMessageAction} onClick={onCancelDelete} type="button">Cancel</button>
+            <button className="rounded-lg bg-red-700 px-2.5 py-1.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={isMessageAction} onClick={onConfirmDelete} type="button">{isMessageAction ? "Deleting..." : "Delete"}</button>
+          </div>
+        </div> : null}
       </div> : null}
     </div>
   </div>;

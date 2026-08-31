@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from matchmaking.services import booking_end_at
 from notifications.models import Notification
-from notifications.services import create_notification, mark_related_action_state
+from notifications.services import create_notification, mark_related_action_state, notify_chat_message
 from players.models import ParticipationCommitment
 from players.services import (
     create_participation_commitment,
@@ -93,6 +93,48 @@ def _active_registered_captain(team):
         user__is_active=True,
     ).first()
     return membership.user if membership else None
+
+
+def notify_fixture_chat_message(message):
+    """Notify captains and selected players who can access a team-match room."""
+    fixture = TeamFixture.objects.select_related(
+        "challenge__challenger_team",
+        "challenge__challenged_team",
+    ).get(pk=message.fixture_id)
+    recipient_ids = set(
+        TeamFixtureParticipant.objects.filter(
+            fixture_id=fixture.id,
+            status__in=[
+                TeamFixtureParticipant.Status.SELECTED,
+                TeamFixtureParticipant.Status.ATTENDED,
+                TeamFixtureParticipant.Status.ABSENT,
+            ],
+        ).values_list("player_id", flat=True)
+    )
+    for team in [fixture.challenge.challenger_team, fixture.challenge.challenged_team]:
+        captain = _active_registered_captain(team)
+        if captain:
+            recipient_ids.add(captain.id)
+
+    team_names = [
+        team.name
+        for team in [fixture.challenge.challenger_team, fixture.challenge.challenged_team]
+        if team
+    ]
+    room_name = " vs ".join(team_names) or "team match"
+    preview = message.body if len(message.body) <= 180 else f"{message.body[:177].rstrip()}..."
+    recipients = get_user_model().objects.filter(id__in=recipient_ids, is_active=True).order_by()
+    return notify_chat_message(
+        recipients=recipients,
+        actor=message.sender,
+        title=f"New message in {room_name}"[:120],
+        message=f"{message.sender_name}: {preview}",
+        action_url=f"/challenge-teams/{fixture.challenge_id}/room",
+        related_entity_type="fixture_chat_message",
+        related_entity_id=message.id,
+        metadata={"fixture_id": fixture.id, "challenge_id": fixture.challenge_id, "chat_message_id": message.id, "room_kind": "fixture"},
+        deduplication_prefix=f"fixture-chat-message:{message.id}",
+    )
 
 
 def _validate_future_window(response_deadline, booking_deadline=None, game_start=None):

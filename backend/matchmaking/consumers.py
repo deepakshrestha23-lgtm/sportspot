@@ -11,7 +11,7 @@ from sportspot_api.chat import can_edit_chat_message
 
 from .models import Game, GameChatMessage
 from .realtime import chat_message_payload, game_chat_group_name
-from .services import game_room_access_level
+from .services import game_room_access_level, notify_game_chat_message
 
 
 class GameChatConsumer(AsyncJsonWebsocketConsumer):
@@ -219,6 +219,7 @@ class GameChatConsumer(AsyncJsonWebsocketConsumer):
                     body=body,
                     client_message_id=client_message_id,
                 )
+                notify_game_chat_message(message)
         except IntegrityError:
             existing = GameChatMessage.objects.filter(
                 game=game,
@@ -258,7 +259,7 @@ class GameChatConsumer(AsyncJsonWebsocketConsumer):
             if message.deleted_at:
                 return {"kind": "error", "code": "MESSAGE_DELETED", "message": "Deleted messages cannot be edited."}
             if not can_edit_chat_message(message, self.user):
-                return {"kind": "error", "code": "EDIT_WINDOW_EXPIRED", "message": "Messages can only be edited within 15 minutes of sending."}
+                return {"kind": "error", "code": "EDIT_WINDOW_EXPIRED", "message": "This message can no longer be edited."}
             message.body = body
             message.edited_at = timezone.now()
             message.save(update_fields=["body", "edited_at", "updated_at"])

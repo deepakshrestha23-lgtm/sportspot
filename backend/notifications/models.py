@@ -23,6 +23,7 @@ class Notification(models.Model):
         MATCH_REMINDER = "MATCH_REMINDER", "Match Reminder"
         GAME_ROOM_CREATED = "GAME_ROOM_CREATED", "Game Room Created"
         GAME_ROOM_UPDATED = "GAME_ROOM_UPDATED", "Game Room Updated"
+        CHAT_MESSAGE_RECEIVED = "CHAT_MESSAGE_RECEIVED", "Chat Message Received"
         RATING_REQUIRED = "RATING_REQUIRED", "Rating Required"
         VENUE_SUBMITTED = "VENUE_SUBMITTED", "Venue Submitted"
         VENUE_APPROVED = "VENUE_APPROVED", "Venue Approved"

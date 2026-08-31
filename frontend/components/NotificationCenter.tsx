@@ -22,6 +22,7 @@ import type {
   NotificationCategory,
   NotificationCountResponse,
   NotificationsResponse,
+  NotificationPreview,
   SportSpotNotification,
 } from "@/types/notification";
 
@@ -49,7 +50,7 @@ export default function NotificationCenter({
   isOpen: boolean;
   onClose: () => void;
   onUnseenCountChange?: (count: number) => void;
-  onNewNotification?: (title: string) => void;
+  onNewNotification?: (notification: NotificationPreview) => void;
   triggerRef?: RefObject<HTMLButtonElement | null>;
   userId: number;
 }) {
@@ -91,8 +92,8 @@ export default function NotificationCenter({
         Number(window.sessionStorage.getItem(storageKey) || 0),
         latestNotificationIdRef.current,
       );
-      if (previousLatestId > 0 && latest.id > previousLatestId) {
-        onNewNotification?.(latest.title);
+      if (previousLatestId > 0 && latest.id > previousLatestId && latest.action_url !== pathname) {
+        onNewNotification?.(latest);
       }
       if (latest.id > previousLatestId) {
         window.sessionStorage.setItem(storageKey, String(latest.id));
@@ -101,7 +102,7 @@ export default function NotificationCenter({
     } catch {
       // A failed background refresh should not clear a previously correct badge.
     }
-  }, [onNewNotification, updateUnseenCount, userId]);
+  }, [onNewNotification, pathname, updateUnseenCount, userId]);
 
   const loadNotifications = useCallback(async (filter: FilterKey, showLoading = true) => {
     if (showLoading) setIsLoading(true);

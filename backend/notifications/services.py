@@ -37,6 +37,7 @@ TYPE_CATEGORY = {
     Notification.NotificationType.MATCH_REMINDER: Notification.Category.MATCHES,
     Notification.NotificationType.GAME_ROOM_CREATED: Notification.Category.MATCHES,
     Notification.NotificationType.GAME_ROOM_UPDATED: Notification.Category.MATCHES,
+    Notification.NotificationType.CHAT_MESSAGE_RECEIVED: Notification.Category.MATCHES,
     Notification.NotificationType.RATING_REQUIRED: Notification.Category.MATCHES,
     Notification.NotificationType.BOOKING_RESERVED: Notification.Category.BOOKINGS,
     Notification.NotificationType.BOOKING_CONFIRMED: Notification.Category.BOOKINGS,
@@ -82,6 +83,7 @@ def notification_allowed_for_recipient(recipient, notification_type):
         Notification.NotificationType.MATCH_REMINDER: "notify_game_updates",
         Notification.NotificationType.GAME_ROOM_CREATED: "notify_game_updates",
         Notification.NotificationType.GAME_ROOM_UPDATED: "notify_game_updates",
+        Notification.NotificationType.CHAT_MESSAGE_RECEIVED: "notify_chat_messages",
         Notification.NotificationType.RATING_REQUIRED: "notify_rating_reminders",
         Notification.NotificationType.BOOKING_RESERVED: "notify_booking_updates",
         Notification.NotificationType.BOOKING_CONFIRMED: "notify_booking_updates",
@@ -160,6 +162,47 @@ def create_notification(
             )
         )
     return notification
+
+
+def notify_chat_message(
+    *,
+    recipients,
+    actor,
+    title,
+    message,
+    action_url,
+    related_entity_type,
+    related_entity_id,
+    metadata=None,
+    deduplication_prefix,
+):
+    """Create one private in-app notification per authorised room member.
+
+    Chat delivery and notifications are deliberately separate: the room
+    socket remains the live stream, while these durable records cover people
+    who are offline or looking at another SportSpot page.
+    """
+    notifications = []
+    for recipient in recipients:
+        if not recipient or recipient.id == getattr(actor, "id", None):
+            continue
+        notification = create_notification(
+            recipient=recipient,
+            actor=actor,
+            notification_type=Notification.NotificationType.CHAT_MESSAGE_RECEIVED,
+            category=Notification.Category.MATCHES,
+            title=title,
+            message=message,
+            priority=Notification.Priority.NORMAL,
+            action_url=action_url,
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id,
+            metadata=metadata or {},
+            deduplication_key=f"{deduplication_prefix}:{recipient.id}",
+        )
+        if notification:
+            notifications.append(notification)
+    return notifications
 
 
 def mark_related_action_state(*, recipient, related_entity_type, related_entity_id, action_status):

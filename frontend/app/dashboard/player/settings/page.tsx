@@ -36,6 +36,7 @@ type NotificationSettings = {
   join_requests: boolean;
   team_challenges: boolean;
   game_updates: boolean;
+  chat_messages: boolean;
   booking_updates: boolean;
   cancellation_refunds: boolean;
   rating_reminders: boolean;
@@ -77,6 +78,7 @@ const defaultNotifications: NotificationSettings = {
   join_requests: true,
   team_challenges: true,
   game_updates: true,
+  chat_messages: true,
   booking_updates: true,
   cancellation_refunds: true,
   rating_reminders: true,
@@ -452,6 +454,7 @@ function PlayerSettingsContent() {
             <SwitchRow checked={notifications.join_requests} description="Requests from players who want to join games you manage." label="Join requests" onChange={(value) => setNotifications((current) => ({ ...current, join_requests: value }))} />
             <SwitchRow checked={notifications.team_challenges} description="Challenge requests, responses and counter-proposals." label="Team challenges" onChange={(value) => setNotifications((current) => ({ ...current, team_challenges: value }))} />
             <SwitchRow checked={notifications.game_updates} description="Confirmed games, reminders and game-room updates." label="Game confirmations and reminders" onChange={(value) => setNotifications((current) => ({ ...current, game_updates: value }))} />
+            <SwitchRow checked={notifications.chat_messages} description="New messages from game and team-match rooms, with a direct link back to the conversation." label="Game chat messages" onChange={(value) => setNotifications((current) => ({ ...current, chat_messages: value }))} />
             <SwitchRow checked={notifications.booking_updates} description="Booking confirmations, reminders and venue messages." label="Booking confirmations and reminders" onChange={(value) => setNotifications((current) => ({ ...current, booking_updates: value }))} />
             <SwitchRow checked={notifications.cancellation_refunds} description="Cancellation and refund-status updates related to your bookings." label="Cancellation and refund updates" onChange={(value) => setNotifications((current) => ({ ...current, cancellation_refunds: value }))} />
             <SwitchRow checked={notifications.rating_reminders} description="Completed games waiting for verified participant feedback." label="Rating reminders" onChange={(value) => setNotifications((current) => ({ ...current, rating_reminders: value }))} />

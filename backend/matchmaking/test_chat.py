@@ -10,6 +10,8 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from accounts.models import AccountSettings
+from notifications.models import Notification
 from players.models import PlayerProfile
 from sportspot_api.asgi import application
 
@@ -80,12 +82,32 @@ class GameChatApiTests(APITestCase):
         self.assertEqual(retry.status_code, 200, retry.data)
         self.assertFalse(retry.data["created"])
         self.assertEqual(GameChatMessage.objects.filter(game=self.game).count(), 1)
+        chat_notifications = Notification.objects.filter(
+            notification_type=Notification.NotificationType.CHAT_MESSAGE_RECEIVED,
+            related_entity_type="game_chat_message",
+        )
+        self.assertEqual(chat_notifications.count(), 1)
+        self.assertEqual(chat_notifications.get().recipient, self.participant)
+        self.assertEqual(chat_notifications.get().actor, self.host)
+        self.assertEqual(chat_notifications.get().action_url, f"/dashboard/player/games/{self.game.id}/room")
 
         self.client.force_authenticate(self.participant)
         history = self.client.get(self.url)
         self.assertEqual(history.status_code, 200, history.data)
         self.assertEqual(history.data["messages"][0]["body"], "Meet at 5:45")
         self.assertFalse(history.data["messages"][0]["is_mine"])
+
+    def test_chat_notification_respects_recipient_preference(self):
+        AccountSettings.objects.create(user=self.participant, notify_chat_messages=False)
+        self.client.force_authenticate(self.host)
+
+        response = self.client.post(self.url, {"body": "Muted chat alert", "client_message_id": "client-muted"}, format="json")
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertFalse(Notification.objects.filter(
+            notification_type=Notification.NotificationType.CHAT_MESSAGE_RECEIVED,
+            related_entity_id=response.data["message"]["id"],
+        ).exists())
 
     def test_outsider_cannot_read_or_send_game_chat(self):
         self.client.force_authenticate(self.outsider)
@@ -126,12 +148,12 @@ class GameChatApiTests(APITestCase):
         self.client.force_authenticate(self.host)
         created = self.client.post(self.url, {"body": "Old message", "client_message_id": "edit-2"}, format="json")
         message_id = created.data["message"]["id"]
-        GameChatMessage.objects.filter(pk=message_id).update(created_at=timezone.now() - timedelta(minutes=16))
+        GameChatMessage.objects.filter(pk=message_id).update(created_at=timezone.now() - timedelta(minutes=6))
         detail_url = reverse("matchmaking-game-chat-message", args=[self.game.id, message_id])
 
         expired = self.client.patch(detail_url, {"body": "Too late"}, format="json")
         self.assertEqual(expired.status_code, 400, expired.data)
-        self.assertIn("15 minutes", expired.data["detail"])
+        self.assertIn("no longer", expired.data["detail"])
 
         self.client.force_authenticate(self.participant)
         self.assertEqual(self.client.patch(detail_url, {"body": "Not mine"}, format="json").status_code, 403)
@@ -158,6 +180,11 @@ class GameChatRealtimeTests(TransactionTestCase):
             f"/ws/games/{self.game.id}/chat/",
             headers=[(b"origin", b"http://localhost:3000")],
         )
+        notification_communicator = WebsocketCommunicator(
+            application,
+            "/ws/notifications/",
+            headers=[(b"origin", b"http://localhost:3000")],
+        )
         for communicator, user in ((host_communicator, self.host), (player_communicator, self.participant)):
             connected, _ = await communicator.connect()
             self.assertTrue(connected)
@@ -167,12 +194,33 @@ class GameChatRealtimeTests(TransactionTestCase):
             await communicator.send_json_to({"type": "authenticate", "access_token": str(refresh.access_token)})
             self.assertEqual((await communicator.receive_json_from())["type"], "ready")
 
+        connected, _ = await notification_communicator.connect()
+        self.assertTrue(connected)
+        self.assertEqual((await notification_communicator.receive_json_from())["type"], "authenticate")
+        refresh = RefreshToken.for_user(self.participant)
+        refresh["auth_version"] = self.participant.auth_version
+        await notification_communicator.send_json_to({"type": "authenticate", "access_token": str(refresh.access_token)})
+        self.assertEqual((await notification_communicator.receive_json_from())["type"], "ready")
+
         await host_communicator.send_json_to({"type": "message.send", "body": "We are live", "client_message_id": "realtime-1"})
         host_event = await host_communicator.receive_json_from()
         player_event = await player_communicator.receive_json_from()
         self.assertEqual(host_event["type"], "chat.message")
         self.assertEqual(host_event["message"]["body"], "We are live")
         self.assertEqual(player_event, host_event | {"message": {**host_event["message"], "is_mine": False}})
+        @database_sync_to_async
+        def notification_id_for_message():
+            return Notification.objects.get(
+                recipient=self.participant,
+                related_entity_type="game_chat_message",
+                related_entity_id=host_event["message"]["id"],
+            ).id
+
+        notification_event = await notification_communicator.receive_json_from()
+        self.assertEqual(
+            notification_event,
+            {"type": "notification.created", "notification_id": await notification_id_for_message()},
+        )
         message_id = host_event["message"]["id"]
 
         await host_communicator.send_json_to({"type": "message.edit", "message_id": message_id, "body": "We are live and edited"})
@@ -200,3 +248,4 @@ class GameChatRealtimeTests(TransactionTestCase):
 
         await host_communicator.disconnect()
         await player_communicator.disconnect()
+        await notification_communicator.disconnect()

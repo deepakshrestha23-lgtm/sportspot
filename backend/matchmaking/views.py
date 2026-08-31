@@ -54,6 +54,7 @@ from .services import (
     invite_temporary_participant_to_team,
     leave_game,
     notify_game_cancelled,
+    notify_game_chat_message,
     record_game_attendance,
     dispute_game_attendance,
     reconfirm_game,
@@ -752,6 +753,7 @@ class GameChatView(MutationThrottleMixin, APIView):
                         client_message_id=client_message_id,
                     )
                     created = True
+                    notify_game_chat_message(message)
                     transaction.on_commit(lambda created_message=message: publish_game_chat_message(created_message))
         except IntegrityError:
             message = GameChatMessage.objects.filter(
@@ -798,7 +800,7 @@ class GameChatMessageDetailView(GameChatView):
                 if message.deleted_at:
                     return Response({"detail": "Deleted messages cannot be edited."}, status=status.HTTP_400_BAD_REQUEST)
                 if not can_edit_chat_message(message, request.user):
-                    return Response({"detail": "Messages can only be edited within 15 minutes of sending."}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({"detail": "This message can no longer be edited."}, status=status.HTTP_400_BAD_REQUEST)
                 message.body = payload_serializer.validated_data["body"]
                 message.edited_at = timezone.now()
                 message.save(update_fields=["body", "edited_at", "updated_at"])
