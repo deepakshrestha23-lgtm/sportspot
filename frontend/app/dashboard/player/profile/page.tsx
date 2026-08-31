@@ -200,8 +200,8 @@ export default function PlayerProfilePage() {
               <div className="mt-4 flex flex-wrap justify-center gap-2"><Pill label="Cricksal" tone="green" /><Pill label={profile?.is_profile_complete ? "Profile complete" : `${completion}% complete`} tone="slate" /></div>
             </div>
             <div className="my-5 border-t border-slate-200" />
-            <div className="grid grid-cols-2 gap-3"><Metric label="Reliability" value={profile && profile.completed_matches_count >= 3 ? `${profile.reliability_score}%` : "New Player"} /><Metric label="Avg rating" value={formatRatingMetric(rating)} /><Metric label="Matches" value={profile?.completed_matches_count ?? 0} /><Metric label="No-shows" value={profile?.no_show_count ?? 0} /></div>
-            {profile && profile.completed_matches_count < 3 ? <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-600">Reliability becomes meaningful after a few completed matches.</p> : null}
+            <div className="grid grid-cols-2 gap-3"><Metric label="Reliability" value={profile && profile.completed_matches_count >= 5 ? `${profile.reliability_score}%` : "Provisional Reliability"} /><Metric label="Avg rating" value={formatRatingMetric(rating)} /><Metric label="Matches" value={profile?.completed_matches_count ?? 0} /><Metric label="No-shows" value={profile?.no_show_count ?? 0} /></div>
+            {profile && profile.completed_matches_count < 5 ? <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-600">Reliability becomes meaningful after five finalized outcomes.</p> : null}
           </section>
           <section className="sport-card">
             <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Trust summary</p><h3 className="mt-1 text-lg font-black text-sportNavy">Match behaviour</h3></div><span className="rounded-full bg-green-50 px-3 py-1 text-xs font-black text-sportGreen">Read only</span></div>

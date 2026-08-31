@@ -123,6 +123,7 @@ export type TeamFixtureParticipant = {
     id?: number;
     status: string;
     review_deadline_at: string | null;
+    attendance_submission_deadline_at: string | null;
     can_dispute: boolean;
   };
   created_at: string;

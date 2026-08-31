@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from teams.models import Team, TeamMember
 from players.models import ParticipationCommitment
+from players.services import get_attendance_submission_deadline
 from sportspot_api.chat import can_edit_chat_message, chat_edit_deadline
 from venues.models import Booking
 from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
@@ -262,6 +263,7 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
                 TeamFixtureParticipant.Status.SELECTED,
                 TeamFixtureParticipant.Status.ATTENDED,
                 TeamFixtureParticipant.Status.ABSENT,
+                TeamFixtureParticipant.Status.UNVERIFIED,
             ],
         ).exists()
         return is_captain, is_participant
@@ -586,13 +588,14 @@ class TeamFixtureParticipantSerializer(serializers.ModelSerializer):
             source_participant_id=participant.id,
         ).order_by("-source_version", "-id").first()
         if not commitment:
-            return {"status": "NOT_CREATED", "review_deadline_at": None, "can_dispute": False}
+            return {"status": "NOT_CREATED", "review_deadline_at": None, "attendance_submission_deadline_at": None, "can_dispute": False}
         request = self.context.get("request")
         viewer = getattr(request, "user", None)
         return {
             "id": commitment.id,
             "status": commitment.status,
             "review_deadline_at": commitment.review_deadline_at.isoformat() if commitment.review_deadline_at else None,
+            "attendance_submission_deadline_at": get_attendance_submission_deadline(commitment).isoformat(),
             "can_dispute": bool(
                 viewer
                 and viewer.id == participant.player_id
@@ -784,6 +787,7 @@ class TeamChallengeSerializer(serializers.ModelSerializer):
                         TeamFixtureParticipant.Status.SELECTED,
                         TeamFixtureParticipant.Status.ATTENDED,
                         TeamFixtureParticipant.Status.ABSENT,
+                        TeamFixtureParticipant.Status.UNVERIFIED,
                     ],
                 ).exists()
             )

@@ -13,7 +13,7 @@ from teams.models import TeamMember
 from venues.models import Booking
 from venues.policies import get_booking_start_at
 
-from .models import ParticipationCommitment, PlayerProfile, ReliabilityEvent
+from .models import MIN_RELIABILITY_HISTORY, ParticipationCommitment, PlayerProfile, ReliabilityEvent
 from .permissions import IsPlayer
 from .serializers import PlayerProfileSerializer
 from .services import (
@@ -243,13 +243,13 @@ class PlayerRatingsReliabilityView(APIView):
             )
 
         commitment_summary = get_player_commitment_summary(request.user)
-        has_commitment_history = commitment_summary["accountable_commitments"] > 0 or commitment_summary["pending_reviews"] > 0
+        has_commitment_history = commitment_summary["has_commitments"]
         completed_games = commitment_summary["attended"] if has_commitment_history else profile.completed_matches_count
         reliability_events = list(ReliabilityEvent.objects.filter(player=request.user).order_by("-occurred_at", "-id")[:5])
         no_shows = commitment_summary["finalized_no_shows"] if has_commitment_history else profile.no_show_count
         late_cancellations = commitment_summary["late_cancellations"] if has_commitment_history else profile.late_cancellation_count
         history_count = commitment_summary["accountable_commitments"] if has_commitment_history else completed_games
-        is_provisional = history_count < (5 if has_commitment_history else 3)
+        is_provisional = history_count < MIN_RELIABILITY_HISTORY
         attendance_rate = (
             round((completed_games / history_count) * 100)
             if history_count
@@ -371,7 +371,7 @@ def get_player_profile(user):
 
 
 def get_reliability_level(score, completed_games):
-    if completed_games < 5:
+    if completed_games < MIN_RELIABILITY_HISTORY:
         return "Provisional"
     if score >= 90:
         return "Excellent"
@@ -450,7 +450,7 @@ def get_reliability_guidance(profile, attendance_rate, commitment_summary=None):
     history_count = commitment_summary["accountable_commitments"] if commitment_summary else profile.completed_matches_count
     no_shows = commitment_summary["finalized_no_shows"] if commitment_summary else profile.no_show_count
     late_cancellations = commitment_summary["late_cancellations"] if commitment_summary else profile.late_cancellation_count
-    if history_count < 5:
+    if history_count < MIN_RELIABILITY_HISTORY:
         return "Attend your next confirmed games to build a meaningful reliability history."
     if no_shows:
         return "Avoid missing confirmed games to rebuild trust with teams and captains."

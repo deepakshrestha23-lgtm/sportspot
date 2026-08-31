@@ -16,7 +16,7 @@ export interface TeamMember {
   profile_photo: string;
   weekly_availability: string;
   playing_style: string;
-  reliability_score: number;
+  reliability_score: number | null;
   reliability_label: string;
   completed_matches_count: number;
   average_rating: string;
@@ -43,7 +43,8 @@ export interface Team {
   captain_name: string;
   members_count: number;
   is_captain: boolean;
-  team_reliability_score: number;
+  team_reliability_score: number | null;
+  team_reliability_label: string;
   average_rating: string;
   matches_played_count: number;
   members?: TeamMember[];
@@ -81,7 +82,7 @@ export interface PlayerLookup {
   skill_level: TeamSkillLevel;
   location: string;
   preferred_cricksal_role: CricksalRole;
-  reliability_score: number;
+  reliability_score: number | null;
   completed_matches_count: number;
   average_rating: string;
   profile_photo: string;
@@ -103,7 +104,8 @@ export interface TeamInvitation {
   team_skill_level: TeamSkillLevel;
   team_photo: string;
   team_members_count: number;
-  team_reliability_score: number;
+  team_reliability_score: number | null;
+  team_reliability_label: string;
   team_average_rating: string;
   team_matches_played_count: number;
   team_created_at: string;

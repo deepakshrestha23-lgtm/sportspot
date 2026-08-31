@@ -8,8 +8,10 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from django.utils import timezone
 
-from players.models import PlayerProfile, PlayerRatingEligibility
+from players.models import ParticipationCommitment, PlayerProfile, PlayerRatingEligibility, ReliabilityEvent
+from players.services import finalize_pending_attendance
 from teams.models import Team, TeamMember
+from teams.serializers import TeamSerializer
 from venues.models import Booking, Court, CourtSlot, Venue
 from matchmaking.services import booking_end_at, get_booking_start_at, player_has_overlapping_commitment
 
@@ -26,6 +28,7 @@ from .services import (
     add_fixture_participant,
     confirm_fixture_result,
     record_fixture_attendance,
+    recompute_team_reliability,
     reconfirm_challenge,
     reschedule_challenge,
     get_challenge_fixture_room,
@@ -91,6 +94,9 @@ class TeamChallengeServiceTests(TestCase):
         teams = response.json()["teams"]
         host_team = next(item for item in teams if item["id"] == self.host_team.id)
         self.assertEqual(host_team["members_count"], 1)
+        full_team = TeamSerializer(self.host_team).data
+        self.assertIsNone(full_team["team_reliability_score"])
+        self.assertEqual(full_team["team_reliability_label"], "Provisional Team Reliability")
 
     def test_challenge_reference_data_keeps_supported_options_available(self):
         response = APIClient().get("/api/team-challenges/reference/")
@@ -793,6 +799,46 @@ class TeamChallengeServiceTests(TestCase):
     @patch("team_challenges.services.notify_challenge_received")
     @patch("team_challenges.services.notify_challenge_status")
     @patch("team_challenges.services.notify_challenge_decision")
+    def test_missing_fixture_attendance_is_neutral_and_does_not_block_result(self, _decision, _status, _received):
+        booking = self.create_confirmed_booking(days=3, owner=self.host)
+        data = self.challenge_data(request_id="fixture-neutral-attendance")
+        data.update({"court_mode": TeamChallenge.CourtMode.BOOKING_FIRST, "booking": booking, "booking_deadline": None})
+        challenge = create_challenge(data, self.host)
+        decide_challenge(challenge.pk, self.opponent, "ACCEPT")
+        fixture = challenge.fixture
+        host_lineup = add_fixture_participant(fixture.id, self.host, self.host.id)
+        opponent_lineup = add_fixture_participant(fixture.id, self.opponent, self.opponent.id)
+
+        synchronize_confirmed_team_challenges(now=timezone.now() + timedelta(days=4), notify=False)
+        record_fixture_attendance(fixture.id, host_lineup.id, self.host, "ATTENDED")
+        opponent_commitment = ParticipationCommitment.objects.get(
+            source_type=ParticipationCommitment.SourceType.TEAM_FIXTURE,
+            source_id=fixture.id,
+            source_participant_id=opponent_lineup.id,
+        )
+
+        self.assertEqual(finalize_pending_attendance(now=timezone.now() + timedelta(days=5)), 1)
+        opponent_commitment.refresh_from_db()
+        opponent_lineup.refresh_from_db()
+        self.assertEqual(opponent_commitment.status, ParticipationCommitment.Status.UNVERIFIED)
+        self.assertEqual(opponent_lineup.status, TeamFixtureParticipant.Status.UNVERIFIED)
+        self.assertFalse(ReliabilityEvent.objects.filter(player=self.opponent).exists())
+
+        submit_fixture_result(fixture.id, self.host, "Host Team won")
+        confirm_fixture_result(fixture.id, self.opponent)
+        self.assertEqual(PlayerRatingEligibility.objects.filter(related_entity_id=fixture.id).count(), 0)
+        self.host_team.refresh_from_db()
+        self.opponent_team.refresh_from_db()
+        self.assertEqual(self.host_team.matches_played_count, 1)
+        self.assertEqual(self.host_team.team_reliability_score, 100)
+        self.assertEqual(self.opponent_team.matches_played_count, 0)
+        recompute_team_reliability(self.opponent_team.id)
+        self.opponent_team.refresh_from_db()
+        self.assertEqual(self.opponent_team.matches_played_count, 0)
+
+    @patch("team_challenges.services.notify_challenge_received")
+    @patch("team_challenges.services.notify_challenge_status")
+    @patch("team_challenges.services.notify_challenge_decision")
     def test_selected_fixture_participant_counts_as_a_schedule_commitment(self, _decision, _status, _received):
         team_member = self.create_player("fixture-overlap@example.com", "Fixture Overlap")
         TeamMember.objects.create(
@@ -860,6 +906,27 @@ class TeamChallengeServiceTests(TestCase):
         add_fixture_participant(challenge.fixture.id, self.host, self.member.id)
         participant_room = get_challenge_fixture_room(challenge.pk, self.member)
         self.assertEqual(participant_room.pk, room.pk)
+
+    @patch("team_challenges.services.notify_challenge_status")
+    @patch("team_challenges.services.notify_challenge_decision")
+    @patch("team_challenges.services.notify_challenge_received")
+    def test_captain_can_record_attendance_only_for_their_own_team(self, _received, _decision, _status):
+        booking = self.create_confirmed_booking(days=3)
+        data = self.challenge_data(request_id="captain-attendance-authority")
+        data.update({"court_mode": TeamChallenge.CourtMode.BOOKING_FIRST, "booking": booking, "booking_deadline": None})
+        challenge = create_challenge(data, self.host)
+        decide_challenge(challenge.pk, self.opponent, "ACCEPT")
+        host_lineup = add_fixture_participant(challenge.fixture.id, self.host, self.host.id)
+        opponent_lineup = add_fixture_participant(challenge.fixture.id, self.opponent, self.opponent.id)
+
+        synchronize_confirmed_team_challenges(now=timezone.now() + timedelta(days=4), notify=False)
+
+        with self.assertRaises(ValidationError):
+            record_fixture_attendance(challenge.fixture.id, opponent_lineup.id, self.host, "ATTENDED")
+
+        opponent_lineup.refresh_from_db()
+        self.assertEqual(opponent_lineup.status, TeamFixtureParticipant.Status.SELECTED)
+        self.assertEqual(host_lineup.status, TeamFixtureParticipant.Status.SELECTED)
 
     @patch("team_challenges.services.notify_challenge_received")
     @patch("team_challenges.services.notify_challenge_status")

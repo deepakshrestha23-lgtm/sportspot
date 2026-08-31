@@ -172,6 +172,54 @@ export type CourtReviewComment = {
   updated_at: string;
 };
 
+export type OwnerFeedbackItem = {
+  id: number;
+  content_type: "review" | "comment";
+  court_id: number;
+  court_name: string;
+  reviewer_name: string;
+  rating: number | null;
+  comment: string;
+  like_count: number;
+  dislike_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OwnerFeedbackCourt = {
+  id: number;
+  name: string;
+  is_active: boolean;
+  average_rating: string | null;
+  rating_count: number;
+  comment_count: number;
+};
+
+export type OwnerReviewsResponse = {
+  venue: { id: number; name: string; area: string; city: string; status: VenueStatus } | null;
+  filters: {
+    court_id: number | null;
+    type: "all" | "reviews" | "comments";
+    rating: number | null;
+    period: "all" | "30" | "90" | "custom";
+    start_date: string | null;
+    end_date: string | null;
+    sort: "newest" | "oldest" | "highest" | "lowest";
+  };
+  summary: {
+    average_rating: string | null;
+    rating_count: number;
+    comment_count: number;
+    total_feedback: number;
+    positive_rating_count: number;
+    latest_feedback_at: string | null;
+  };
+  distribution: Array<{ rating: number; count: number }>;
+  courts: OwnerFeedbackCourt[];
+  feedback: OwnerFeedbackItem[];
+  pagination: { page: number; page_size: number; total: number; has_more: boolean };
+};
+
 export type PublicVenue = Venue & {
   courts: Court[];
   court_count: number;

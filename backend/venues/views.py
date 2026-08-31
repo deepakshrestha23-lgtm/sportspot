@@ -1061,6 +1061,205 @@ class OwnerReportsView(APIView):
         )
 
 
+class OwnerReviewsView(APIView):
+    """Read-only feedback workspace for the owner of the authenticated venue."""
+
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+    allowed_periods = {"all", "30", "90"}
+    allowed_types = {"all", "reviews", "comments"}
+    allowed_sorts = {"newest", "oldest", "highest", "lowest"}
+
+    def get(self, request):
+        venue = get_owner_venue(request.user)
+        selected_type = str(request.query_params.get("type") or "all").lower()
+        selected_sort = str(request.query_params.get("sort") or "newest").lower()
+        selected_period = str(request.query_params.get("period") or "all").lower()
+
+        if selected_type not in self.allowed_types:
+            return Response({"detail": "Choose all, ratings, or comments."}, status=status.HTTP_400_BAD_REQUEST)
+        if selected_sort not in self.allowed_sorts:
+            return Response({"detail": "Choose a valid feedback sort order."}, status=status.HTTP_400_BAD_REQUEST)
+
+        start_date, end_date, period_mode = self._parse_period(request, selected_period)
+        if isinstance(start_date, Response):
+            return start_date
+
+        filters = {
+            "court_id": None,
+            "type": selected_type,
+            "rating": None,
+            "period": period_mode,
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "sort": selected_sort,
+        }
+        empty_payload = build_empty_owner_reviews_payload(filters)
+        if not venue:
+            return Response(empty_payload)
+
+        court_id_value = request.query_params.get("court_id")
+        selected_court = None
+        if court_id_value not in (None, "", "all"):
+            try:
+                selected_court = Court.objects.get(venue=venue, pk=int(court_id_value))
+            except (TypeError, ValueError):
+                return Response({"detail": "Choose a valid court."}, status=status.HTTP_400_BAD_REQUEST)
+            except Court.DoesNotExist:
+                return Response({"detail": "That court does not belong to your venue."}, status=status.HTTP_404_NOT_FOUND)
+            filters["court_id"] = selected_court.id
+
+        rating_value = request.query_params.get("rating")
+        rating_filter = None
+        if rating_value not in (None, "", "all"):
+            try:
+                rating_filter = int(rating_value)
+            except (TypeError, ValueError):
+                rating_filter = 0
+            if rating_filter not in range(1, 6):
+                return Response({"detail": "Choose a rating from 1 to 5."}, status=status.HTTP_400_BAD_REQUEST)
+            filters["rating"] = rating_filter
+
+        court_filter = {"venue": venue}
+        if selected_court:
+            court_filter["court"] = selected_court
+        date_filter = {}
+        if start_date:
+            date_filter["created_at__date__gte"] = start_date
+        if end_date:
+            date_filter["created_at__date__lte"] = end_date
+
+        review_queryset = CourtReview.objects.filter(**court_filter, **date_filter).select_related("reviewer", "court").annotate(
+            like_count=Count(
+                "feedback_reactions",
+                filter=Q(feedback_reactions__reaction=CourtFeedbackReaction.Reaction.LIKE),
+                distinct=True,
+            ),
+            dislike_count=Count(
+                "feedback_reactions",
+                filter=Q(feedback_reactions__reaction=CourtFeedbackReaction.Reaction.DISLIKE),
+                distinct=True,
+            ),
+        )
+        comment_queryset = CourtReviewComment.objects.filter(**court_filter, **date_filter).select_related("reviewer", "court").annotate(
+            like_count=Count(
+                "feedback_reactions",
+                filter=Q(feedback_reactions__reaction=CourtFeedbackReaction.Reaction.LIKE),
+                distinct=True,
+            ),
+            dislike_count=Count(
+                "feedback_reactions",
+                filter=Q(feedback_reactions__reaction=CourtFeedbackReaction.Reaction.DISLIKE),
+                distinct=True,
+            ),
+        )
+
+        all_reviews = list(review_queryset.order_by("-updated_at", "-id"))
+        all_comments = list(comment_queryset.order_by("-updated_at", "-id"))
+        visible_reviews = [review for review in all_reviews if rating_filter is None or review.rating == rating_filter]
+        if selected_type == "reviews":
+            visible_items = [serialize_owner_feedback_item(review, "review") for review in visible_reviews]
+        elif selected_type == "comments":
+            visible_items = [serialize_owner_feedback_item(comment, "comment") for comment in all_comments]
+        else:
+            visible_items = [serialize_owner_feedback_item(review, "review") for review in visible_reviews]
+            visible_items.extend(serialize_owner_feedback_item(comment, "comment") for comment in all_comments)
+
+        sort_feedback_items(visible_items, selected_sort)
+        try:
+            page_size = min(max(int(request.query_params.get("page_size") or 20), 1), 50)
+        except (TypeError, ValueError):
+            page_size = 20
+        try:
+            page_number = max(int(request.query_params.get("page") or 1), 1)
+        except (TypeError, ValueError):
+            page_number = 1
+        offset = (page_number - 1) * page_size
+        page_items = visible_items[offset : offset + page_size]
+
+        return Response(
+            {
+                "venue": {
+                    "id": venue.id,
+                    "name": venue.name,
+                    "area": venue.area,
+                    "city": venue.city,
+                    "status": venue.status,
+                },
+                "filters": filters,
+                "summary": build_owner_feedback_summary(all_reviews, all_comments),
+                "distribution": build_owner_rating_distribution(all_reviews),
+                "courts": build_owner_feedback_court_summaries(venue, all_reviews, all_comments),
+                "feedback": page_items,
+                "pagination": {
+                    "page": page_number,
+                    "page_size": page_size,
+                    "total": len(visible_items),
+                    "has_more": offset + page_size < len(visible_items),
+                },
+            }
+        )
+
+    @staticmethod
+    def _parse_period(request, selected_period):
+        custom_start_value = request.query_params.get("start_date")
+        custom_end_value = request.query_params.get("end_date")
+        if custom_start_value is not None or custom_end_value is not None:
+            if not custom_start_value or not custom_end_value:
+                return Response({"detail": "Enter both a start date and an end date."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            start_date = parse_date_value(custom_start_value)
+            end_date = parse_date_value(custom_end_value)
+            if not start_date or not end_date:
+                return Response({"detail": "Enter valid dates in YYYY-MM-DD format."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            if start_date > end_date:
+                return Response({"detail": "Start date must be on or before the end date."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            if end_date > timezone.localdate():
+                return Response({"detail": "Feedback filters cannot include future dates."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            if (end_date - start_date).days + 1 > 365:
+                return Response({"detail": "Choose a date range of 365 days or fewer."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            return start_date, end_date, "custom"
+
+        if selected_period not in OwnerReviewsView.allowed_periods:
+            return Response({"detail": "Choose all, 30, or 90 days, or provide a custom date range."}, status=status.HTTP_400_BAD_REQUEST), None, None
+        if selected_period == "all":
+            return None, None, "all"
+        end_date = timezone.localdate()
+        start_date = end_date - timedelta(days=int(selected_period) - 1)
+        return start_date, end_date, selected_period
+
+
+class OwnerFeedbackReportView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
+
+    def post(self, request):
+        venue = get_owner_venue(request.user)
+        if not venue:
+            return Response({"detail": "Create a venue before reporting feedback."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = CourtFeedbackReportInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_type = serializer.validated_data["target_type"]
+        target_id = serializer.validated_data["target_id"]
+        target_filters = {"pk": target_id, "venue": venue}
+        target_model = CourtReview if target_type == "review" else CourtReviewComment
+
+        with transaction.atomic():
+            target = get_object_or_404(target_model, **target_filters)
+            report_filter = {"review": target} if target_type == "review" else {"comment": target}
+            if CourtFeedbackReport.objects.filter(reporter=request.user, **report_filter).exists():
+                return Response({"detail": "You have already reported this feedback."}, status=status.HTTP_409_CONFLICT)
+            try:
+                CourtFeedbackReport.objects.create(
+                    reporter=request.user,
+                    reason=serializer.validated_data["reason"],
+                    details=serializer.validated_data.get("details", ""),
+                    **report_filter,
+                )
+            except IntegrityError:
+                return Response({"detail": "You have already reported this feedback."}, status=status.HTTP_409_CONFLICT)
+
+        return Response({"detail": "Thanks. Your report has been sent to SportSpot moderation."}, status=status.HTTP_201_CREATED)
+
+
 class OwnerCalendarBlockView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsCourtOwner]
 
@@ -3334,6 +3533,96 @@ def parse_iso_datetime(value):
 
 def format_time_for_owner(time_value):
     return time_value.strftime("%I:%M %p").lstrip("0") if hasattr(time_value, "strftime") else ""
+
+
+def build_empty_owner_reviews_payload(filters):
+    return {
+        "venue": None,
+        "filters": filters,
+        "summary": build_owner_feedback_summary([], []),
+        "distribution": build_owner_rating_distribution([]),
+        "courts": [],
+        "feedback": [],
+        "pagination": {"page": 1, "page_size": 20, "total": 0, "has_more": False},
+    }
+
+
+def serialize_owner_feedback_item(item, content_type):
+    return {
+        "id": item.id,
+        "content_type": content_type,
+        "court_id": item.court_id,
+        "court_name": item.court.name,
+        "reviewer_name": item.reviewer.full_name or "SportSpot player",
+        "rating": item.rating if content_type == "review" else None,
+        "comment": item.comment,
+        "like_count": getattr(item, "like_count", 0) or 0,
+        "dislike_count": getattr(item, "dislike_count", 0) or 0,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+def sort_feedback_items(items, selected_sort):
+    if selected_sort == "oldest":
+        items.sort(key=lambda item: (item["updated_at"], item["id"]))
+    elif selected_sort == "highest":
+        items.sort(key=lambda item: (item["rating"] is None, -(item["rating"] or 0), item["updated_at"]), reverse=False)
+    elif selected_sort == "lowest":
+        items.sort(key=lambda item: (item["rating"] is None, item["rating"] if item["rating"] is not None else 6, item["updated_at"]))
+    else:
+        items.sort(key=lambda item: (item["updated_at"], item["id"]), reverse=True)
+
+
+def build_owner_feedback_summary(reviews, comments):
+    rating_count = len(reviews)
+    rating_total = sum(review.rating for review in reviews)
+    average_rating = None
+    if rating_count:
+        average_rating = str((Decimal(rating_total) / Decimal(rating_count)).quantize(Decimal("0.01")))
+    latest_feedback = [item.updated_at for item in [*reviews, *comments]]
+    return {
+        "average_rating": average_rating,
+        "rating_count": rating_count,
+        "comment_count": len(comments),
+        "total_feedback": rating_count + len(comments),
+        "positive_rating_count": sum(review.rating >= 4 for review in reviews),
+        "latest_feedback_at": max(latest_feedback).isoformat() if latest_feedback else None,
+    }
+
+
+def build_owner_rating_distribution(reviews):
+    return [{"rating": rating, "count": sum(review.rating == rating for review in reviews)} for rating in range(5, 0, -1)]
+
+
+def build_owner_feedback_court_summaries(venue, reviews, comments):
+    review_by_court = defaultdict(list)
+    comment_by_court = defaultdict(list)
+    for review in reviews:
+        review_by_court[review.court_id].append(review)
+    for comment in comments:
+        comment_by_court[comment.court_id].append(comment)
+
+    summaries = []
+    for court in Court.objects.filter(venue=venue).order_by("name"):
+        court_reviews = review_by_court[court.id]
+        court_comments = comment_by_court[court.id]
+        average_rating = None
+        if court_reviews:
+            average_rating = str((Decimal(sum(review.rating for review in court_reviews)) / Decimal(len(court_reviews))).quantize(Decimal("0.01")))
+        summaries.append(
+            {
+                "id": court.id,
+                "name": court.name,
+                "is_active": court.is_active,
+                "average_rating": average_rating,
+                "rating_count": len(court_reviews),
+                "comment_count": len(court_comments),
+            }
+        )
+    return summaries
+
+
 def get_owner_venue(user):
     return Venue.objects.filter(owner=user).first()
 

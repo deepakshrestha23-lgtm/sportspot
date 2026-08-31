@@ -5,11 +5,13 @@ from unittest.mock import patch
 from sportspot_api.maintenance import run_platform_maintenance
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
-from players.models import PlayerProfile
+from players.models import ParticipationCommitment, PlayerProfile, PlayerRatingEligibility
 from teams.models import Team, TeamMember
 from venues.models import Booking, Court, CourtSlot, Venue
 
@@ -18,7 +20,9 @@ from .services import (
     attach_booking_to_game,
     cancel_games_for_booking,
     expire_matchmaking_deadlines,
+    maybe_create_game_rating_eligibilities,
     player_has_overlapping_confirmed_game,
+    record_game_attendance,
     synchronize_game_lifecycle,
 )
 
@@ -700,6 +704,133 @@ class PickupGameApiTests(APITestCase):
         self.assertEqual(accepted.status, JoinRequest.Status.ACCEPTED)
         self.assertGreaterEqual(stats["games_closed"], 1)
         self.assertGreaterEqual(stats["requests_expired"], 1)
+
+    def test_completed_pickup_unlocks_peer_ratings_once_after_attendance(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Completed pickup feedback",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            status=Game.Status.COMPLETED,
+        )
+        host_participant = GameParticipant.objects.create(
+            game=game,
+            user=self.host,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            role="ANY",
+            status=GameParticipant.Status.CONFIRMED,
+        )
+        player_participant = GameParticipant.objects.create(
+            game=game,
+            user=self.player_one,
+            participant_type=GameParticipant.ParticipantType.TEMPORARY,
+            role="ANY",
+            status=GameParticipant.Status.CONFIRMED,
+        )
+        CourtSlot.objects.filter(pk=self.slot.pk).update(date=timezone.localdate() - timedelta(days=1))
+
+        record_game_attendance(game.id, host_participant.id, self.host, "ATTENDED")
+        record_game_attendance(game.id, player_participant.id, self.host, "ATTENDED")
+
+        game.refresh_from_db()
+        commitments = ParticipationCommitment.objects.filter(
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=game.id,
+        )
+        self.assertEqual(game.status, Game.Status.COMPLETED)
+        self.assertEqual(commitments.count(), 2)
+        self.assertEqual(
+            commitments.filter(status=ParticipationCommitment.Status.ATTENDED).count(),
+            2,
+        )
+        eligibility_count = PlayerRatingEligibility.objects.filter(
+            related_entity_type="matchmaking_game",
+            related_entity_id=game.id,
+        ).count()
+        self.assertEqual(eligibility_count, 2)
+        self.assertEqual(maybe_create_game_rating_eligibilities(game.id), 0)
+        self.assertEqual(
+            PlayerRatingEligibility.objects.filter(
+                related_entity_type="matchmaking_game",
+                related_entity_id=game.id,
+            ).count(),
+            2,
+        )
+        self.assertEqual(
+            ParticipationCommitment.objects.filter(
+                source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+                source_id=game.id,
+                status=ParticipationCommitment.Status.ATTENDED,
+            ).count(),
+            2,
+        )
+
+    def test_completed_fill_my_squad_unlocks_peer_ratings_after_captain_attendance(self):
+        game = Game.objects.create(
+            game_type=Game.GameType.FILL_SQUAD,
+            team=self.team,
+            host=self.host,
+            booking=self.booking,
+            title="Completed squad feedback",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            status=Game.Status.COMPLETED,
+        )
+        host_participant = GameParticipant.objects.create(
+            game=game,
+            user=self.host,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            role="ANY",
+            status=GameParticipant.Status.CONFIRMED,
+        )
+        member_participant = GameParticipant.objects.create(
+            game=game,
+            user=self.player_one,
+            participant_type=GameParticipant.ParticipantType.TEAM_MEMBER,
+            role="ANY",
+            status=GameParticipant.Status.CONFIRMED,
+        )
+        CourtSlot.objects.filter(pk=self.slot.pk).update(date=timezone.localdate() - timedelta(days=1))
+
+        record_game_attendance(game.id, host_participant.id, self.host, "ATTENDED")
+        record_game_attendance(game.id, member_participant.id, self.host, "ATTENDED")
+
+        self.assertEqual(
+            PlayerRatingEligibility.objects.filter(
+                related_entity_type="matchmaking_game",
+                related_entity_id=game.id,
+            ).count(),
+            2,
+        )
+        self.assertEqual(maybe_create_game_rating_eligibilities(game.id), 0)
+
+    def test_only_the_game_host_can_record_pickup_attendance(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Host attendance authority",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            status=Game.Status.COMPLETED,
+        )
+        participant = GameParticipant.objects.create(
+            game=game,
+            user=self.player_one,
+            participant_type=GameParticipant.ParticipantType.TEMPORARY,
+            role="ANY",
+            status=GameParticipant.Status.CONFIRMED,
+        )
+
+        with self.assertRaises((ValidationError, DRFValidationError)):
+            record_game_attendance(game.id, participant.id, self.player_one, "ATTENDED")
+
+        self.assertFalse(
+            ParticipationCommitment.objects.filter(
+                source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+                source_id=game.id,
+            ).exists()
+        )
 
     def test_host_can_update_listing_and_role_plan(self):
         game = Game.objects.create(

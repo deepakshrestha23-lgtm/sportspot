@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from players.models import PlayerProfile
+from players.services import get_attendance_submission_deadline
 from teams.models import TeamMember
 from team_challenges.models import TeamFixture, TeamFixtureParticipant
 from team_challenges.serializers import MyTeamFixtureSerializer
@@ -386,6 +387,7 @@ class GameParticipantAttendanceView(MutationThrottleMixin, APIView):
                 "id": commitment.id,
                 "status": commitment.status,
                 "review_deadline_at": commitment.review_deadline_at.isoformat() if commitment.review_deadline_at else None,
+                "attendance_submission_deadline_at": get_attendance_submission_deadline(commitment).isoformat(),
             },
         })
 

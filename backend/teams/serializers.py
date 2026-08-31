@@ -1,6 +1,8 @@
 from rest_framework import serializers
 
 from players.models import PlayerProfile
+from players.services import get_player_reliability_snapshot
+from team_challenges.services import get_team_reliability_snapshot
 from .models import Team, TeamMember
 
 
@@ -106,15 +108,11 @@ class TeamMemberSerializer(serializers.ModelSerializer):
 
     def get_reliability_score(self, member):
         profile = self.get_profile(member)
-        return profile.reliability_score if profile else 0
+        return get_player_reliability_snapshot(profile)["display_score"]
 
     def get_reliability_label(self, member):
         profile = self.get_profile(member)
-        if not profile:
-            return ""
-        if profile.completed_matches_count < 3:
-            return "New Player"
-        return f"Reliable Player - {profile.reliability_score}/100"
+        return get_player_reliability_snapshot(profile)["label"] if profile else ""
 
     def get_completed_matches_count(self, member):
         profile = self.get_profile(member)
@@ -129,6 +127,8 @@ class TeamSerializer(serializers.ModelSerializer):
     captain_name = serializers.CharField(source="captain.full_name", read_only=True)
     members_count = serializers.IntegerField(source="active_members_count", read_only=True)
     is_captain = serializers.SerializerMethodField()
+    team_reliability_score = serializers.SerializerMethodField()
+    team_reliability_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Team
@@ -147,6 +147,7 @@ class TeamSerializer(serializers.ModelSerializer):
             "members_count",
             "is_captain",
             "team_reliability_score",
+            "team_reliability_label",
             "average_rating",
             "matches_played_count",
             "created_at",
@@ -159,6 +160,7 @@ class TeamSerializer(serializers.ModelSerializer):
             "members_count",
             "is_captain",
             "team_reliability_score",
+            "team_reliability_label",
             "average_rating",
             "matches_played_count",
             "created_at",
@@ -168,6 +170,12 @@ class TeamSerializer(serializers.ModelSerializer):
     def get_is_captain(self, team):
         request = self.context.get("request")
         return bool(request and request.user.is_authenticated and team.captain_id == request.user.id)
+
+    def get_team_reliability_score(self, team):
+        return get_team_reliability_snapshot(team)["display_score"]
+
+    def get_team_reliability_label(self, team):
+        return get_team_reliability_snapshot(team)["label"]
 
     def validate_name(self, value):
         value = value.strip()
@@ -232,6 +240,7 @@ class GuestMemberCreateSerializer(serializers.ModelSerializer):
 class PlayerLookupSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
     full_name = serializers.CharField(source="user.full_name", read_only=True)
+    reliability_score = serializers.SerializerMethodField()
     reliability_label = serializers.SerializerMethodField()
 
     class Meta:
@@ -251,9 +260,10 @@ class PlayerLookupSerializer(serializers.ModelSerializer):
         )
 
     def get_reliability_label(self, profile):
-        if profile.completed_matches_count < 3:
-            return "New Player"
-        return f"Reliable Player - {profile.reliability_score}/100"
+        return get_player_reliability_snapshot(profile)["label"]
+
+    def get_reliability_score(self, profile):
+        return get_player_reliability_snapshot(profile)["display_score"]
 
 
 class RegisteredPlayerInviteSerializer(serializers.Serializer):
@@ -274,7 +284,8 @@ class InvitationSerializer(serializers.ModelSerializer):
     captain_name = serializers.CharField(source="team.captain.full_name", read_only=True)
     team_photo = serializers.FileField(source="team.team_photo", read_only=True)
     team_members_count = serializers.IntegerField(source="team.active_members_count", read_only=True)
-    team_reliability_score = serializers.IntegerField(source="team.team_reliability_score", read_only=True)
+    team_reliability_score = serializers.SerializerMethodField()
+    team_reliability_label = serializers.SerializerMethodField()
     team_average_rating = serializers.DecimalField(source="team.average_rating", max_digits=3, decimal_places=2, read_only=True)
     team_matches_played_count = serializers.IntegerField(source="team.matches_played_count", read_only=True)
     team_created_at = serializers.DateTimeField(source="team.created_at", read_only=True)
@@ -293,6 +304,7 @@ class InvitationSerializer(serializers.ModelSerializer):
             "team_photo",
             "team_members_count",
             "team_reliability_score",
+            "team_reliability_label",
             "team_average_rating",
             "team_matches_played_count",
             "team_created_at",
@@ -301,3 +313,9 @@ class InvitationSerializer(serializers.ModelSerializer):
             "status",
             "invited_at",
         )
+
+    def get_team_reliability_score(self, invitation):
+        return get_team_reliability_snapshot(invitation.team)["display_score"]
+
+    def get_team_reliability_label(self, invitation):
+        return get_team_reliability_snapshot(invitation.team)["label"]

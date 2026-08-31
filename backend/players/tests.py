@@ -9,12 +9,14 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from notifications.models import Notification
-from players.models import ParticipationCommitment, PlayerProfile, PlayerRating, PlayerRatingEligibility, ReliabilityEvent
+from players.models import ParticipationAttendanceEvent, ParticipationCommitment, PlayerProfile, PlayerRating, PlayerRatingEligibility, ReliabilityEvent
 from players.services import (
     create_participation_commitment,
     create_rating_eligibility,
     dispute_commitment,
+    excuse_participation_commitment,
     finalize_pending_attendance,
+    get_player_reliability_snapshot,
     record_commitment_attendance,
     record_player_rating,
     record_reliability_event,
@@ -334,6 +336,68 @@ class ParticipationCommitmentServiceTests(APITestCase):
         self.assertEqual(self.profile.reliability_score, 0)
         self.assertEqual(ReliabilityEvent.objects.filter(player=self.player).count(), 1)
         self.assertEqual(finalize_pending_attendance(now=timezone.now()), 0)
+
+    def test_missing_attendance_report_becomes_neutral_and_is_audited(self):
+        commitment = self.create_commitment(509, start_offset=-26)
+
+        self.assertEqual(finalize_pending_attendance(now=timezone.now()), 1)
+        commitment.refresh_from_db()
+        self.profile.refresh_from_db()
+
+        self.assertEqual(commitment.status, ParticipationCommitment.Status.UNVERIFIED)
+        self.assertEqual(self.profile.reliability_score, 100)
+        self.assertEqual(ReliabilityEvent.objects.filter(player=self.player).count(), 0)
+        event = ParticipationAttendanceEvent.objects.get(commitment=commitment)
+        self.assertEqual(event.event_type, ParticipationAttendanceEvent.EventType.ATTENDANCE_UNVERIFIED)
+        self.assertEqual(event.previous_status, ParticipationCommitment.Status.COMMITTED)
+        event.reason = "Attempted audit mutation"
+        with self.assertRaises(ValidationError):
+            event.save()
+
+        self.assertEqual(finalize_pending_attendance(now=timezone.now()), 0)
+        self.assertEqual(ParticipationAttendanceEvent.objects.filter(commitment=commitment).count(), 1)
+
+    def test_attendance_submission_is_closed_after_the_deadline(self):
+        commitment = self.create_commitment(510, start_offset=-26)
+
+        with self.assertRaises(ValidationError):
+            record_commitment_attendance(commitment_id=commitment.id, actor=self.player, attended=True)
+
+        commitment.refresh_from_db()
+        self.assertEqual(commitment.status, ParticipationCommitment.Status.COMMITTED)
+        self.assertFalse(ParticipationAttendanceEvent.objects.filter(commitment=commitment).exists())
+
+    def test_reliability_snapshot_hides_legacy_score_when_a_commitment_is_pending(self):
+        self.profile.completed_matches_count = 5
+        self.profile.save(update_fields=["completed_matches_count", "updated_at"])
+        self.create_commitment(511)
+
+        snapshot = get_player_reliability_snapshot(self.profile)
+
+        self.assertTrue(snapshot["is_provisional"])
+        self.assertIsNone(snapshot["display_score"])
+        self.assertEqual(snapshot["finalized_outcomes"], 0)
+
+    def test_excused_commitment_can_be_replaced_when_a_player_rejoins(self):
+        commitment = self.create_commitment(512)
+        excuse_participation_commitment(
+            commitment_id=commitment.id,
+            actor=self.player,
+            reason="The player declined the first schedule.",
+        )
+
+        replacement, created = create_participation_commitment(
+            player=self.player,
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=512,
+            source_participant_id=commitment.source_participant_id,
+            start_at=commitment.start_at,
+            end_at=commitment.end_at,
+        )
+
+        self.assertTrue(created)
+        self.assertEqual(replacement.source_version, commitment.source_version + 1)
+        self.assertEqual(replacement.status, ParticipationCommitment.Status.COMMITTED)
 
     def test_repeated_no_show_report_is_idempotent_and_cannot_be_reversed_by_host(self):
         commitment = self.create_commitment(507)

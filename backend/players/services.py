@@ -4,10 +4,12 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Q
 
 from .models import (
+    MIN_RELIABILITY_HISTORY,
     ParticipationCommitment,
+    ParticipationAttendanceEvent,
     PlayerProfile,
     PlayerRating,
     PlayerRatingEligibility,
@@ -18,6 +20,8 @@ MIN_RELIABILITY_SCORE = 60
 MAX_RELIABILITY_SCORE = 100
 LATE_CANCELLATION_HOURS = 4
 ATTENDANCE_REVIEW_HOURS = 24
+ATTENDANCE_SUBMISSION_HOURS = 24
+RATING_ELIGIBILITY_DAYS = 7
 RELIABILITY_HISTORY_SIZE = 20
 RELIABILITY_SCORE_VALUES = {
     ParticipationCommitment.Status.ATTENDED: 100,
@@ -25,11 +29,49 @@ RELIABILITY_SCORE_VALUES = {
     ParticipationCommitment.Status.FINALIZED_NO_SHOW: 0,
 }
 
+ATTENDANCE_RESOLVED_STATUSES = {
+    ParticipationCommitment.Status.CANCELLED_EARLY,
+    ParticipationCommitment.Status.LATE_CANCELLED,
+    ParticipationCommitment.Status.ATTENDED,
+    ParticipationCommitment.Status.FINALIZED_NO_SHOW,
+    ParticipationCommitment.Status.UNVERIFIED,
+    ParticipationCommitment.Status.EXCUSED,
+    ParticipationCommitment.Status.VOID,
+}
+
 COUNTER_UPDATES = {
     ReliabilityEvent.EventType.GAME_COMPLETED_ATTENDED: {"completed_matches_count": 1},
     ReliabilityEvent.EventType.GAME_LATE_CANCELLATION: {"late_cancellation_count": 1},
     ReliabilityEvent.EventType.GAME_NO_SHOW: {"no_show_count": 1},
 }
+
+
+def get_attendance_submission_deadline(commitment):
+    """Return the host/captain reporting deadline for a commitment."""
+    if not commitment or not commitment.end_at:
+        return None
+    return commitment.end_at + timezone.timedelta(hours=ATTENDANCE_SUBMISSION_HOURS)
+
+
+def record_attendance_event(
+    commitment,
+    *,
+    event_type,
+    previous_status="",
+    actor=None,
+    reason="",
+    metadata=None,
+):
+    """Append an immutable audit event for a real attendance transition."""
+    return ParticipationAttendanceEvent.objects.create(
+        commitment=commitment,
+        event_type=event_type,
+        actor=actor,
+        previous_status=previous_status or "",
+        current_status=commitment.status,
+        reason=str(reason or "").strip()[:500],
+        metadata=metadata or {},
+    )
 
 
 def record_reliability_event(
@@ -144,17 +186,35 @@ def create_participation_commitment(
             .order_by("-source_version", "-id")
             .first()
         )
+        if latest and latest.start_at == start_at and latest.end_at == end_at and latest.source_participant_id == source_participant_id:
+            if latest.status in {
+                ParticipationCommitment.Status.COMMITTED,
+                ParticipationCommitment.Status.ATTENDANCE_PENDING,
+                ParticipationCommitment.Status.NO_SHOW_REPORTED,
+                ParticipationCommitment.Status.DISPUTED,
+                ParticipationCommitment.Status.ATTENDED,
+                ParticipationCommitment.Status.FINALIZED_NO_SHOW,
+                ParticipationCommitment.Status.UNVERIFIED,
+            }:
+                return latest, False
         if latest and latest.status in {
             ParticipationCommitment.Status.COMMITTED,
             ParticipationCommitment.Status.ATTENDANCE_PENDING,
             ParticipationCommitment.Status.NO_SHOW_REPORTED,
+            ParticipationCommitment.Status.DISPUTED,
         }:
-            if latest.start_at == start_at and latest.end_at == end_at:
-                return latest, False
+            previous_status = latest.status
             latest.status = ParticipationCommitment.Status.VOID
             latest.resolved_at = now
             latest.resolved_by = created_by
             latest.save(update_fields=["status", "resolved_at", "resolved_by", "updated_at"])
+            record_attendance_event(
+                latest,
+                event_type=ParticipationAttendanceEvent.EventType.COMMITMENT_VOIDED,
+                previous_status=previous_status,
+                actor=created_by,
+                reason="The confirmed schedule changed and the previous commitment was replaced.",
+            )
 
         version = (latest.source_version + 1) if latest else 1
         commitment = ParticipationCommitment.objects.create(
@@ -223,6 +283,16 @@ def _record_commitment_outcome(commitment, *, outcome, actor=None):
     )
     if created:
         recompute_reliability_profile(commitment.player)
+        if commitment.source_type == ParticipationCommitment.SourceType.TEAM_FIXTURE:
+            from team_challenges.services import recompute_team_reliability
+            from team_challenges.models import TeamFixtureParticipant
+
+            team_participant = TeamFixtureParticipant.objects.filter(
+                pk=commitment.source_participant_id,
+                fixture_id=commitment.source_id,
+            ).first()
+            if team_participant:
+                recompute_team_reliability(team_participant.team_id)
     return event, created
 
 
@@ -237,6 +307,7 @@ def cancel_participation_commitment(*, source_type, source_id, player, actor=Non
     )
     if not commitment or commitment.status != ParticipationCommitment.Status.COMMITTED:
         return commitment, False
+    previous_status = commitment.status
     commitment.status = (
         ParticipationCommitment.Status.LATE_CANCELLED
         if now >= commitment.late_cutoff_at
@@ -246,6 +317,13 @@ def cancel_participation_commitment(*, source_type, source_id, player, actor=Non
     commitment.resolved_by = actor or player
     commitment.metadata = {**(commitment.metadata or {}), "cancellation_reason": str(reason or "").strip()[:500]}
     commitment.save(update_fields=["status", "resolved_at", "resolved_by", "metadata", "updated_at"])
+    record_attendance_event(
+        commitment,
+        event_type=ParticipationAttendanceEvent.EventType.COMMITMENT_CANCELLED,
+        previous_status=previous_status,
+        actor=actor or player,
+        reason=reason,
+    )
     if commitment.status == ParticipationCommitment.Status.LATE_CANCELLED:
         _record_commitment_outcome(commitment, outcome=commitment.status, actor=actor or player)
     return commitment, True
@@ -264,8 +342,10 @@ def void_participation_commitment(*, source_type, source_id, player_id=None, com
         ParticipationCommitment.Status.COMMITTED,
         ParticipationCommitment.Status.ATTENDANCE_PENDING,
         ParticipationCommitment.Status.NO_SHOW_REPORTED,
+        ParticipationCommitment.Status.DISPUTED,
     }:
         return commitment, False
+    previous_status = commitment.status
     commitment.status = ParticipationCommitment.Status.VOID
     commitment.resolved_at = timezone.now()
     commitment.resolved_by = actor
@@ -274,6 +354,46 @@ def void_participation_commitment(*, source_type, source_id, player_id=None, com
         "void_reason": str(reason or "outside_player_control")[:500],
     }
     commitment.save(update_fields=["status", "resolved_at", "resolved_by", "metadata", "updated_at"])
+    record_attendance_event(
+        commitment,
+        event_type=ParticipationAttendanceEvent.EventType.COMMITMENT_VOIDED,
+        previous_status=previous_status,
+        actor=actor,
+        reason=reason,
+    )
+    return commitment, True
+
+
+@transaction.atomic
+def excuse_participation_commitment(*, commitment_id=None, source_type=None, source_id=None, player_id=None, actor=None, reason=""):
+    """Close a commitment for a schedule or administrative reason without blame."""
+    commitment = _latest_commitment_for_source(
+        source_type=source_type,
+        source_id=source_id,
+        player_id=player_id,
+        commitment_id=commitment_id,
+    )
+    if not commitment or commitment.status not in {
+        ParticipationCommitment.Status.COMMITTED,
+        ParticipationCommitment.Status.ATTENDANCE_PENDING,
+    }:
+        return commitment, False
+    previous_status = commitment.status
+    commitment.status = ParticipationCommitment.Status.EXCUSED
+    commitment.resolved_at = timezone.now()
+    commitment.resolved_by = actor
+    commitment.metadata = {
+        **(commitment.metadata or {}),
+        "excused_reason": str(reason or "outside_player_control").strip()[:500],
+    }
+    commitment.save(update_fields=["status", "resolved_at", "resolved_by", "metadata", "updated_at"])
+    record_attendance_event(
+        commitment,
+        event_type=ParticipationAttendanceEvent.EventType.COMMITMENT_EXCUSED,
+        previous_status=previous_status,
+        actor=actor,
+        reason=reason,
+    )
     return commitment, True
 
 
@@ -295,6 +415,7 @@ def record_commitment_attendance(*, commitment_id, actor, attended):
         ParticipationCommitment.Status.LATE_CANCELLED,
         ParticipationCommitment.Status.ATTENDED,
         ParticipationCommitment.Status.FINALIZED_NO_SHOW,
+        ParticipationCommitment.Status.UNVERIFIED,
         ParticipationCommitment.Status.EXCUSED,
         ParticipationCommitment.Status.VOID,
     }:
@@ -304,6 +425,12 @@ def record_commitment_attendance(*, commitment_id, actor, attended):
         raise ValidationError("Attendance for this commitment has already been resolved.")
 
     now = timezone.now()
+    submission_deadline = get_attendance_submission_deadline(commitment)
+    if submission_deadline and now >= submission_deadline:
+        raise ValidationError(
+            "The attendance reporting window has closed. This record will remain unverified and will not affect reliability."
+        )
+    previous_status = commitment.status
     commitment.attendance_recorded_by = actor
     commitment.attendance_recorded_at = now
     if attended:
@@ -315,7 +442,15 @@ def record_commitment_attendance(*, commitment_id, actor, attended):
             "status", "attendance_recorded_by", "attendance_recorded_at",
             "review_deadline_at", "resolved_at", "resolved_by", "updated_at",
         ])
+        record_attendance_event(
+            commitment,
+            event_type=ParticipationAttendanceEvent.EventType.ATTENDANCE_RECORDED,
+            previous_status=previous_status,
+            actor=actor,
+            reason="Host or captain marked the player as attended.",
+        )
         _record_commitment_outcome(commitment, outcome=commitment.status, actor=actor)
+        _maybe_unlock_related_ratings(commitment)
     else:
         commitment.status = ParticipationCommitment.Status.NO_SHOW_REPORTED
         commitment.review_deadline_at = now + timezone.timedelta(hours=ATTENDANCE_REVIEW_HOURS)
@@ -323,6 +458,13 @@ def record_commitment_attendance(*, commitment_id, actor, attended):
             "status", "attendance_recorded_by", "attendance_recorded_at",
             "review_deadline_at", "updated_at",
         ])
+        record_attendance_event(
+            commitment,
+            event_type=ParticipationAttendanceEvent.EventType.NO_SHOW_REPORTED,
+            previous_status=previous_status,
+            actor=actor,
+            reason="Host or captain marked the player as absent.",
+        )
         _notify_commitment_player(
             commitment,
             title="Attendance needs your review",
@@ -346,10 +488,18 @@ def dispute_commitment(*, commitment_id, player, reason):
     normalized_reason = str(reason or "").strip()
     if len(normalized_reason) < 5:
         raise ValidationError("Explain briefly why this attendance report is incorrect.")
+    previous_status = commitment.status
     commitment.status = ParticipationCommitment.Status.DISPUTED
     commitment.disputed_at = timezone.now()
     commitment.dispute_reason = normalized_reason[:500]
     commitment.save(update_fields=["status", "disputed_at", "dispute_reason", "updated_at"])
+    record_attendance_event(
+        commitment,
+        event_type=ParticipationAttendanceEvent.EventType.ATTENDANCE_DISPUTED,
+        previous_status=previous_status,
+        actor=player,
+        reason=normalized_reason,
+    )
     _notify_commitment_reporter(
         commitment,
         title="Attendance report disputed",
@@ -359,36 +509,134 @@ def dispute_commitment(*, commitment_id, player, reason):
 
 
 def finalize_pending_attendance(*, now=None, limit=100):
-    """Finalize undisputed no-show reports from the maintenance worker."""
+    """Resolve stale attendance safely from the single platform worker.
+
+    A reported absence gets a player dispute window.  A missing host/captain
+    report gets an explicit neutral UNVERIFIED outcome after the submission
+    deadline; it can never become a no-show by silence.
+    """
     now = now or timezone.now()
-    ids = list(
+    submission_cutoff = now - timezone.timedelta(hours=ATTENDANCE_SUBMISSION_HOURS)
+    candidates = list(
         ParticipationCommitment.objects.filter(
-            status=ParticipationCommitment.Status.NO_SHOW_REPORTED,
-            review_deadline_at__isnull=False,
-            review_deadline_at__lte=now,
-        ).order_by("review_deadline_at", "id").values_list("id", flat=True)[:limit]
+            Q(
+                status=ParticipationCommitment.Status.NO_SHOW_REPORTED,
+                review_deadline_at__isnull=False,
+                review_deadline_at__lte=now,
+            )
+            | Q(
+                status__in=[
+                    ParticipationCommitment.Status.COMMITTED,
+                    ParticipationCommitment.Status.ATTENDANCE_PENDING,
+                ],
+                end_at__lte=submission_cutoff,
+            )
+        )
+        .order_by("end_at", "id")
+        .values_list("id", flat=True)[:limit]
     )
-    finalized = 0
-    for commitment_id in ids:
+    resolved_count = 0
+    for commitment_id in candidates:
         with transaction.atomic():
             commitment = ParticipationCommitment.objects.select_for_update().select_related("player").filter(
                 pk=commitment_id,
-                status=ParticipationCommitment.Status.NO_SHOW_REPORTED,
             ).first()
-            if not commitment or not commitment.review_deadline_at or commitment.review_deadline_at > now:
+            if not commitment:
                 continue
-            commitment.status = ParticipationCommitment.Status.FINALIZED_NO_SHOW
-            commitment.resolved_at = now
-            commitment.resolved_by = None
-            commitment.save(update_fields=["status", "resolved_at", "resolved_by", "updated_at"])
-            _record_commitment_outcome(commitment, outcome=commitment.status)
-            _notify_commitment_player(
-                commitment,
-                title="Attendance report finalized",
-                message="The no-show report was finalized after the review window closed and has been included in your reliability history.",
-            )
-            finalized += 1
-    return finalized
+            if (
+                commitment.status == ParticipationCommitment.Status.NO_SHOW_REPORTED
+                and commitment.review_deadline_at
+                and commitment.review_deadline_at <= now
+            ):
+                previous_status = commitment.status
+                commitment.status = ParticipationCommitment.Status.FINALIZED_NO_SHOW
+                commitment.resolved_at = now
+                commitment.resolved_by = None
+                commitment.save(update_fields=["status", "resolved_at", "resolved_by", "updated_at"])
+                record_attendance_event(
+                    commitment,
+                    event_type=ParticipationAttendanceEvent.EventType.NO_SHOW_FINALIZED,
+                    previous_status=previous_status,
+                    reason="The no-show report was not disputed before the review deadline.",
+                )
+                _record_commitment_outcome(commitment, outcome=commitment.status)
+                _notify_commitment_player(
+                    commitment,
+                    title="Attendance report finalized",
+                    message="The no-show report was finalized after the review window closed and has been included in your reliability history.",
+                )
+                _maybe_unlock_related_ratings(commitment)
+                resolved_count += 1
+            elif (
+                commitment.status in {
+                    ParticipationCommitment.Status.COMMITTED,
+                    ParticipationCommitment.Status.ATTENDANCE_PENDING,
+                }
+                and commitment.end_at + timezone.timedelta(hours=ATTENDANCE_SUBMISSION_HOURS) <= now
+            ):
+                previous_status = commitment.status
+                commitment.status = ParticipationCommitment.Status.UNVERIFIED
+                commitment.resolved_at = now
+                commitment.resolved_by = None
+                commitment.metadata = {
+                    **(commitment.metadata or {}),
+                    "unverified_reason": "attendance_submission_deadline_expired",
+                }
+                commitment.save(update_fields=["status", "resolved_at", "resolved_by", "metadata", "updated_at"])
+                record_attendance_event(
+                    commitment,
+                    event_type=ParticipationAttendanceEvent.EventType.ATTENDANCE_UNVERIFIED,
+                    previous_status=previous_status,
+                    reason="No host or captain attendance report was submitted before the deadline.",
+                )
+                _sync_related_attendance_projection(commitment)
+                _notify_commitment_player(
+                    commitment,
+                    title="Attendance left unverified",
+                    message="No attendance report was submitted for this game. Your record is neutral and will not affect reliability.",
+                )
+                _maybe_unlock_related_ratings(commitment)
+                resolved_count += 1
+    return resolved_count
+
+
+def _sync_related_attendance_projection(commitment):
+    """Keep source-specific roster displays aligned with the shared ledger."""
+    if commitment.source_type != ParticipationCommitment.SourceType.TEAM_FIXTURE:
+        return
+    from team_challenges.models import TeamFixtureParticipant
+
+    projection_status = {
+        ParticipationCommitment.Status.ATTENDED: TeamFixtureParticipant.Status.ATTENDED,
+        ParticipationCommitment.Status.FINALIZED_NO_SHOW: TeamFixtureParticipant.Status.ABSENT,
+        ParticipationCommitment.Status.EXCUSED: TeamFixtureParticipant.Status.ABSENT,
+        ParticipationCommitment.Status.UNVERIFIED: TeamFixtureParticipant.Status.UNVERIFIED,
+    }.get(commitment.status)
+    if not projection_status:
+        return
+    TeamFixtureParticipant.objects.filter(
+        pk=commitment.source_participant_id,
+        fixture_id=commitment.source_id,
+        status__in=[
+            TeamFixtureParticipant.Status.SELECTED,
+            TeamFixtureParticipant.Status.ATTENDED,
+            TeamFixtureParticipant.Status.ABSENT,
+            TeamFixtureParticipant.Status.UNVERIFIED,
+        ],
+    ).update(status=projection_status, updated_at=timezone.now())
+
+
+def _maybe_unlock_related_ratings(commitment):
+    """Ask the owning flow to unlock ratings when its finality rules allow it."""
+    if commitment.source_type == ParticipationCommitment.SourceType.MATCHMAKING_GAME:
+        from matchmaking.services import maybe_create_game_rating_eligibilities
+
+        return maybe_create_game_rating_eligibilities(commitment.source_id)
+    if commitment.source_type == ParticipationCommitment.SourceType.TEAM_FIXTURE:
+        from team_challenges.services import maybe_create_fixture_rating_eligibilities
+
+        return maybe_create_fixture_rating_eligibilities(commitment.source_id)
+    return 0
 
 
 @transaction.atomic
@@ -413,9 +661,20 @@ def resolve_commitment_dispute(*, commitment_id, actor, outcome):
         raise ValidationError("Choose attended, no-show, or excused.")
     commitment.resolved_by = actor
     commitment.resolved_at = timezone.now()
-    commitment.save(update_fields=["status", "resolved_by", "resolved_at", "updated_at"])
+    commitment.review_deadline_at = None
+    commitment.save(update_fields=["status", "resolved_by", "resolved_at", "review_deadline_at", "updated_at"])
+    record_attendance_event(
+        commitment,
+        event_type=ParticipationAttendanceEvent.EventType.DISPUTE_RESOLVED,
+        previous_status=ParticipationCommitment.Status.DISPUTED,
+        actor=actor,
+        reason=f"SportSpot staff resolved the dispute as {normalized.lower()}.",
+        metadata={"outcome": normalized},
+    )
     if commitment.status in RELIABILITY_SCORE_VALUES:
         _record_commitment_outcome(commitment, outcome=commitment.status, actor=actor)
+    _sync_related_attendance_projection(commitment)
+    _maybe_unlock_related_ratings(commitment)
     _notify_commitment_player(
         commitment,
         title="Attendance dispute resolved",
@@ -445,6 +704,7 @@ def recompute_reliability_profile(player):
 def get_player_commitment_summary(player):
     """Return product-facing reliability metrics from the commitment ledger."""
     queryset = ParticipationCommitment.objects.filter(player=player)
+    has_commitments = queryset.exists()
     accountable = queryset.filter(status__in=list(RELIABILITY_SCORE_VALUES))
     attended = accountable.filter(status=ParticipationCommitment.Status.ATTENDED).count()
     late_cancelled = accountable.filter(status=ParticipationCommitment.Status.LATE_CANCELLED).count()
@@ -457,12 +717,38 @@ def get_player_commitment_summary(player):
         ]
     ).count()
     return {
+        "has_commitments": has_commitments,
         "accountable_commitments": accountable_count,
         "attended": attended,
         "late_cancellations": late_cancelled,
         "finalized_no_shows": finalized_no_shows,
         "pending_reviews": pending_reviews,
         "commitments_honoured_rate": round((attended / accountable_count) * 100) if accountable_count else None,
+    }
+
+
+def get_player_reliability_snapshot(profile):
+    """Return only a matchmaking-safe, finalized reliability projection."""
+    if not profile:
+        return {
+            "display_score": None,
+            "label": "Reliability unavailable",
+            "finalized_outcomes": 0,
+            "is_provisional": True,
+        }
+    summary = get_player_commitment_summary(profile.user)
+    has_commitment_history = summary["has_commitments"]
+    finalized_outcomes = (
+        summary["accountable_commitments"]
+        if has_commitment_history
+        else profile.completed_matches_count
+    )
+    is_provisional = finalized_outcomes < MIN_RELIABILITY_HISTORY
+    return {
+        "display_score": None if is_provisional else profile.reliability_score,
+        "label": "Provisional Reliability" if is_provisional else f"{profile.reliability_score}/100",
+        "finalized_outcomes": finalized_outcomes,
+        "is_provisional": is_provisional,
     }
 
 
@@ -710,6 +996,66 @@ def create_rating_eligibility(
             },
         )
         return eligibility, created
+
+
+@transaction.atomic
+def create_rating_eligibilities_for_players(
+    *,
+    players,
+    title,
+    related_entity_type,
+    related_entity_id,
+    match_date=None,
+    deadline_at=None,
+    metadata=None,
+):
+    """Create idempotent peer-feedback requests for one finalized activity."""
+    unique_players = {}
+    for player in players or []:
+        if player and getattr(player, "role", None) == "PLAYER":
+            unique_players[player.id] = player
+    if len(unique_players) < 2:
+        return 0
+
+    deadline_at = deadline_at or timezone.now() + timezone.timedelta(days=RATING_ELIGIBILITY_DAYS)
+    created_count = 0
+    from notifications.models import Notification
+    from notifications.services import create_notification
+
+    for rater in unique_players.values():
+        for rated_player in unique_players.values():
+            if rater.id == rated_player.id:
+                continue
+            eligibility, created = create_rating_eligibility(
+                rater=rater,
+                rated_player=rated_player,
+                title=title,
+                related_entity_type=related_entity_type,
+                related_entity_id=related_entity_id,
+                match_date=match_date,
+                deadline_at=deadline_at,
+                metadata=metadata,
+            )
+            if not created:
+                continue
+            created_count += 1
+            create_notification(
+                recipient=rater,
+                actor=None,
+                notification_type=Notification.NotificationType.RATING_REQUIRED,
+                title="Share feedback on your completed game",
+                message="Your completed game is ready for verified player feedback. Ratings and reliability are kept separate.",
+                action_url="/dashboard/player/ratings",
+                related_entity_type=related_entity_type,
+                related_entity_id=related_entity_id,
+                action_required=True,
+                action_status=Notification.ActionStatus.PENDING,
+                metadata={"eligibility_id": eligibility.id, "rated_player_id": rated_player.id},
+                deduplication_key=(
+                    f"{related_entity_type}:{related_entity_id}:rating:{rater.id}:{rated_player.id}"
+                ),
+            )
+    return created_count
 
 
 def get_pending_rating_items(player):

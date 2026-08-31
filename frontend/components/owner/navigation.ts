@@ -17,6 +17,7 @@ export type OwnerDashboardNavIcon =
   | "availability"
   | "payments"
   | "reports"
+  | "reviews"
   | "settings"
   | "support"
   | "setup"
@@ -39,6 +40,7 @@ const activeVenueItems: OwnerDashboardNavItem[] = [
   { label: "Availability & Pricing", href: "/dashboard/owner/availability", icon: "availability", match: ["/dashboard/owner/availability"] },
   { label: "Payments & Refunds", href: "/dashboard/owner/refunds", icon: "payments", match: ["/dashboard/owner/refunds", "/dashboard/owner/payments"] },
   { label: "Reports", href: "/dashboard/owner/reports", icon: "reports", match: ["/dashboard/owner/reports"] },
+  { label: "Reviews & Feedback", href: "/dashboard/owner/reviews", icon: "reviews", match: ["/dashboard/owner/reviews"] },
   { label: "Settings", href: "/dashboard/owner/settings", icon: "settings", match: ["/dashboard/owner/settings"] },
 ];
 
@@ -70,6 +72,7 @@ const suspendedItems: OwnerDashboardNavItem[] = [
   { label: "Venue & Courts", href: "/dashboard/owner/venue", icon: "venue", match: ["/dashboard/owner/venue", "/dashboard/owner/courts", "/dashboard/owner/venue-setup"] },
   { label: "Payments & Refunds", href: "/dashboard/owner/refunds", icon: "payments", match: ["/dashboard/owner/refunds", "/dashboard/owner/payments"] },
   { label: "Reports", href: "/dashboard/owner/reports", icon: "reports", match: ["/dashboard/owner/reports"] },
+  { label: "Reviews & Feedback", href: "/dashboard/owner/reviews", icon: "reviews", match: ["/dashboard/owner/reviews"] },
   { label: "Settings", href: "/dashboard/owner/settings", icon: "settings", match: ["/dashboard/owner/settings"] },
 ];
 

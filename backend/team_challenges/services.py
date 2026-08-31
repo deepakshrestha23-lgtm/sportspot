@@ -11,8 +11,9 @@ from notifications.models import Notification
 from notifications.services import create_notification, mark_related_action_state, notify_chat_message
 from players.models import ParticipationCommitment
 from players.services import (
+    RELIABILITY_HISTORY_SIZE,
     create_participation_commitment,
-    create_rating_eligibility,
+    create_rating_eligibilities_for_players,
     dispute_commitment,
     record_commitment_attendance,
     resolve_commitment_dispute,
@@ -43,6 +44,8 @@ from .notifications import (
     notify_opponent_selected,
     notify_challenge_status,
 )
+
+TEAM_RELIABILITY_MINIMUM_HISTORY = 3
 
 
 def _now():
@@ -108,6 +111,7 @@ def notify_fixture_chat_message(message):
                 TeamFixtureParticipant.Status.SELECTED,
                 TeamFixtureParticipant.Status.ATTENDED,
                 TeamFixtureParticipant.Status.ABSENT,
+                TeamFixtureParticipant.Status.UNVERIFIED,
             ],
         ).values_list("player_id", flat=True)
     )
@@ -1174,6 +1178,7 @@ def get_challenge_fixture_room(challenge_id, actor):
             TeamFixtureParticipant.Status.SELECTED,
             TeamFixtureParticipant.Status.ATTENDED,
             TeamFixtureParticipant.Status.ABSENT,
+            TeamFixtureParticipant.Status.UNVERIFIED,
         ],
     ).exists()
     if not is_captain and not is_participant:
@@ -1221,6 +1226,7 @@ def team_fixture_chat_access_level(fixture_id, actor):
             TeamFixtureParticipant.Status.SELECTED,
             TeamFixtureParticipant.Status.ATTENDED,
             TeamFixtureParticipant.Status.ABSENT,
+            TeamFixtureParticipant.Status.UNVERIFIED,
         ],
     ).exists()
     if not is_captain and not is_participant:
@@ -1528,43 +1534,139 @@ def confirm_fixture_result(fixture_id, actor):
     return fixture
 
 
+def maybe_create_fixture_rating_eligibilities(fixture_id):
+    """Unlock challenge feedback only after the two-captain result confirmation."""
+    fixture = TeamFixture.objects.select_related("challenge", "booking").filter(
+        pk=fixture_id,
+        status=TeamFixture.Status.COMPLETED,
+        result_confirmed_at__isnull=False,
+    ).first()
+    if not fixture:
+        return 0
+    return _create_fixture_rating_eligibilities(fixture)
+
+
+@transaction.atomic
+def recompute_team_reliability(team_id):
+    """Cache a team trust score from finalized fixture attendance only.
+
+    Unverified attendance, ratings, venue scans, and pending disputes never
+    enter this calculation. The fixture participant link preserves the team
+    context even if the player's permanent team membership later changes.
+    """
+    team = Team.objects.select_for_update().filter(pk=team_id).first()
+    if not team:
+        return None
+    completed_participants = list(
+        TeamFixtureParticipant.objects.filter(
+            team_id=team_id,
+            fixture__status=TeamFixture.Status.COMPLETED,
+        ).values("id", "fixture_id", "status")
+    )
+    if not completed_participants:
+        return None
+    participant_ids = [participant["id"] for participant in completed_participants]
+    fixture_ids = [participant["fixture_id"] for participant in completed_participants]
+    commitments = list(
+        ParticipationCommitment.objects.filter(
+            source_type=ParticipationCommitment.SourceType.TEAM_FIXTURE,
+            source_id__in=fixture_ids,
+            source_participant_id__in=participant_ids,
+        ).order_by("source_participant_id", "-source_version", "-id")
+    )
+    latest = {}
+    for commitment in commitments:
+        latest.setdefault(commitment.source_participant_id, commitment)
+    fixture_groups = {}
+    for participant in completed_participants:
+        if participant["status"] == TeamFixtureParticipant.Status.WITHDRAWN:
+            continue
+        commitment = latest.get(participant["id"])
+        group = fixture_groups.setdefault(
+            participant["fixture_id"],
+            {"statuses": [], "latest_at": None},
+        )
+        if not commitment:
+            group["statuses"].append(None)
+            continue
+        if commitment.status in {
+            ParticipationCommitment.Status.VOID,
+            ParticipationCommitment.Status.EXCUSED,
+        }:
+            continue
+        group["statuses"].append(commitment.status)
+        outcome_at = commitment.resolved_at or commitment.updated_at
+        if not group["latest_at"] or outcome_at > group["latest_at"]:
+            group["latest_at"] = outcome_at
+
+    # A fixture contributes only when every non-withdrawn roster spot has a
+    # finalized accountable outcome. This prevents a partially reported match
+    # from being treated as a completed team reliability sample.
+    fixture_outcomes = []
+    for fixture_id, group in fixture_groups.items():
+        statuses = group["statuses"]
+        if not statuses or any(
+            status not in {
+                ParticipationCommitment.Status.ATTENDED,
+                ParticipationCommitment.Status.FINALIZED_NO_SHOW,
+            }
+            for status in statuses
+        ):
+            continue
+        fixture_score = round(
+            sum(status == ParticipationCommitment.Status.ATTENDED for status in statuses)
+            / len(statuses)
+            * 100
+        )
+        fixture_outcomes.append((fixture_id, fixture_score, group["latest_at"]))
+
+    fixture_outcomes = sorted(
+        fixture_outcomes,
+        key=lambda item: (item[2], item[0]),
+        reverse=True,
+    )[:RELIABILITY_HISTORY_SIZE]
+    team.team_reliability_score = (
+        round(sum(item[1] for item in fixture_outcomes) / len(fixture_outcomes))
+        if fixture_outcomes
+        else 100
+    )
+    team.matches_played_count = len(fixture_outcomes)
+    team.save(update_fields=["team_reliability_score", "matches_played_count", "updated_at"])
+    return team.team_reliability_score if fixture_outcomes else None
+
+
+def get_team_reliability_snapshot(team):
+    """Return a matchmaking-safe team reliability projection."""
+    if not team:
+        return {
+            "display_score": None,
+            "label": "Reliability unavailable",
+            "finalized_fixtures": 0,
+            "is_provisional": True,
+        }
+    is_provisional = team.matches_played_count < TEAM_RELIABILITY_MINIMUM_HISTORY
+    return {
+        "display_score": None if is_provisional else team.team_reliability_score,
+        "label": "Provisional Team Reliability" if is_provisional else f"{team.team_reliability_score}/100",
+        "finalized_fixtures": team.matches_played_count,
+        "is_provisional": is_provisional,
+    }
+
+
 def _create_fixture_rating_eligibilities(fixture):
     participants = list(
         fixture.participants.filter(status=TeamFixtureParticipant.Status.ATTENDED)
         .select_related("player")
     )
     match_date, _end_at = _fixture_start_end(fixture)
-    deadline = _now() + timedelta(days=7)
-    title = f"Feedback for team match #{fixture.id}"
-    for rater in participants:
-        for rated in participants:
-            if rater.player_id == rated.player_id:
-                continue
-            eligibility, created = create_rating_eligibility(
-                rater=rater.player,
-                rated_player=rated.player,
-                title=title,
-                related_entity_type="team_fixture",
-                related_entity_id=fixture.id,
-                match_date=match_date,
-                deadline_at=deadline,
-                metadata={"fixture_id": fixture.id},
-            )
-            if created:
-                create_notification(
-                    recipient=rater.player,
-                    actor=None,
-                    notification_type=Notification.NotificationType.RATING_REQUIRED,
-                    title="Share feedback on your team match",
-                    message="Your completed team match is ready for verified player feedback.",
-                    action_url="/dashboard/player/ratings",
-                    related_entity_type="team_fixture",
-                    related_entity_id=fixture.id,
-                    action_required=True,
-                    action_status=Notification.ActionStatus.PENDING,
-                    metadata={"eligibility_id": eligibility.id, "rated_player_id": rated.player_id},
-                    deduplication_key=f"team-fixture:{fixture.id}:rating:{rater.player_id}:{rated.player_id}",
-                )
+    return create_rating_eligibilities_for_players(
+        players=[participant.player for participant in participants],
+        title=f"Feedback for team match #{fixture.id}",
+        related_entity_type="team_fixture",
+        related_entity_id=fixture.id,
+        match_date=match_date,
+        metadata={"fixture_id": fixture.id, "challenge_id": fixture.challenge_id},
+    )
 
 
 @transaction.atomic

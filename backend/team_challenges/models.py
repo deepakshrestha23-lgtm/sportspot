@@ -353,6 +353,7 @@ class TeamFixtureParticipant(models.Model):
         SELECTED = "SELECTED", "Selected"
         ATTENDED = "ATTENDED", "Attended"
         ABSENT = "ABSENT", "Absent"
+        UNVERIFIED = "UNVERIFIED", "Attendance unverified"
         WITHDRAWN = "WITHDRAWN", "Withdrawn"
 
     fixture = models.ForeignKey(TeamFixture, on_delete=models.CASCADE, related_name="participants")

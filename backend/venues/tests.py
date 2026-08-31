@@ -1955,6 +1955,182 @@ class CourtReviewApiTests(APITestCase):
         self.assertEqual(CourtFeedbackReport.objects.count(), 1)
 
 
+class OwnerReviewsApiTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            email="owner-feedback@example.com",
+            password="test-password",
+            full_name="Owner Feedback",
+            phone="9800000190",
+            role="COURT_OWNER",
+        )
+        self.other_owner = user_model.objects.create_user(
+            email="other-owner-feedback@example.com",
+            password="test-password",
+            full_name="Other Owner Feedback",
+            phone="9800000191",
+            role="COURT_OWNER",
+        )
+        self.player = user_model.objects.create_user(
+            email="player-feedback@example.com",
+            password="test-password",
+            full_name="Player Feedback",
+            phone="9800000192",
+            role="PLAYER",
+        )
+        self.venue = Venue.objects.create(
+            owner=self.owner,
+            name="Owner Feedback Arena",
+            city="Kathmandu",
+            area="Maitidevi",
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        self.other_venue = Venue.objects.create(
+            owner=self.other_owner,
+            name="Other Feedback Arena",
+            city="Kathmandu",
+            area="Baneshwor",
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        self.court = Court.objects.create(
+            venue=self.venue,
+            name="Main Court",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+            is_active=True,
+        )
+        self.second_court = Court.objects.create(
+            venue=self.venue,
+            name="Training Court",
+            court_type=Court.CourtType.OUTDOOR,
+            surface_type=Court.SurfaceType.CEMENT,
+            is_active=False,
+        )
+        slot = CourtSlot.objects.create(
+            court=self.court,
+            date=timezone.localdate() - timedelta(days=4),
+            start_time=time(8, 0),
+            end_time=time(9, 0),
+            slot_duration_minutes=60,
+            price=Decimal("1500.00"),
+            status=CourtSlot.Status.BOOKED,
+        )
+        self.booking = Booking.objects.create(
+            player=self.player,
+            venue=self.venue,
+            court=self.court,
+            slot=slot,
+            amount=Decimal("1500.00"),
+            status=Booking.BookingStatus.COMPLETED,
+            payment_status=Booking.PaymentStatus.PAID,
+            reserved_until=timezone.now() - timedelta(days=5),
+            confirmed_at=timezone.now() - timedelta(days=5),
+            completed_at=timezone.now() - timedelta(days=4),
+            cancellation_policy_snapshot=build_cancellation_policy_snapshot(self.venue),
+        )
+        BookingSlot.objects.create(booking=self.booking, slot=slot, price=slot.price)
+
+    def owner_url(self):
+        return reverse("owner-reviews")
+
+    def test_owner_can_read_verified_feedback_for_only_their_venue(self):
+        review = CourtReview.objects.create(
+            reviewer=self.player,
+            venue=self.venue,
+            court=self.court,
+            booking=self.booking,
+            rating=5,
+            comment="Excellent surface and lighting.",
+        )
+        comment = CourtReviewComment.objects.create(
+            reviewer=self.player,
+            venue=self.venue,
+            court=self.court,
+            booking=self.booking,
+            comment="The changing area was clean.",
+        )
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(self.owner_url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["venue"]["id"], self.venue.id)
+        self.assertEqual(response.data["summary"]["average_rating"], "5.00")
+        self.assertEqual(response.data["summary"]["rating_count"], 1)
+        self.assertEqual(response.data["summary"]["comment_count"], 1)
+        self.assertEqual(response.data["pagination"]["total"], 2)
+        self.assertEqual({item["content_type"] for item in response.data["feedback"]}, {"review", "comment"})
+        review_item = next(item for item in response.data["feedback"] if item["content_type"] == "review")
+        self.assertEqual(review_item["id"], review.id)
+        self.assertNotIn("booking", review_item)
+        self.assertNotIn("reviewer", review_item)
+        self.assertEqual(response.data["courts"][0]["name"], self.court.name)
+        self.assertEqual(response.data["courts"][1]["name"], self.second_court.name)
+        self.assertEqual(comment.comment, "The changing area was clean.")
+
+    def test_owner_feedback_filters_and_date_period_are_scoped(self):
+        CourtReview.objects.create(
+            reviewer=self.player,
+            venue=self.venue,
+            court=self.court,
+            booking=self.booking,
+            rating=4,
+            comment="Good court.",
+        )
+        CourtReviewComment.objects.create(
+            reviewer=self.player,
+            venue=self.venue,
+            court=self.court,
+            booking=self.booking,
+            comment="Helpful staff.",
+        )
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(self.owner_url(), {"type": "comments", "period": "30", "court_id": self.court.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["filters"]["type"], "comments")
+        self.assertEqual(response.data["filters"]["court_id"], self.court.id)
+        self.assertEqual(response.data["pagination"]["total"], 1)
+        self.assertEqual(response.data["feedback"][0]["content_type"], "comment")
+        self.assertEqual(response.data["filters"]["period"], "30")
+
+    def test_owner_feedback_endpoint_is_read_only_and_does_not_leak_other_venues(self):
+        self.client.force_authenticate(self.other_owner)
+        response = self.client.get(self.owner_url())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["venue"]["id"], self.other_venue.id)
+        self.assertEqual(response.data["feedback"], [])
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(self.owner_url(), {"rating": 1}, format="json")
+        self.assertEqual(response.status_code, 405)
+        response = self.client.delete(self.owner_url())
+        self.assertEqual(response.status_code, 405)
+
+    def test_owner_can_report_feedback_without_editing_or_deleting_it(self):
+        review = CourtReview.objects.create(
+            reviewer=self.player,
+            venue=self.venue,
+            court=self.court,
+            booking=self.booking,
+            rating=1,
+            comment="This review needs moderation.",
+        )
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(
+            reverse("owner-feedback-report"),
+            {"target_type": "review", "target_id": review.id, "reason": "INAPPROPRIATE", "details": "Please review this content."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(CourtFeedbackReport.objects.filter(reporter=self.owner, review=review).count(), 1)
+        self.assertTrue(CourtReview.objects.filter(pk=review.id).exists())
+
+
 class BookingCheckInApiTests(APITestCase):
     def setUp(self):
         user_model = get_user_model()

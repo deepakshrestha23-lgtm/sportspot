@@ -131,6 +131,7 @@ export function OwnerDashboardIcon({ name }: { name: OwnerDashboardNavIcon }) {
     availability: <path d="M4 6h16M4 12h10M4 18h7m7-5v6m3-3h-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />,
     payments: <path d="M4 7h16v10H4V7Zm0 3h16m-4 4h1M7 14h4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />,
     reports: <path d="M5 20V4h14v16H5Zm4-4v-4m3 4V8m3 8v-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />,
+    reviews: <path d="m12 3 2.5 5.2 5.5.8-4 4 1 5.5-5-2.6-5 2.6 1-5.5-4-4 5.5-.8L12 3Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />,
     settings: <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-12v2m0 13v2m8.5-8.5h-2m-13 0h-2m14.5-6.5-1.4 1.4M6.9 17.1l-1.4 1.4m0-13 1.4 1.4m10.2 10.2 1.4 1.4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />,
     support: <path d="M9.1 9a3 3 0 1 1 4.9 2.3c-1.2.8-2 1.5-2 2.7M12 18h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />,
     setup: <path d="M5 12.5 10 17 19 7M4 4h16v16H4V4Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />,

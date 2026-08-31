@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import ParticipationCommitment, PlayerProfile, PlayerRating, PlayerRatingEligibility, ReliabilityEvent
+from .models import (
+    ParticipationAttendanceEvent,
+    ParticipationCommitment,
+    PlayerProfile,
+    PlayerRating,
+    PlayerRatingEligibility,
+    ReliabilityEvent,
+)
 
 
 @admin.register(PlayerProfile)
@@ -58,6 +65,48 @@ class ParticipationCommitmentAdmin(admin.ModelAdmin):
     list_filter = ("source_type", "status", "start_at", "review_deadline_at")
     search_fields = ("player__full_name", "player__email", "dispute_reason")
     readonly_fields = ("created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ParticipationAttendanceEvent)
+class ParticipationAttendanceEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "commitment",
+        "event_type",
+        "previous_status",
+        "current_status",
+        "actor",
+        "created_at",
+    )
+    list_filter = ("event_type", "current_status", "created_at")
+    search_fields = ("commitment__player__full_name", "commitment__player__email", "reason")
+    readonly_fields = (
+        "commitment",
+        "event_type",
+        "previous_status",
+        "current_status",
+        "actor",
+        "reason",
+        "metadata",
+        "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 @admin.register(PlayerRating)
 class PlayerRatingAdmin(admin.ModelAdmin):

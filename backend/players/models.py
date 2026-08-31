@@ -5,6 +5,8 @@ from django.db import models
 from django.db.models import Max
 from django.utils import timezone
 
+MIN_RELIABILITY_HISTORY = 5
+
 
 class PlayerProfile(models.Model):
     class PreferredSport(models.TextChoices):
@@ -119,15 +121,20 @@ class PlayerProfile(models.Model):
 
     @property
     def reliability_label(self):
-        accountable_commitments = self.user.participation_commitments.filter(
+        commitments = self.user.participation_commitments
+        accountable_commitments = commitments.filter(
             status__in=[
                 "ATTENDED",
                 "LATE_CANCELLED",
                 "FINALIZED_NO_SHOW",
             ]
         ).count()
-        history_count = max(self.completed_matches_count, accountable_commitments)
-        if history_count < 5:
+        history_count = (
+            accountable_commitments
+            if commitments.exists()
+            else self.completed_matches_count
+        )
+        if history_count < MIN_RELIABILITY_HISTORY:
             return "Provisional Reliability"
         return f"{self.reliability_score}/100"
 
@@ -214,6 +221,7 @@ class ParticipationCommitment(models.Model):
         NO_SHOW_REPORTED = "NO_SHOW_REPORTED", "No-show reported"
         FINALIZED_NO_SHOW = "FINALIZED_NO_SHOW", "Finalized no-show"
         DISPUTED = "DISPUTED", "Disputed"
+        UNVERIFIED = "UNVERIFIED", "Attendance unverified"
         EXCUSED = "EXCUSED", "Excused"
         VOID = "VOID", "Voided"
 
@@ -286,12 +294,63 @@ class ParticipationCommitment(models.Model):
             self.Status.LATE_CANCELLED,
             self.Status.ATTENDED,
             self.Status.FINALIZED_NO_SHOW,
+            self.Status.UNVERIFIED,
             self.Status.EXCUSED,
             self.Status.VOID,
         }
 
     def __str__(self):
         return f"{self.player.email} - {self.source_type} {self.source_id} v{self.source_version}"
+
+
+class ParticipationAttendanceEvent(models.Model):
+    """Immutable audit trail for every attendance decision or resolution."""
+
+    class EventType(models.TextChoices):
+        ATTENDANCE_RECORDED = "ATTENDANCE_RECORDED", "Attendance recorded"
+        NO_SHOW_REPORTED = "NO_SHOW_REPORTED", "No-show reported"
+        ATTENDANCE_DISPUTED = "ATTENDANCE_DISPUTED", "Attendance disputed"
+        NO_SHOW_FINALIZED = "NO_SHOW_FINALIZED", "No-show finalized"
+        ATTENDANCE_UNVERIFIED = "ATTENDANCE_UNVERIFIED", "Attendance left unverified"
+        DISPUTE_RESOLVED = "DISPUTE_RESOLVED", "Attendance dispute resolved"
+        COMMITMENT_CANCELLED = "COMMITMENT_CANCELLED", "Commitment cancelled"
+        COMMITMENT_VOIDED = "COMMITMENT_VOIDED", "Commitment voided"
+        COMMITMENT_EXCUSED = "COMMITMENT_EXCUSED", "Commitment excused"
+
+    commitment = models.ForeignKey(
+        ParticipationCommitment,
+        on_delete=models.CASCADE,
+        related_name="attendance_events",
+    )
+    event_type = models.CharField(max_length=32, choices=EventType.choices)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="recorded_attendance_events",
+        blank=True,
+        null=True,
+    )
+    previous_status = models.CharField(max_length=24, blank=True)
+    current_status = models.CharField(max_length=24)
+    reason = models.CharField(max_length=500, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["commitment", "created_at"]),
+            models.Index(fields=["event_type", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.commitment_id} - {self.event_type}"
+
+    def save(self, *args, **kwargs):
+        if self.pk and not self._state.adding:
+            raise ValidationError("Attendance audit events are immutable.")
+        super().save(*args, **kwargs)
+
 
 class PlayerRating(models.Model):
     ALLOWED_FEEDBACK_TAGS = {

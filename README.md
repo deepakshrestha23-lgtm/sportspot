@@ -314,8 +314,8 @@ Verified completed work includes:
 
 ## 9. Partially Completed and In-Progress Work
 
-- Ratings/reliability use a shared `ParticipationCommitment` ledger for confirmed Pickup Games, Fill My Squad games, and Team fixtures. Hosts/captains record attendance after completion; no-show reports remain neutral for 24 hours so the affected player can dispute them, and only finalized outcomes affect reliability. Broader player-rating coverage and staff case-management tooling remain incomplete.
-- Team Challenges now have a real backend domain, migrations, discovery/create/detail screens, direct and open challenge paths, multiple open responses with creator-controlled opponent selection, immutable proposals, captain-only decisions, booking-first and plan-first states, booking ownership/status/time validation, retry-safe lifecycle actions, proposal-version rescheduling, explicit captain reconfirmation, linked-booking lifecycle synchronisation, automatic deadline expiry, active-captain continuity, and a protected fixture Game Room with lineup, shared attendance review, and result controls. Remaining work includes staff dispute tooling, richer room activity, broader end-to-end/concurrency coverage, and production scheduler configuration.
+- Ratings/reliability use a shared `ParticipationCommitment` ledger for confirmed Pickup Games, Fill My Squad games, and Team fixtures. Hosts/captains have 24 hours after the scheduled end to submit attendance; silence becomes an explicit neutral `UNVERIFIED` outcome, while a reported no-show remains disputable for 24 hours. Only finalized attended, late-cancelled, or undisputed no-show outcomes affect reliability, venue QR scans are excluded, and peer-rating eligibility is created automatically only after the relevant game/fixture finality gate. Broader player-rating coverage and staff case-management tooling remain incomplete.
+- Team Challenges now have a real backend domain, migrations, discovery/create/detail screens, direct and open challenge paths, multiple open responses with creator-controlled opponent selection, immutable proposals, captain-only decisions, booking-first and plan-first states, booking ownership/status/time validation, retry-safe lifecycle actions, proposal-version rescheduling, explicit captain reconfirmation, linked-booking lifecycle synchronisation, automatic deadline expiry, active-captain continuity, and a protected fixture Game Room with lineup, captain-scoped attendance, neutral fallback, auditable disputes, and result-gated rating eligibility. Remaining work includes staff dispute tooling, richer room activity, broader end-to-end/concurrency coverage, and production scheduler configuration.
 - Pickup Game has a structured Planning Room/Game Room; live chat and reusable rooms for future challenge flows are not implemented.
 - Admin venue review works, but broader admin operations are incomplete.
 - Owner offline booking is not implemented as a full feature.
@@ -745,7 +745,7 @@ pip install -r requirements.txt
 copy ..\.env.example .env
 python manage.py migrate
 python manage.py createsuperuser
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 ```
 
 Backend on Linux/macOS:
@@ -758,7 +758,7 @@ pip install -r requirements.txt
 cp ../.env.example .env
 python manage.py migrate
 python manage.py createsuperuser
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 ```
 
 Create PostgreSQL database before migration if it does not exist:
@@ -778,17 +778,19 @@ npm run dev
 
 The frontend development command always targets port `3000`. Its launcher automatically restarts an existing SportSpot Next.js development process on that port, but will not stop an unrelated application. Run `npm run dev` once per terminal session; repeated runs safely restart the same SportSpot watcher instead of falling back to another port.
 
+The `0.0.0.0` bind keeps the API available from both the development computer and a phone on the same Wi-Fi network. Keep `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` for desktop-only testing. For phone testing, set it to the computer's LAN address, for example `http://192.168.1.10:8000`, and open the frontend with that same address. Allow Python through the private-network firewall if the phone cannot connect.
+
 Local URLs:
 
 - Frontend: `http://localhost:3000`
-- Backend: `http://127.0.0.1:8000`
+- Backend: `http://127.0.0.1:8000` or `http://<computer-lan-ip>:8000`
 - Django admin: `http://127.0.0.1:8000/admin/`
 
 ## 17. Database and Migrations
 
 Database engine: PostgreSQL. Migration `0016` adds canonical venue latitude/longitude coordinates, the location source, confirmation state, and update timestamp. Coordinates are optional for backward compatibility, must be a pair inside Nepal, and public serializers expose them only after the owner confirms the pin. Existing `map_location` URLs remain a backward-compatible directions fallback for older venues.
 
-Main domain tables include accounts, email OTPs, password reset tokens, player profiles, reliability events, participation commitments, player ratings and eligibilities, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, booking check-ins, Pickup Games, matchmaking participants and request history, Team Challenges, challenge proposals, open challenge responses, challenge events, team fixtures, notifications, email deliveries, and wishlist items. Migration `0008` adds the shared participation-commitment ledger used by verified attendance and reliability. Migration `0020` adds the venue-scoped booking check-in record used by QR/code verification. Court slots now also store block metadata (`block_type`, `block_reason`, `block_note`, `blocked_at`, `blocked_by`) for owner calendar maintenance/closure periods.
+Main domain tables include accounts, email OTPs, password reset tokens, player profiles, reliability events, participation commitments, attendance audit events, player ratings and eligibilities, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, booking check-ins, Pickup Games, matchmaking participants and request history, Team Challenges, challenge proposals, open challenge responses, challenge events, team fixtures, notifications, email deliveries, and wishlist items. Migration `0008` adds the shared participation-commitment ledger used by verified attendance and reliability; migration `0009` adds the neutral attendance status and immutable audit trail; migration `0006` in `team_challenges` projects that neutral status into fixture rosters. Migration `0020` adds the venue-scoped booking check-in record used by QR/code verification. Court slots now also store block metadata (`block_type`, `block_reason`, `block_note`, `blocked_at`, `blocked_by`) for owner calendar maintenance/closure periods.
 
 Migration commands:
 
@@ -958,7 +960,7 @@ Attendance and reliability:
 - `POST matchmaking/games/{game_id}/participants/{participant_id}/attendance/dispute/` lets only the affected player dispute a no-show report during the 24-hour review window.
 - `POST team-challenges/fixtures/{fixture_id}/participants/{participant_id}/attendance/` and the matching `/attendance/dispute/` endpoint provide the same policy for confirmed team fixtures. Staff resolve a disputed commitment through `POST players/attendance/{commitment_id}/resolve/` with `outcome` set to `ATTENDED`, `NO_SHOW`, or `EXCUSED`.
 - `ParticipationCommitment` is created only for confirmed registered players. Guests, pending requests, waitlisted players, provisional plan-first players, and cancelled/void commitments do not affect reliability.
-- Late cancellation is measured against a four-hour pre-start cutoff. A reported no-show remains `NO_SHOW_REPORTED` for 24 hours; maintenance finalizes an undisputed report as `FINALIZED_NO_SHOW`. Reliability events are deduplicated per commitment outcome.
+- Late cancellation is measured against a four-hour pre-start cutoff. Hosts/captains have 24 hours after the commitment end; maintenance resolves silence as neutral `UNVERIFIED`. A reported no-show remains `NO_SHOW_REPORTED` for 24 hours before maintenance finalizes it as `FINALIZED_NO_SHOW`. Every transition has an immutable attendance audit event, reliability events are deduplicated per commitment outcome, and finalized Pickup/Fill attendance unlocks peer-rating eligibility automatically. Player reliability remains provisional until five finalized outcomes; team reliability uses only complete finalized fixture samples and remains provisional until three fixtures. Average ratings are independent from reliability, and venue QR check-ins never enter either reliability calculation.
 
 Team Challenge endpoints enforce active registered-captain permissions, immutable proposal versions, one selected opponent for open challenges, eligible booking ownership/status checks, booking reuse prevention, explicit schedule reconfirmation, protected fixture-room access, and active team-pair safeguards. State-changing matchmaking and challenge endpoints also use the shared mutation throttle configured by `SPORTSPOT_MUTATION_RATE`; safe read requests are not throttled by that mixin.
 

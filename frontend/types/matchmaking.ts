@@ -8,7 +8,7 @@ export type GameSkillLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "OPEN";
 export type GameRole = "BATSMAN" | "BOWLER" | "ALL_ROUNDER" | "WICKETKEEPER" | "ANY";
 export type JoinRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "WAITLISTED" | "INVITED" | "WITHDRAWN" | "REMOVED" | "EXPIRED";
 export type ParticipantStatus = "CONFIRMED" | "PROVISIONAL" | "RECONFIRM_REQUIRED" | "GUEST_CONFIRMATION_REQUIRED" | "DECLINED" | "LEFT" | "REMOVED";
-export type ParticipationAttendanceStatus = "NOT_CREATED" | "NOT_TRACKED" | "COMMITTED" | "ATTENDANCE_PENDING" | "ATTENDED" | "NO_SHOW_REPORTED" | "FINALIZED_NO_SHOW" | "DISPUTED" | "CANCELLED_EARLY" | "LATE_CANCELLED" | "EXCUSED" | "VOID";
+export type ParticipationAttendanceStatus = "NOT_CREATED" | "NOT_TRACKED" | "COMMITTED" | "ATTENDANCE_PENDING" | "ATTENDED" | "NO_SHOW_REPORTED" | "FINALIZED_NO_SHOW" | "DISPUTED" | "UNVERIFIED" | "CANCELLED_EARLY" | "LATE_CANCELLED" | "EXCUSED" | "VOID";
 
 export type GameRoleRequirement = {
   id: number;
@@ -45,6 +45,7 @@ export type GameParticipant = {
     id?: number;
     status: ParticipationAttendanceStatus;
     review_deadline_at: string | null;
+    attendance_submission_deadline_at: string | null;
     can_dispute: boolean;
   };
   joined_at: string;

@@ -114,7 +114,7 @@ export default function PlayerInvitationsPage() {
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                   <Info label="Members" value={String(invitation.team_members_count)} />
-                  <Info label="Reliability" value={`${invitation.team_reliability_score}/100`} />
+                  <Info label="Reliability" value={invitation.team_reliability_label || (invitation.team_matches_played_count >= 3 ? `${invitation.team_reliability_score}/100` : "Provisional Team Reliability")} />
                   <Info label="Average Rating" value={formatRating(invitation.team_average_rating)} />
                   <Info label="Matches Played" value={String(invitation.team_matches_played_count)} />
                   <Info label="Team Since" value={formatDate(invitation.team_created_at)} />

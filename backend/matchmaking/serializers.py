@@ -19,6 +19,7 @@ from .models import (
     JoinRequestEvent,
 )
 from players.models import ParticipationCommitment
+from players.services import get_attendance_submission_deadline
 from sportspot_api.chat import can_edit_chat_message, chat_edit_deadline
 from .services import (
     add_initial_participants,
@@ -219,7 +220,7 @@ class GameParticipantSerializer(serializers.ModelSerializer):
 
     def get_attendance(self, participant):
         if not participant.user_id or participant.participant_type == GameParticipant.ParticipantType.GUEST:
-            return {"status": "NOT_TRACKED", "review_deadline_at": None, "can_dispute": False}
+            return {"status": "NOT_TRACKED", "review_deadline_at": None, "attendance_submission_deadline_at": None, "can_dispute": False}
         commitment = ParticipationCommitment.objects.filter(
             player_id=participant.user_id,
             source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
@@ -227,13 +228,14 @@ class GameParticipantSerializer(serializers.ModelSerializer):
             source_participant_id=participant.id,
         ).order_by("-source_version", "-id").first()
         if not commitment:
-            return {"status": "NOT_CREATED", "review_deadline_at": None, "can_dispute": False}
+            return {"status": "NOT_CREATED", "review_deadline_at": None, "attendance_submission_deadline_at": None, "can_dispute": False}
         request = self.context.get("request")
         viewer = getattr(request, "user", None)
         return {
             "id": commitment.id,
             "status": commitment.status,
             "review_deadline_at": commitment.review_deadline_at.isoformat() if commitment.review_deadline_at else None,
+            "attendance_submission_deadline_at": get_attendance_submission_deadline(commitment).isoformat(),
             "can_dispute": bool(
                 viewer
                 and viewer.is_authenticated

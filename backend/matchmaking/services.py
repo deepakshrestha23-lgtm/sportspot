@@ -125,28 +125,30 @@ def ensure_game_participation_commitments(game, *, created_by=None):
 
 def void_game_participation_commitments(game, *, actor=None, reason=""):
     from players.models import ParticipationCommitment
+    from players.services import void_participation_commitment
 
-    commitments = ParticipationCommitment.objects.select_for_update().filter(
-        source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
-        source_id=game.id,
-        status__in=[
-            ParticipationCommitment.Status.COMMITTED,
-            ParticipationCommitment.Status.ATTENDANCE_PENDING,
-            ParticipationCommitment.Status.NO_SHOW_REPORTED,
-        ],
+    player_ids = list(
+        ParticipationCommitment.objects.filter(
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=game.id,
+            status__in=[
+                ParticipationCommitment.Status.COMMITTED,
+                ParticipationCommitment.Status.ATTENDANCE_PENDING,
+                ParticipationCommitment.Status.NO_SHOW_REPORTED,
+                ParticipationCommitment.Status.DISPUTED,
+            ],
+        ).values_list("player_id", flat=True)
     )
-    now = timezone.now()
     count = 0
-    for commitment in commitments:
-        commitment.status = ParticipationCommitment.Status.VOID
-        commitment.resolved_at = now
-        commitment.resolved_by = actor
-        commitment.metadata = {
-            **(commitment.metadata or {}),
-            "void_reason": str(reason or "game_cancelled")[:500],
-        }
-        commitment.save(update_fields=["status", "resolved_at", "resolved_by", "metadata", "updated_at"])
-        count += 1
+    for player_id in player_ids:
+        _commitment, changed = void_participation_commitment(
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=game.id,
+            player_id=player_id,
+            actor=actor,
+            reason=reason or "game_cancelled",
+        )
+        count += int(changed)
     return count
 
 
@@ -183,6 +185,59 @@ def record_game_attendance(game_id, participant_id, actor, attendance_status):
         commitment_id=commitment.id,
         actor=actor,
         attended=normalized == "ATTENDED",
+    )
+
+
+@transaction.atomic
+def maybe_create_game_rating_eligibilities(game_id):
+    """Unlock peer feedback only after every current registered spot is resolved."""
+    from players.models import ParticipationCommitment
+    from players.services import (
+        ATTENDANCE_RESOLVED_STATUSES,
+        create_rating_eligibilities_for_players,
+    )
+
+    game = Game.objects.select_related("booking").filter(
+        pk=game_id,
+        status=Game.Status.COMPLETED,
+    ).first()
+    if not game:
+        return 0
+    ensure_game_participation_commitments(game)
+    participants = list(
+        game.participants.filter(
+            status=GameParticipant.Status.CONFIRMED,
+            user__isnull=False,
+        ).exclude(
+            participant_type=GameParticipant.ParticipantType.GUEST,
+        ).select_related("user")
+    )
+    if not participants:
+        return 0
+
+    commitments = list(
+        ParticipationCommitment.objects.filter(
+            source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+            source_id=game.id,
+            source_participant_id__in=[participant.id for participant in participants],
+        ).order_by("source_participant_id", "-source_version", "-id")
+    )
+    latest_by_participant = {}
+    for commitment in commitments:
+        latest_by_participant.setdefault(commitment.source_participant_id, commitment)
+    current_commitments = [latest_by_participant.get(participant.id) for participant in participants]
+    if any(commitment is None for commitment in current_commitments):
+        return 0
+    if any(commitment.status not in ATTENDANCE_RESOLVED_STATUSES for commitment in current_commitments):
+        return 0
+    attendees = [commitment.player for commitment in current_commitments if commitment.status == ParticipationCommitment.Status.ATTENDED]
+    return create_rating_eligibilities_for_players(
+        players=attendees,
+        title=f"Feedback for {game.title}",
+        related_entity_type="matchmaking_game",
+        related_entity_id=game.id,
+        match_date=game.start_at,
+        metadata={"game_id": game.id, "game_type": game.game_type},
     )
 
 
@@ -1049,18 +1104,20 @@ def expire_pending_reconfirmations(game, now=None, *, notify=True):
         return 0
     for participant in pending:
         from players.models import ParticipationCommitment
+        from players.services import excuse_participation_commitment
 
-        ParticipationCommitment.objects.filter(
+        commitment = ParticipationCommitment.objects.filter(
             player_id=participant.user_id,
             source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
             source_id=game.id,
             status=ParticipationCommitment.Status.COMMITTED,
-        ).update(
-            status=ParticipationCommitment.Status.EXCUSED,
-            resolved_at=now,
-            metadata={"reason": "schedule_reconfirmation_expired"},
-            updated_at=now,
-        )
+        ).order_by("-source_version", "-id").first()
+        if commitment:
+            excuse_participation_commitment(
+                commitment_id=commitment.id,
+                actor=game.host,
+                reason="The player did not reconfirm the changed schedule before the deadline.",
+            )
         set_participant_status(participant, GameParticipant.Status.REMOVED, actor=game.host)
         if participant.user_id:
             requests = JoinRequest.objects.select_for_update().filter(
@@ -1864,11 +1921,13 @@ def reconfirm_game(game, player, response):
             status=ParticipationCommitment.Status.COMMITTED,
         ).order_by("-source_version", "-id").first()
         if commitment:
-            commitment.status = ParticipationCommitment.Status.EXCUSED
-            commitment.resolved_at = timezone.now()
-            commitment.resolved_by = player
-            commitment.metadata = {**(commitment.metadata or {}), "reason": "declined_schedule_change"}
-            commitment.save(update_fields=["status", "resolved_at", "resolved_by", "metadata", "updated_at"])
+            from players.services import excuse_participation_commitment
+
+            excuse_participation_commitment(
+                commitment_id=commitment.id,
+                actor=player,
+                reason="The player declined the proposed schedule change.",
+            )
     refresh_reconfirmation_state(locked_game)
     locked_game.refresh_status()
     notify_reconfirmation_response(locked_game, participant, normalized)

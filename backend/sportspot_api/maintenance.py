@@ -64,6 +64,6 @@ def format_maintenance_summary(result):
         f"Matchmaking: closed {matchmaking['games_closed']}, cancelled {matchmaking['games_cancelled']}, "
         f"in progress {matchmaking['games_in_progress']}, completed {matchmaking['games_completed']}, "
         f"expired {matchmaking['requests_expired']} request(s). "
-        f"Team challenges expired {team_challenges}. Finalized {attendance} attendance review(s). "
+        f"Team challenges expired {team_challenges}. Resolved {attendance} attendance record(s). "
         f"{reminder_summary}"
     )

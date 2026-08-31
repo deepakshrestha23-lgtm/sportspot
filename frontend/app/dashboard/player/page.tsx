@@ -87,9 +87,9 @@ export default function PlayerDashboardPage() {
 
   const firstName = overview.player.full_name.split(" ").filter(Boolean)[0] || "Player";
   const reliabilityValue = overview.profile.exists
-    ? overview.profile.completed_matches_count >= 3
+    ? overview.profile.completed_matches_count >= 5
       ? `${overview.profile.reliability_score}/100`
-      : "New Player"
+      : "Provisional Reliability"
     : "Not set";
   const reliabilityMeta = overview.profile.exists
     ? overview.profile.reliability_label
