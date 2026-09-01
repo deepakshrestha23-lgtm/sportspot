@@ -1,9 +1,22 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.db import connections
+from django.http import JsonResponse
 from django.urls import include, path
 
+
+def health_check(request):
+    """Return a small readiness response used by the load balancer."""
+    try:
+        connections["default"].ensure_connection()
+    except Exception:
+        return JsonResponse({"status": "unavailable", "database": "unavailable"}, status=503)
+    return JsonResponse({"status": "ok", "database": "ok"})
+
+
 urlpatterns = [
+    path("api/health/", health_check, name="health-check"),
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.urls")),
     path("api/players/", include("players.urls")),
