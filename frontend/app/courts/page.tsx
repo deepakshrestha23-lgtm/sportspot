@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { emitToast } from "@/lib/toast";
 import { buildTimeOptions, formatDateOnly, formatTimeValue, getLocalDateString } from "@/lib/dates";
 import { buildVenueDirectionsHref } from "@/lib/maps";
+import MediaImage from "@/components/MediaImage";
 import LoadingIndicator from "@/components/LoadingIndicator";
 import TimeSelect from "@/components/TimeSelect";
 import type { VenueDiscoveryFilters, VenueDiscoveryItem, VenueDiscoveryResponse } from "@/types/venue";
@@ -262,7 +263,7 @@ function CourtDiscovery() {
 
             <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p aria-live="polite" className="text-xl font-bold text-sportNavy">{isLoading && !data ? "Finding venues" : `${resultCount} venue${resultCount === 1 ? "" : "s"} found`}</p>
+                <p aria-live="polite" className="text-xl font-bold text-sportNavy">{isLoading && !data ? "Finding venues" : error && !data ? "Venues temporarily unavailable" : `${resultCount} venue${resultCount === 1 ? "" : "s"} found`}</p>
                 <p className="mt-1 text-sm text-slate-500">Availability for <strong className="font-bold text-slate-700">{formatDateOnly(appliedDate, { month: "short", day: "numeric", year: "numeric" })}</strong> · approved, active venues only</p>
               </div>
               <div className="flex items-center gap-2 lg:hidden">
@@ -284,7 +285,7 @@ function CourtDiscovery() {
 
       <MobileFilterDrawer isOpen={mobileFiltersOpen} onClose={() => setMobileFiltersOpen(false)}>
         <FilterPanel activeCount={activeChipList.length} appliedDate={appliedDate} filters={filters} isUpdating={isFilterUpdating} onClear={clearAllFilters} onToggleMulti={toggleMultiFilter} searchParams={searchParams} showHeader={false} updateQuery={updateQuery} />
-        <button className="mt-6 w-full min-h-12 rounded-lg bg-sportGreen px-5 py-3 text-sm font-black text-white transition hover:bg-green-700" onClick={() => setMobileFiltersOpen(false)} type="button">Show {resultCount} venue{resultCount === 1 ? "" : "s"}</button>
+        <button className="mt-6 w-full min-h-12 rounded-lg bg-sportGreen px-5 py-3 text-sm font-black text-white transition hover:bg-green-700" onClick={() => setMobileFiltersOpen(false)} type="button">{data ? `Show ${resultCount} venue${resultCount === 1 ? "" : "s"}` : "Show venues"}</button>
       </MobileFilterDrawer>
     </main>
   );
@@ -454,11 +455,13 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
     <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_2px_8px_rgba(16,32,22,0.04)] transition duration-200 hover:border-green-300 hover:shadow-[0_8px_20px_rgba(16,32,22,0.08)]">
       <div className="relative aspect-[16/9] overflow-hidden bg-sportNavy">
         <Link className="absolute inset-0 z-10" href={href} aria-label={`View courts at ${venue.name}`} />
-        {venue.primary_image ? (
-          <img alt={`${venue.name} venue`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" loading="lazy" src={venue.primary_image} />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-sportNavy text-4xl font-black text-white">{getInitials(venue.name)}</div>
-        )}
+        <MediaImage
+          alt={`${venue.name} venue`}
+          className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+          fallback={<div className="flex h-full w-full items-center justify-center bg-sportNavy text-4xl font-black text-white">{getInitials(venue.name)}</div>}
+          loading="lazy"
+          source={venue.primary_image}
+        />
         {venue.is_verified ? (
           <span className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sportGreen shadow-sm">
             <CheckBadgeIcon /> Verified

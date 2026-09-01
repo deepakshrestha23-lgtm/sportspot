@@ -1,7 +1,7 @@
 export type PlayerDashboardNavItem = {
   label: string;
   href: string;
-  icon: "overview" | "profile" | "teams" | "games" | "bookings" | "ratings" | "settings" | "support";
+  icon: "overview" | "profile" | "teams" | "games" | "bookings" | "performance" | "ratings" | "settings" | "support";
   match: string[];
   exact?: boolean;
 };
@@ -37,6 +37,12 @@ export const playerDashboardNavItems: PlayerDashboardNavItem[] = [
     href: "/dashboard/player/bookings",
     icon: "bookings",
     match: ["/dashboard/player/bookings"],
+  },
+  {
+    label: "My Performance",
+    href: "/dashboard/player/performance",
+    icon: "performance",
+    match: ["/dashboard/player/performance"],
   },
   {
     label: "Ratings & Reliability",

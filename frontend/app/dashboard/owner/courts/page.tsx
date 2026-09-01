@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import ConfirmActionModal from "@/components/ConfirmActionModal";
 import FeedbackToast from "@/components/FeedbackToast";
+import MediaImage from "@/components/MediaImage";
 import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
@@ -120,7 +121,7 @@ export default function OwnerCourtsPage() {
           {courts.map((court) => (
             <article className="owner-court-card" key={court.id}>
               <div className="owner-court-card-media">
-                {court.court_photo ? <img alt={`${court.name} court`} src={getMediaUrl(court.court_photo)} /> : <div className="owner-court-placeholder"><span>{formatChoice(court.court_type)}</span><strong>{court.name}</strong></div>}
+                <MediaImage alt={`${court.name} court`} className="h-full w-full object-cover" fallback={<div className="owner-court-placeholder"><span>{formatChoice(court.court_type)}</span><strong>{court.name}</strong></div>} source={court.court_photo} />
                 <span className={`owner-status ${court.is_active ? "owner-status-success" : "owner-status-neutral"}`}>{court.is_active ? "Active" : "Inactive"}</span>
               </div>
               <div className="owner-court-card-body">
@@ -132,7 +133,9 @@ export default function OwnerCourtsPage() {
                 <div className="owner-court-meta"><span>{court.bookings_count} booking record{court.bookings_count === 1 ? "" : "s"}</span><span>{venue.status === "APPROVED" && court.is_active && venue.is_active ? "Player visible" : "Not player visible"}</span></div>
                 <div className="owner-court-visibility">
                   {venue.is_active && venue.status === "APPROVED" && court.is_active
-                    ? "Visible to players after slots are published."
+                    ? court.future_published_slot_count > 0
+                      ? `${court.future_published_slot_count} future slot${court.future_published_slot_count === 1 ? "" : "s"} published for players.`
+                      : "Visible to players after future slots are published."
                     : "Hidden until both the venue and this court are active."}
                 </div>
                 {!court.can_delete ? <p className="owner-court-warning">{court.delete_block_reason}</p> : null}
@@ -174,13 +177,6 @@ function Stat({ label, value }: { label: string; value: number }) {
       <strong>{value}</strong>
     </div>
   );
-}
-
-function getMediaUrl(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${baseUrl}${path}`;
 }
 
 function formatChoice(value: string) {

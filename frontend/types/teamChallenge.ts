@@ -1,5 +1,6 @@
 export type TeamChallengeType = "DIRECT" | "OPEN";
 export type TeamChallengeCourtMode = "PLAN_FIRST" | "BOOKING_FIRST";
+export type TeamChallengeSource = "TEAM_CHALLENGE" | "INSTANT_SCORER";
 export type TeamChallengeStatus =
   | "OPEN"
   | "COUNTERED"
@@ -85,6 +86,7 @@ export type TeamFixture = {
   result: string;
   result_submitted_at: string | null;
   result_confirmed_at: string | null;
+  scorecard: FixtureScorecardSummary | null;
   participants: TeamFixtureParticipant[];
   permissions: TeamFixturePermissions;
   created_at: string;
@@ -98,7 +100,75 @@ export type TeamFixturePermissions = {
   can_record_attendance: boolean;
   can_submit_result: boolean;
   can_confirm_result: boolean;
+  scorecard_result_pending_acknowledgement: boolean;
   can_view_room?: boolean;
+};
+
+export type FixtureScorecardSummary = {
+  available: boolean;
+  id?: number;
+  status?: "SETUP" | "INNINGS_ONE" | "INNINGS_BREAK" | "INNINGS_TWO" | "COMPLETED";
+  result?: string;
+  can_view?: boolean;
+  can_score?: boolean;
+  can_set_up: boolean;
+};
+
+export type ScoringFixtureSummary = {
+  fixture_id: number;
+  challenge_id: number;
+  match_source: "TEAM_CHALLENGE" | "INSTANT_SCORER";
+  status: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED";
+  status_label: string;
+  scorecard_available: boolean;
+  scorecard_status: "SETUP" | "INNINGS_ONE" | "INNINGS_BREAK" | "INNINGS_TWO" | "COMPLETED" | null;
+  scorecard_result: string;
+  can_view: boolean;
+  can_score: boolean;
+  can_set_up: boolean;
+  is_captain: boolean;
+  is_assigned_scorer: boolean;
+  challenger_team: { id: number; name: string };
+  challenged_team: { id: number; name: string };
+  booking: ChallengeBookingSummary | null;
+};
+
+export type ScoringFixturesResponse = {
+  fixtures: ScoringFixtureSummary[];
+};
+
+export type ScorerTeamSummary = {
+  id: number;
+  name: string;
+  team_photo: string;
+  location: string;
+  skill_level: string;
+  captain_name: string;
+  active_players: number;
+};
+
+export type ScoringTeamsResponse = {
+  my_teams: ScorerTeamSummary[];
+  opponents: ScorerTeamSummary[];
+};
+
+export type ScoringMatchRequest = {
+  id: number;
+  status: "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED";
+  challenger_team: ScorerTeamSummary;
+  challenged_team: ScorerTeamSummary;
+  requested_by_name: string;
+  fixture_id: number | null;
+  challenge_id: number | null;
+  created_at: string;
+  responded_at: string | null;
+  can_accept_or_decline: boolean;
+  can_cancel: boolean;
+};
+
+export type ScoringMatchRequestsResponse = {
+  incoming: ScoringMatchRequest[];
+  outgoing: ScoringMatchRequest[];
 };
 
 export type FixtureEligiblePlayer = {
@@ -148,6 +218,7 @@ export type TeamChallengePermissions = {
 
 export type TeamChallenge = {
   id: number;
+  source: TeamChallengeSource;
   challenge_type: TeamChallengeType;
   court_mode: TeamChallengeCourtMode;
   status: TeamChallengeStatus;

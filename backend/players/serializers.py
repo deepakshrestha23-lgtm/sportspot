@@ -1,5 +1,6 @@
 import json
 
+from django.db.models import Count, Max, Sum
 from rest_framework import serializers
 
 from .models import PlayerProfile
@@ -11,6 +12,7 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
     profile_completion_percentage = serializers.IntegerField(read_only=True)
     is_profile_complete = serializers.BooleanField(read_only=True)
     reliability_label = serializers.CharField(read_only=True)
+    cricket_summary = serializers.SerializerMethodField(read_only=True)
     remove_profile_photo = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
@@ -40,6 +42,7 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
             "profile_completion_percentage",
             "is_profile_complete",
             "reliability_label",
+            "cricket_summary",
             "remove_profile_photo",
             "created_at",
             "updated_at",
@@ -58,9 +61,31 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
             "profile_completion_percentage",
             "is_profile_complete",
             "reliability_label",
+            "cricket_summary",
             "created_at",
             "updated_at",
         )
+
+    def get_cricket_summary(self, profile):
+        # Cricket records are only created when a scorecard is finalized. They
+        # deliberately do not read from ratings, attendance, or reliability.
+        from scoring.models import CricketPlayerPerformance
+
+        totals = CricketPlayerPerformance.objects.filter(
+            player=profile.user,
+            match__status="COMPLETED",
+        ).aggregate(
+            matches=Count("id"),
+            total_runs=Sum("runs"),
+            best_score=Max("runs"),
+            wickets=Sum("wickets"),
+        )
+        return {
+            "matches": totals["matches"] or 0,
+            "total_runs": totals["total_runs"] or 0,
+            "best_score": totals["best_score"] or 0,
+            "wickets": totals["wickets"] or 0,
+        }
 
     def validate_profile_photo(self, value):
         if not value:

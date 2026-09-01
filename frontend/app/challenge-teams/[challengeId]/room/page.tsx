@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import BackButton from "@/components/BackButton";
@@ -16,6 +16,7 @@ type RoomResponse = { challenge: TeamChallenge; fixture: TeamFixture };
 
 export default function TeamChallengeRoomPage() {
   const params = useParams<{ challengeId: string }>();
+  const router = useRouter();
   const [data, setData] = useState<RoomResponse | null>(null);
   const [eligiblePlayers, setEligiblePlayers] = useState<FixtureEligiblePlayer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -25,6 +26,7 @@ export default function TeamChallengeRoomPage() {
   const [isDisputing, setIsDisputing] = useState(false);
   const [resultDraft, setResultDraft] = useState("");
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isRedirectingToScorer, setIsRedirectingToScorer] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -48,8 +50,14 @@ export default function TeamChallengeRoomPage() {
   async function loadRoom() {
     setIsLoading(true);
     setError("");
+    setIsRedirectingToScorer(false);
     try {
       const response = await api.get<RoomResponse>(`/api/team-challenges/challenges/${params.challengeId}/room/`);
+      if (response.data.challenge.source === "INSTANT_SCORER") {
+        setIsRedirectingToScorer(true);
+        router.replace(`/challenge-teams/${params.challengeId}/scorer`);
+        return;
+      }
       setData(response.data);
       setResultDraft(response.data.fixture.result || "");
       if (response.data.fixture.permissions.can_manage_lineup) {
@@ -123,7 +131,7 @@ export default function TeamChallengeRoomPage() {
     }
   }
 
-  if (isLoading) return <RoomSkeleton />;
+  if (isLoading || isRedirectingToScorer) return <RoomSkeleton />;
   if (!data) {
     return (
       <main className="min-h-screen bg-[var(--sport-canvas)] px-4 py-10 sm:px-6">
@@ -157,6 +165,7 @@ export default function TeamChallengeRoomPage() {
               <p className="sport-page-description">{roomDescription(roomState, Boolean(booking))}</p>
             </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {fixture.scorecard?.available || fixture.scorecard?.can_set_up ? <Link className="sport-primary-button" href={`/challenge-teams/${challenge.id}/scorer`}>{fixture.scorecard?.available ? fixture.scorecard.status === "COMPLETED" ? "View scorecard" : "Open scorer" : "Set up scorer"}</Link> : null}
                 <button aria-controls="challenge-room-chat" aria-expanded={isChatOpen} className="sport-secondary-button" onClick={() => setIsChatOpen(true)} type="button"><ChatIcon /> Chat</button>
                 <span className={`sport-status ${roomState === "READ_ONLY" ? "border-slate-200 bg-slate-100 text-slate-700" : roomState === "RECONFIRMATION" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-sportGreen"}`}>{roomStateLabel(roomState)}</span>
               </div>
@@ -180,16 +189,16 @@ export default function TeamChallengeRoomPage() {
             <section className="sport-surface p-5 sm:p-6">
               <SectionHeading title="Match details" description={booking ? "The confirmed booking is the source of truth for this match." : "The latest agreed proposal is shown until a court booking is attached."} />
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <Info label={booking ? "Venue and court" : "Preferred area"} value={booking ? `${booking.venue_name} · ${booking.court_name}` : [challenge.current_proposal.preferred_area, challenge.current_proposal.preferred_district].filter(Boolean).join(", ") || "Area to be confirmed"} />
+                <Info label={booking ? "Venue and court" : "Preferred area"} value={booking ? `${booking.venue_name} · ${booking.court_name}` : [challenge.current_proposal?.preferred_area, challenge.current_proposal?.preferred_district].filter(Boolean).join(", ") || "Area to be confirmed"} />
                 <Info label="When" value={booking ? `${formatDate(booking.start_at)} - ${formatTime(booking.end_at)}` : proposalSchedule(challenge)} />
                 <Info label="Booking reference" value={booking?.booking_code || (booking ? "Not available" : "Court not booked yet")} />
                 <Info label="Payment" value={booking ? formatStatus(booking.payment_status) : "Not applicable yet"} />
               </div>
-              {fixture.result ? <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-xs font-black uppercase tracking-[0.12em] text-green-800">Match result</p><p className="mt-1 font-bold text-green-950">{fixture.result}</p><p className="mt-1 text-sm text-green-800">{fixture.result_confirmed_at ? "Confirmed by both team captains." : "Waiting for the other captain to confirm."}</p></div> : null}
+              {fixture.result ? <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4"><p className="text-xs font-black uppercase tracking-[0.12em] text-green-800">Match result</p><p className="mt-1 font-bold text-green-950">{fixture.result}</p><p className="mt-1 text-sm text-green-800">{fixture.result_confirmed_at ? "Confirmed by both team captains." : fixture.permissions.scorecard_result_pending_acknowledgement ? "A captain must acknowledge the completed scorecard before the other captain can confirm it." : "Waiting for the other captain to confirm."}</p>{fixture.scorecard?.available ? <Link className="mt-3 inline-flex text-sm font-black text-green-800 underline underline-offset-4" href={`/challenge-teams/${challenge.id}/scorer`}>View full scorecard</Link> : null}</div> : null}
             </section>
             {canManage && fixture.permissions.can_manage_lineup ? <section className="sport-surface p-5 sm:p-6"><SectionHeading title="Manage your lineup" description="Select active registered members who are playing for your team." /><div className="mt-4 space-y-2">{eligiblePlayers.length ? eligiblePlayers.map((player) => <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between" key={player.player_id}><div className="min-w-0"><p className="truncate font-bold text-sportNavy">{player.player_name}</p><p className="mt-1 text-xs font-semibold text-slate-500">{formatStatus(player.cricksal_role)}{player.sportspot_id ? ` · ${player.sportspot_id}` : ""}</p></div><button className="sport-secondary-button shrink-0" disabled={Boolean(action)} onClick={() => void updateFixture("add", `/api/team-challenges/fixtures/${fixture.id}/participants/`, { player_id: player.player_id }, "The player has been added to the lineup.")} type="button">{action === "add" ? "Adding..." : "Add to lineup"}</button></div>) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">All available members are already listed, or no active members are available.</p>}</div></section> : null}
             {fixture.permissions.can_record_attendance ? <section className="sport-surface p-5 sm:p-6"><SectionHeading title="Attendance" description={`Submit your team roster by ${formatAttendanceDeadline(ownParticipants)}. Unreported attendance stays neutral; a no-show report remains disputable for 24 hours.`} /><div className="mt-4 space-y-2">{ownParticipants.length ? ownParticipants.map((participant) => <AttendanceRow key={participant.id} action={action} participant={participant} onAttendance={(attendanceStatus) => void updateFixture("attendance", `/api/team-challenges/fixtures/${fixture.id}/participants/${participant.id}/attendance/`, { status: attendanceStatus }, `${participant.player_name}'s attendance has been recorded.`)} onDispute={(target) => { setDisputeParticipant(target); setDisputeReason(""); }} />) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No players from your team have been selected yet.</p>}{disputeParticipant ? <AttendanceDisputeForm isSubmitting={isDisputing} onCancel={() => setDisputeParticipant(null)} onChange={setDisputeReason} onSubmit={() => void submitAttendanceDispute()} reason={disputeReason} /> : null}</div></section> : null}
-            {fixture.status === "COMPLETED" && canManage ? <section className="sport-surface p-5 sm:p-6"><SectionHeading title="Match result" description="One captain submits the result and the other captain confirms it." />{!fixture.result_confirmed_at ? <textarea className="sport-field mt-4 min-h-24 w-full" disabled={!fixture.permissions.can_submit_result || Boolean(action)} maxLength={200} onChange={(event) => setResultDraft(event.target.value)} placeholder="For example: Kathmandu Kings won by 4 wickets" value={resultDraft} /> : null}<div className="mt-3 flex flex-wrap gap-2">{fixture.permissions.can_submit_result && !fixture.result_confirmed_at ? <button className="sport-primary-button" disabled={!resultDraft.trim() || Boolean(action)} onClick={() => void updateFixture("result", `/api/team-challenges/fixtures/${fixture.id}/result/`, { result: resultDraft.trim() }, "The match result has been submitted.")} type="button">{action === "result" ? "Submitting..." : fixture.result ? "Update result" : "Submit result"}</button> : null}{fixture.permissions.can_confirm_result ? <button className="sport-primary-button" disabled={Boolean(action)} onClick={() => void updateFixture("confirm", `/api/team-challenges/fixtures/${fixture.id}/result/confirm/`, undefined, "The match result has been confirmed.")} type="button">{action === "confirm" ? "Confirming..." : "Confirm result"}</button> : null}</div>{fixture.result && !fixture.result_confirmed_at && !fixture.permissions.can_confirm_result ? <p className="mt-3 text-sm text-slate-600">The other captain must confirm this result before ratings become available.</p> : null}</section> : null}
+            {fixture.status === "COMPLETED" && canManage ? <section className="sport-surface p-5 sm:p-6"><SectionHeading title="Match result" description={fixture.scorecard?.available ? "The scorecard result is generated from the recorded ball-by-ball history. Both captains still acknowledge it after attendance." : "One captain submits the result and the other captain confirms it."} />{!fixture.result_confirmed_at && !fixture.scorecard?.available ? <textarea className="sport-field mt-4 min-h-24 w-full" disabled={!fixture.permissions.can_submit_result || Boolean(action)} maxLength={200} onChange={(event) => setResultDraft(event.target.value)} placeholder="For example: Kathmandu Kings won by 4 wickets" value={resultDraft} /> : null}{fixture.scorecard?.available && fixture.result ? <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4"><p className="font-bold text-green-950">{fixture.result}</p><p className="mt-1 text-sm leading-6 text-green-800">Ball-by-ball scoring determines this result. It cannot be replaced with a manual result.</p></div> : null}<div className="mt-3 flex flex-wrap gap-2">{fixture.permissions.can_submit_result && !fixture.result_confirmed_at ? <button className="sport-primary-button" disabled={!resultDraft.trim() || Boolean(action)} onClick={() => void updateFixture("result", `/api/team-challenges/fixtures/${fixture.id}/result/`, { result: resultDraft.trim() }, fixture.scorecard?.available ? "The scorecard result has been acknowledged." : "The match result has been submitted.")} type="button">{action === "result" ? "Submitting..." : fixture.scorecard?.available ? "Acknowledge scorecard result" : fixture.result ? "Update result" : "Submit result"}</button> : null}{fixture.permissions.can_confirm_result ? <button className="sport-primary-button" disabled={Boolean(action)} onClick={() => void updateFixture("confirm", `/api/team-challenges/fixtures/${fixture.id}/result/confirm/`, undefined, "The match result has been confirmed.")} type="button">{action === "confirm" ? "Confirming..." : "Confirm result"}</button> : null}</div>{fixture.result && !fixture.result_confirmed_at && !fixture.permissions.can_confirm_result ? <p className="mt-3 text-sm text-slate-600">The other captain must confirm this result before ratings become available.</p> : null}</section> : null}
             <section className="sport-surface p-5 sm:p-6">
               <SectionHeading title={isReadOnly ? "Match record" : "Before you play"} description="Keep the agreed schedule and team information close at hand." />
               <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">

@@ -449,6 +449,48 @@ class OwnerReportsApiTests(APITestCase):
         self.assertEqual(response.data["courts"][0]["check_in_count"], 1)
         self.assertEqual(response.data["period"]["mode"], "preset")
 
+    def test_owner_report_separates_captured_value_from_refunds(self):
+        report_date = timezone.localdate() - timedelta(days=2)
+        booking_values = [
+            (Decimal("1500.00"), Booking.BookingStatus.COMPLETED, Booking.PaymentStatus.PAID, Booking.RefundStatus.NOT_REQUIRED, Decimal("0.00")),
+            (Decimal("500.00"), Booking.BookingStatus.CANCELLED, Booking.PaymentStatus.NO_REFUND, Booking.RefundStatus.NOT_ELIGIBLE, Decimal("0.00")),
+            (Decimal("700.00"), Booking.BookingStatus.CANCELLED, Booking.PaymentStatus.REFUNDED, Booking.RefundStatus.REFUNDED, Decimal("700.00")),
+            (Decimal("300.00"), Booking.BookingStatus.CANCELLED, Booking.PaymentStatus.REFUND_PENDING, Booking.RefundStatus.PENDING_OWNER_ACTION, Decimal("300.00")),
+        ]
+        for index, (amount, booking_status, payment_status, refund_status, refund_amount) in enumerate(booking_values):
+            slot = CourtSlot.objects.create(
+                court=self.court,
+                date=report_date,
+                start_time=time(9 + index, 0),
+                end_time=time(10 + index, 0),
+                price=amount,
+                status=CourtSlot.Status.BOOKED if booking_status == Booking.BookingStatus.COMPLETED else CourtSlot.Status.AVAILABLE,
+            )
+            Booking.objects.create(
+                player=self.player,
+                venue=self.venue,
+                court=self.court,
+                slot=slot,
+                amount=amount,
+                status=booking_status,
+                payment_status=payment_status,
+                refund_status=refund_status,
+                refund_amount=refund_amount,
+                reserved_until=timezone.now() - timedelta(days=3),
+                confirmed_at=timezone.now() - timedelta(days=3) if booking_status == Booking.BookingStatus.COMPLETED else None,
+                completed_at=timezone.now() - timedelta(days=2) if booking_status == Booking.BookingStatus.COMPLETED else None,
+            )
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(reverse("owner-reports"), {"period": 7})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["summary"]["paid_booking_count"], 4)
+        self.assertEqual(response.data["summary"]["paid_value"], "3000.00")
+        self.assertEqual(response.data["summary"]["processed_refund_value"], "700.00")
+        self.assertEqual(response.data["summary"]["pending_refund_value"], "300.00")
+        self.assertEqual(response.data["summary"]["net_value"], "2000.00")
+
     def test_owner_report_accepts_a_bounded_custom_date_range(self):
         today = timezone.localdate()
         start_date = today - timedelta(days=4)
@@ -515,6 +557,235 @@ class OwnerReportsApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.data["venue"])
         self.assertEqual(response.data["summary"]["booking_count"], 0)
+
+
+class OwnerOverviewApiTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            email="overview-owner@example.com",
+            password="test-password",
+            full_name="Overview Owner",
+            phone="9800000093",
+            role="COURT_OWNER",
+        )
+        self.player = user_model.objects.create_user(
+            email="overview-player@example.com",
+            password="test-password",
+            full_name="Overview Player",
+            phone="9800000094",
+            role="PLAYER",
+        )
+        self.venue = Venue.objects.create(
+            owner=self.owner,
+            name="Overview Cricksal Arena",
+            city="Kathmandu",
+            area="Maitidevi",
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        self.court = Court.objects.create(
+            venue=self.venue,
+            name="Overview Court",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+        )
+
+    def create_booking(self, *, amount, booking_status, payment_status, slot_status, start_time):
+        slot = CourtSlot.objects.create(
+            court=self.court,
+            date=timezone.localdate(),
+            start_time=start_time,
+            end_time=time(start_time.hour + 1, start_time.minute),
+            price=amount,
+            status=slot_status,
+            reserved_until=timezone.now() + timedelta(minutes=10) if slot_status == CourtSlot.Status.RESERVED else None,
+        )
+        return Booking.objects.create(
+            player=self.player,
+            venue=self.venue,
+            court=self.court,
+            slot=slot,
+            amount=amount,
+            status=booking_status,
+            payment_status=payment_status,
+            reserved_until=timezone.now() + timedelta(minutes=10),
+            confirmed_at=timezone.now() if booking_status in [Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED] else None,
+            completed_at=timezone.now() if booking_status == Booking.BookingStatus.COMPLETED else None,
+        )
+
+    def test_overview_counts_operational_bookings_and_paid_revenue_separately_from_holds(self):
+        self.create_booking(
+            amount=Decimal("1500.00"),
+            booking_status=Booking.BookingStatus.CONFIRMED,
+            payment_status=Booking.PaymentStatus.PAID,
+            slot_status=CourtSlot.Status.BOOKED,
+            start_time=time(18, 0),
+        )
+        self.create_booking(
+            amount=Decimal("2000.00"),
+            booking_status=Booking.BookingStatus.COMPLETED,
+            payment_status=Booking.PaymentStatus.PAID,
+            slot_status=CourtSlot.Status.BOOKED,
+            start_time=time(19, 0),
+        )
+        self.create_booking(
+            amount=Decimal("1200.00"),
+            booking_status=Booking.BookingStatus.RESERVED,
+            payment_status=Booking.PaymentStatus.PENDING,
+            slot_status=CourtSlot.Status.RESERVED,
+            start_time=time(20, 0),
+        )
+        cancelled = self.create_booking(
+            amount=Decimal("900.00"),
+            booking_status=Booking.BookingStatus.CANCELLED,
+            payment_status=Booking.PaymentStatus.NO_REFUND,
+            slot_status=CourtSlot.Status.AVAILABLE,
+            start_time=time(21, 0),
+        )
+        cancelled.refund_status = Booking.RefundStatus.NOT_ELIGIBLE
+        cancelled.save(update_fields=["refund_status", "updated_at"])
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(reverse("owner-overview"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["summary"]["today_bookings"], 2)
+        self.assertEqual(response.data["summary"]["today_revenue"], "3500.00")
+        self.assertEqual(response.data["summary"]["today_expected_revenue"], "3500.00")
+        self.assertEqual(response.data["summary"]["today_payment_holds"], 1)
+        self.assertEqual(len(response.data["today_schedule"]), 3)
+        self.assertNotIn(Booking.BookingStatus.CANCELLED, {item["booking_status"] for item in response.data["today_schedule"]})
+
+
+class OwnerCalendarApiTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            email="calendar-owner@example.com",
+            password="test-password",
+            full_name="Calendar Owner",
+            phone="9800000095",
+            role="COURT_OWNER",
+        )
+        self.player = user_model.objects.create_user(
+            email="calendar-player@example.com",
+            password="test-password",
+            full_name="Calendar Player",
+            phone="9800000096",
+            role="PLAYER",
+        )
+        self.venue = Venue.objects.create(
+            owner=self.owner,
+            name="Calendar Cricksal Arena",
+            city="Kathmandu",
+            area="Maitidevi",
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        self.court = Court.objects.create(
+            venue=self.venue,
+            name="Calendar Court",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+        )
+
+    def test_calendar_stats_use_exact_booking_lifecycle_counts(self):
+        calendar_date = timezone.localdate() + timedelta(days=1)
+        for index, booking_status in enumerate([
+            Booking.BookingStatus.CONFIRMED,
+            Booking.BookingStatus.COMPLETED,
+            Booking.BookingStatus.RESERVED,
+        ]):
+            slot_status = CourtSlot.Status.RESERVED if booking_status == Booking.BookingStatus.RESERVED else CourtSlot.Status.BOOKED
+            slot = CourtSlot.objects.create(
+                court=self.court,
+                date=calendar_date,
+                start_time=time(9 + index, 0),
+                end_time=time(10 + index, 0),
+                price=Decimal("1500.00"),
+                status=slot_status,
+                reserved_until=timezone.now() + timedelta(minutes=10) if slot_status == CourtSlot.Status.RESERVED else None,
+            )
+            Booking.objects.create(
+                player=self.player,
+                venue=self.venue,
+                court=self.court,
+                slot=slot,
+                amount=Decimal("1500.00"),
+                status=booking_status,
+                payment_status=Booking.PaymentStatus.PENDING if booking_status == Booking.BookingStatus.RESERVED else Booking.PaymentStatus.PAID,
+                reserved_until=timezone.now() + timedelta(minutes=10),
+            )
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(reverse("owner-calendar"), {"date": calendar_date.isoformat(), "view": "day"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["stats"]["bookings_count"], 3)
+        self.assertEqual(response.data["stats"]["confirmed_bookings"], 1)
+        self.assertEqual(response.data["stats"]["completed_bookings"], 1)
+        self.assertEqual(response.data["stats"]["reserved_holds"], 1)
+
+
+class OwnerCourtInventoryCalculationTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.owner = user_model.objects.create_user(
+            email="inventory-owner@example.com",
+            password="test-password",
+            full_name="Inventory Owner",
+            phone="9800000097",
+            role="COURT_OWNER",
+        )
+        self.venue = Venue.objects.create(
+            owner=self.owner,
+            name="Inventory Cricksal Arena",
+            city="Kathmandu",
+            area="Maitidevi",
+        )
+        self.court = Court.objects.create(
+            venue=self.venue,
+            name="Inventory Court",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+        )
+
+    def test_future_published_count_excludes_historical_and_blocked_slots(self):
+        today = timezone.localdate()
+        CourtSlot.objects.create(
+            court=self.court,
+            date=today - timedelta(days=1),
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            price=Decimal("500.00"),
+            status=CourtSlot.Status.AVAILABLE,
+        )
+        CourtSlot.objects.create(
+            court=self.court,
+            date=today + timedelta(days=1),
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            price=Decimal("1500.00"),
+            status=CourtSlot.Status.BLOCKED,
+        )
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.get(reverse("owner-courts"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["courts"][0]["future_published_slot_count"], 0)
+
+        CourtSlot.objects.create(
+            court=self.court,
+            date=today + timedelta(days=2),
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            price=Decimal("1500.00"),
+            status=CourtSlot.Status.AVAILABLE,
+        )
+        response = self.client.get(reverse("owner-courts"))
+        self.assertEqual(response.data["courts"][0]["future_published_slot_count"], 1)
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")

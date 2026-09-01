@@ -1491,12 +1491,21 @@ def submit_fixture_result(fixture_id, actor, result):
     normalized = str(result or "").strip()
     if len(normalized) < 2:
         raise ValidationError("Enter the match result before submitting it.")
+    from scoring.models import CricketMatch
+
+    try:
+        cricket_match = fixture.cricket_match
+    except CricketMatch.DoesNotExist:
+        cricket_match = None
+    if cricket_match and cricket_match.status == "COMPLETED":
+        if normalized != cricket_match.result:
+            raise ValidationError("The completed SportSpot Scorer result cannot be overwritten. Confirm the generated scorecard result instead.")
     if fixture.result == normalized and fixture.result_submitted_by_id == actor.id:
         fixture._idempotent_replay = True
         return fixture
     if fixture.result_confirmed_at:
         raise ValidationError("This match result has already been confirmed.")
-    if fixture.result and fixture.result_submitted_by_id != actor.id:
+    if fixture.result and fixture.result_submitted_by_id and fixture.result_submitted_by_id != actor.id:
         raise ValidationError(
             "The other team captain has submitted a result. Confirm it or ask them to update it."
         )

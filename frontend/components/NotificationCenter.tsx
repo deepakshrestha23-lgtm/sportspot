@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   type RefObject,
@@ -11,6 +10,7 @@ import {
 } from "react";
 
 import LoadingIndicator from "@/components/LoadingIndicator";
+import MediaImage from "@/components/MediaImage";
 import { api, refreshAccessTokenForRealtime } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getAccessToken } from "@/lib/auth";
@@ -651,18 +651,7 @@ function NotificationCard({
 }
 
 function ActorAvatar({ notification }: { notification: SportSpotNotification }) {
-  if (notification.actor_avatar) {
-    return (
-      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-white">
-        <Image alt="" fill sizes="44px" src={notification.actor_avatar} unoptimized />
-      </div>
-    );
-  }
-  return (
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sportNavy text-xs font-black text-white">
-      {notification.actor_name ? getInitials(notification.actor_name) : getCategoryInitials(notification.category)}
-    </div>
-  );
+  return <MediaImage alt={notification.actor_name ? `${notification.actor_name} avatar` : "Notification avatar"} className="h-11 w-11 shrink-0 rounded-full border border-slate-200 bg-white object-cover" fallback={<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sportNavy text-xs font-black text-white">{notification.actor_name ? getInitials(notification.actor_name) : getCategoryInitials(notification.category)}</div>} source={notification.actor_avatar} />;
 }
 
 function NotificationSkeletons() {

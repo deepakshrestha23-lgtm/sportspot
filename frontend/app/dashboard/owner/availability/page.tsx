@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
+import MediaImage from "@/components/MediaImage";
 import LoadingIndicator from "@/components/LoadingIndicator";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
@@ -43,7 +44,7 @@ export default function OwnerAvailabilityPage() {
   }, []);
 
   const activeCourts = courts.filter((court) => court.is_active);
-  const courtsNeedingSetup = activeCourts.filter((court) => !court.lowest_price);
+  const courtsNeedingSetup = activeCourts.filter((court) => court.future_published_slot_count === 0);
   const isPlayerVisible = Boolean(venue?.status === "APPROVED" && venue.is_active);
   const totalBookings = courts.reduce((total, court) => total + court.bookings_count, 0);
 
@@ -144,12 +145,12 @@ export default function OwnerAvailabilityPage() {
 }
 
 function AvailabilityCourtRow({ court }: { court: Court }) {
-  const isPublished = Boolean(court.lowest_price);
+  const isPublished = court.future_published_slot_count > 0;
   return (
     <article className="owner-availability-court-row">
       <div className="owner-availability-court-identity">
         <div className="owner-availability-court-mark">
-          {court.court_photo ? <img alt="" src={getMediaUrl(court.court_photo)} /> : <span>{formatChoice(court.court_type).slice(0, 1)}</span>}
+          <MediaImage alt={`${court.name} court`} className="h-full w-full rounded-md object-cover" fallback={<span>{formatChoice(court.court_type).slice(0, 1)}</span>} source={court.court_photo} />
         </div>
         <div className="min-w-0">
           <div className="owner-availability-court-title">
@@ -163,7 +164,7 @@ function AvailabilityCourtRow({ court }: { court: Court }) {
       <div className="owner-availability-court-details">
         <div>
           <span>Publishing</span>
-          <strong className={isPublished ? "is-ready" : "is-pending"}>{court.is_active ? (isPublished ? "Slots published" : "Needs slots") : "Not bookable"}</strong>
+          <strong className={isPublished ? "is-ready" : "is-pending"}>{court.is_active ? (isPublished ? `${court.future_published_slot_count} future slot${court.future_published_slot_count === 1 ? "" : "s"} published` : "Needs slots") : "Not bookable"}</strong>
         </div>
         <div>
           <span>Rate</span>
@@ -216,11 +217,4 @@ function formatTime(value: string) {
 
 function formatVenueStatus(status: Venue["status"]) {
   return status === "NEEDS_CHANGES" ? "Needs changes" : formatChoice(status);
-}
-
-function getMediaUrl(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${baseUrl}${path}`;
 }

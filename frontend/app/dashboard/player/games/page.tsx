@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
 import LoadingIndicator from "@/components/LoadingIndicator";
+import MediaImage from "@/components/MediaImage";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateTimeInNepal } from "@/lib/dates";
@@ -171,7 +171,7 @@ function TeamMatchCard({ match }: { match: MyTeamMatch }) {
 }
 
 function TeamMark({ name, photo }: { name: string; photo: string }) {
-  return <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white text-xs font-black text-sportGreen">{photo ? <Image alt={`${name} team logo`} className="object-cover" fill sizes="44px" src={getMediaSrc(photo)} unoptimized /> : initials(name)}</div>;
+  return <MediaImage alt={`${name} team logo`} className="h-11 w-11 shrink-0 rounded-full border border-slate-200 bg-white object-cover" fallback={<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-black text-sportGreen">{initials(name)}</div>} source={photo} />;
 }
 
 function RequestCard({ hostMode, onRefresh, request }: { request: JoinRequest; hostMode: boolean; onRefresh: () => void }) {
@@ -229,4 +229,3 @@ function formatDate(value: string | null) { if (!value) return "Date to be confi
 function formatTimeRange(start: string | null, end: string | null) { if (!start) return "Time to be confirmed"; const startLabel = formatDateTimeInNepal(start, { timeStyle: "short" }); const endLabel = end ? formatDateTimeInNepal(end, { timeStyle: "short" }) : ""; return endLabel ? `${startLabel} - ${endLabel}` : startLabel; }
 function formatStatus(value: string) { return value.replace(/_/g, " ").toLowerCase(); }
 function initials(value: string) { return value.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "TM"; }
-function getMediaSrc(value: string) { if (!value) return ""; if (value.startsWith("blob:") || value.startsWith("http")) return value; const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"; return `${apiBaseUrl}${value}`; }

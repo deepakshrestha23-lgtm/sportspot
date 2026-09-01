@@ -74,8 +74,8 @@ def readable_error(error):
     return " ".join(str(message) for message in messages)
 
 
-def challenge_queryset():
-    return (
+def challenge_queryset(*, include_instant_scorer=False):
+    queryset = (
         TeamChallenge.objects.select_related(
             "challenger_team",
             "challenger_team__captain",
@@ -103,6 +103,9 @@ def challenge_queryset():
             )
         )
     )
+    if include_instant_scorer:
+        return queryset
+    return queryset.exclude(source=TeamChallenge.Source.INSTANT_SCORER)
 
 
 def user_team_ids(user):
@@ -600,7 +603,7 @@ class ChallengeFixtureRoomView(APIView):
             return Response({"detail": "This team match does not have a coordination room yet."}, status=status.HTTP_404_NOT_FOUND)
         except DjangoValidationError as error:
             return Response({"detail": readable_error(error)}, status=status.HTTP_403_FORBIDDEN)
-        challenge = challenge_queryset().get(pk=fixture.challenge_id)
+        challenge = challenge_queryset(include_instant_scorer=True).get(pk=fixture.challenge_id)
         return Response({
             "challenge": TeamChallengeSerializer(challenge, context={"request": request}).data,
             "fixture": TeamFixtureSerializer(fixture, context={"request": request}).data,

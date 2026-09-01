@@ -1,14 +1,15 @@
 
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
+import MediaImage from "@/components/MediaImage";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getCurrentUser } from "@/lib/auth";
+import { getMediaSrc } from "@/lib/media";
 import { emitToast } from "@/lib/toast";
 import type { User } from "@/types/auth";
 import type { AvailabilityDay, AvailabilityTimePeriod, CricksalRole, PlayerProfile, PlayerProfilePayload, PlayerProfileResponse, SkillLevel } from "@/types/playerProfile";
@@ -147,7 +148,7 @@ export default function PlayerProfilePage() {
 
   const displayName = profile?.full_name || user?.full_name || "Player";
   const completion = profile?.profile_completion_percentage ?? 0;
-  const photoSrc = useMemo(() => getProfilePhotoSrc(removePhoto ? "" : photoPreview || profile?.profile_photo || ""), [photoPreview, profile?.profile_photo, removePhoto]);
+  const photoSrc = useMemo(() => getMediaSrc(removePhoto ? "" : photoPreview || profile?.profile_photo || ""), [photoPreview, profile?.profile_photo, removePhoto]);
   const rating = formatRating(profile?.average_rating);
   const role = roles.find((item) => item.value === form.preferred_cricksal_role) || roles[4];
   const skill = skills.find((item) => item.value === form.skill_level) || skills[0];
@@ -191,7 +192,7 @@ export default function PlayerProfilePage() {
               <div className="relative">
                 <div className="absolute -inset-2 rounded-full" style={{ background: `conic-gradient(#16A34A ${completion}%, #E2E8F0 0)` }} />
                 <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-sportNavy text-2xl font-black text-white shadow-sm">
-                  {photoSrc ? <Image alt={`${displayName} profile photo`} className="object-cover" fill sizes="112px" src={photoSrc} unoptimized /> : initials(displayName)}
+                  <MediaImage alt={`${displayName} profile photo`} className="absolute inset-0 h-full w-full object-cover" fallback={<span>{initials(displayName)}</span>} source={photoSrc} />
                 </div>
                 <button aria-label="Change profile photo" className="absolute bottom-0 right-0 flex h-9 w-9 items-center justify-center rounded-full border-4 border-white bg-sportGreen text-sm font-black text-white shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-200" onClick={openEditor} type="button">+</button>
               </div>
@@ -200,8 +201,12 @@ export default function PlayerProfilePage() {
               <div className="mt-4 flex flex-wrap justify-center gap-2"><Pill label="Cricksal" tone="green" /><Pill label={profile?.is_profile_complete ? "Profile complete" : `${completion}% complete`} tone="slate" /></div>
             </div>
             <div className="my-5 border-t border-slate-200" />
-            <div className="grid grid-cols-2 gap-3"><Metric label="Reliability" value={profile && profile.completed_matches_count >= 5 ? `${profile.reliability_score}%` : "Provisional Reliability"} /><Metric label="Avg rating" value={formatRatingMetric(rating)} /><Metric label="Matches" value={profile?.completed_matches_count ?? 0} /><Metric label="No-shows" value={profile?.no_show_count ?? 0} /></div>
+            <div className="grid grid-cols-2 gap-3"><Metric label="Reliability" value={profile && profile.completed_matches_count >= 5 ? `${profile.reliability_score}%` : "Provisional Reliability"} /><Metric label="Avg rating" value={formatRatingMetric(rating)} /><Metric label="Cricket matches" value={profile?.cricket_summary.matches ?? 0} /><Metric label="No-shows" value={profile?.no_show_count ?? 0} /></div>
             {profile && profile.completed_matches_count < 5 ? <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-600">Reliability becomes meaningful after five finalized outcomes.</p> : null}
+          </section>
+          <section className="sport-card">
+            <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Cricket record</p><h3 className="mt-1 text-lg font-black text-sportNavy">Finalized scorecards</h3></div><Link className="text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/player/performance">View performance</Link></div>
+            <div className="mt-4 grid grid-cols-2 gap-3"><Metric label="Runs" value={profile?.cricket_summary.total_runs ?? 0} /><Metric label="Best score" value={profile?.cricket_summary.best_score ?? 0} /><Metric label="Wickets" value={profile?.cricket_summary.wickets ?? 0} /><Metric label="Matches" value={profile?.cricket_summary.matches ?? 0} /></div>
           </section>
           <section className="sport-card">
             <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Trust summary</p><h3 className="mt-1 text-lg font-black text-sportNavy">Match behaviour</h3></div><span className="rounded-full bg-green-50 px-3 py-1 text-xs font-black text-sportGreen">Read only</span></div>
@@ -241,7 +246,7 @@ export default function PlayerProfilePage() {
           <form className="absolute right-0 top-0 flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl sm:rounded-l-3xl" onSubmit={handleSubmit}>
             <div className="border-b border-slate-200 p-5 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-sportGreen">Edit public profile</p><h2 className="mt-1 text-2xl font-black text-sportNavy">Sports identity</h2><p className="mt-2 text-sm leading-6 text-slate-600">Update the details other players use when they view your Cricksal profile.</p></div><button aria-label="Close editor" className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-xl leading-none text-slate-600 hover:bg-slate-50" disabled={isSaving} onClick={closeEditor} type="button">x</button></div></div>
             <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6"><div className="space-y-7">
-              <section><h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500">Profile photo</h3><div className="mt-3 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center"><div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sportNavy text-xl font-black text-white">{photoSrc && !removePhoto ? <Image alt="Profile photo preview" className="object-cover" fill sizes="80px" src={photoSrc} unoptimized /> : "SP"}</div><div className="min-w-0 flex-1"><label className="inline-flex min-h-10 cursor-pointer items-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700">{photoPreview ? "Replace Photo" : "Upload Photo"}<input accept=".jpg,.jpeg,.png,image/jpeg,image/png" className="sr-only" onChange={(event) => handlePhotoChange(event.target.files?.[0] || null)} type="file" /></label><button className="ml-2 inline-flex min-h-10 items-center rounded-xl border border-slate-300 px-4 text-sm font-black text-slate-700 hover:bg-white" onClick={handleRemovePhoto} type="button">Remove</button><p className="mt-2 text-xs font-semibold text-slate-500">JPG, JPEG, or PNG. Maximum size 2MB.</p>{errors.profile_photo ? <FieldError message={errors.profile_photo} /> : null}</div></div></section>
+              <section><h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500">Profile photo</h3><div className="mt-3 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center"><div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sportNavy text-xl font-black text-white"><MediaImage alt="Profile photo preview" className="absolute inset-0 h-full w-full object-cover" fallback={<span>SP</span>} source={removePhoto ? "" : photoSrc} /></div><div className="min-w-0 flex-1"><label className="inline-flex min-h-10 cursor-pointer items-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700">{photoPreview ? "Replace Photo" : "Upload Photo"}<input accept=".jpg,.jpeg,.png,image/jpeg,image/png" className="sr-only" onChange={(event) => handlePhotoChange(event.target.files?.[0] || null)} type="file" /></label><button className="ml-2 inline-flex min-h-10 items-center rounded-xl border border-slate-300 px-4 text-sm font-black text-slate-700 hover:bg-white" onClick={handleRemovePhoto} type="button">Remove</button><p className="mt-2 text-xs font-semibold text-slate-500">JPG, JPEG, or PNG. Maximum size 2MB.</p>{errors.profile_photo ? <FieldError message={errors.profile_photo} /> : null}</div></div></section>
               <section><h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500">Player information</h3><div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <Field label="Sport"><div className="mt-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-black text-sportNavy">Cricksal</div></Field>
                 <Field error={errors.location} label="Location" required><select className={inputClassName} onChange={(event) => updateForm({ location: event.target.value })} ref={firstFieldRef} value={form.location}><option value="">Select district</option>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</select></Field>
@@ -289,6 +294,5 @@ function formatPeriod(value: AvailabilityTimePeriod) { return periods.find((item
 function formatRating(value?: string | null) { if (!value) return "Not rated yet"; const numberValue = Number(value); return Number.isFinite(numberValue) && numberValue > 0 ? numberValue.toFixed(1) : "Not rated yet"; }
 
 function formatRatingMetric(value: string) { return value === "Not rated yet" ? value : `${value}/5`; }
-function getProfilePhotoSrc(value: string) { if (!value) return ""; if (value.startsWith("blob:") || value.startsWith("http")) return value; const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"; return `${apiBaseUrl}${value}`; }
 
 const inputClassName = "sport-input mt-2";

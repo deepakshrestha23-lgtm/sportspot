@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, type ReactNode, useEffect, useMemo, useState } 
 
 import ConfirmActionModal from "@/components/ConfirmActionModal";
 import FeedbackToast from "@/components/FeedbackToast";
+import MediaImage from "@/components/MediaImage";
 import TimeSelect from "@/components/TimeSelect";
 import VenueLocationPicker, { type VenueLocationChange } from "@/components/owner/VenueLocationPicker";
 import { api } from "@/lib/api";
@@ -1403,7 +1404,7 @@ function VenuePhotoManager({
 function PhotoTile({ imageUrl, label, isPrimary = false, onDelete, onReplace }: { imageUrl: string; label: string; isPrimary?: boolean; onDelete?: () => void; onReplace?: (event: ChangeEvent<HTMLInputElement>) => void }) {
   return (
     <article className="owner-photo-tile">
-      <img alt={label} className="owner-photo-image" src={getMediaUrl(imageUrl)} />
+      <MediaImage alt={label} className="owner-photo-image object-cover" fallback={<div className="owner-photo-image flex items-center justify-center bg-slate-100 text-xs font-black text-slate-500">Photo unavailable</div>} source={imageUrl} />
       <div className="owner-photo-tile-footer">
         <div className="min-w-0">
           <p className="truncate text-sm font-black text-sportNavy">{label}</p>
@@ -1441,12 +1442,6 @@ function CameraIcon() {
   );
 }
 
-function getMediaUrl(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${baseUrl}${path}`;
-}
 
 function getSelectedBasePrice(slotForm: { slot_duration_minutes: string; price_30: string; price_60: string; price_90: string }) {
   if (slotForm.slot_duration_minutes === "30") return slotForm.price_30;

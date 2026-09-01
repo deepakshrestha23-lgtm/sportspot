@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import FeedbackToast from "@/components/FeedbackToast";
+import MediaImage from "@/components/MediaImage";
 import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
@@ -94,7 +95,7 @@ export default function EditOwnerCourtPage() {
         <section className="owner-venue-section">
           <div className="owner-venue-section-header"><div><p className="owner-section-kicker">Presentation</p><h2>Court photo</h2><p>Use a clear image of the actual play area. JPG, JPEG or PNG, up to 3 MB.</p></div></div>
           <div className="owner-court-edit-photo">
-            {court.court_photo && !removePhoto ? <img alt={`${court.name} court`} src={getMediaUrl(court.court_photo)} /> : <div className="owner-court-edit-photo-empty"><span>{removePhoto ? "Photo will be removed" : "No court photo"}</span></div>}
+            {court.court_photo && !removePhoto ? <MediaImage alt={`${court.name} court`} className="h-full w-full object-cover" fallback={<div className="owner-court-edit-photo-empty"><span>Photo unavailable</span></div>} source={court.court_photo} /> : <div className="owner-court-edit-photo-empty"><span>{removePhoto ? "Photo will be removed" : "No court photo"}</span></div>}
             <div className="owner-court-edit-photo-actions">
               <label className="owner-secondary-button">{court.court_photo && !removePhoto ? "Replace photo" : "Add photo"}<input accept=".jpg,.jpeg,.png" className="sr-only" onChange={selectPhoto} type="file" /></label>
               {court.court_photo && !removePhoto ? <button className="owner-court-danger" onClick={() => { setRemovePhoto(true); setPhoto(null); }} type="button">Remove photo</button> : removePhoto ? <button className="owner-court-preview" onClick={() => setRemovePhoto(false)} type="button">Keep current photo</button> : null}
@@ -117,11 +118,4 @@ function Select({ label, value, onChange, options }: { label: string; value: str
 
 function formatChoice(value: string) {
   return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
-}
-
-function getMediaUrl(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${baseUrl}${path}`;
 }

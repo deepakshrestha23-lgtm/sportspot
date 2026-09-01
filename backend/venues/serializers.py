@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import (
@@ -46,6 +47,7 @@ class CourtSerializer(serializers.ModelSerializer):
     venue_city = serializers.CharField(source="venue.city", read_only=True)
     venue_facilities = serializers.JSONField(source="venue.facilities", read_only=True)
     lowest_price = serializers.SerializerMethodField()
+    future_published_slot_count = serializers.SerializerMethodField()
     bookings_count = serializers.SerializerMethodField()
     can_delete = serializers.SerializerMethodField()
     delete_block_reason = serializers.SerializerMethodField()
@@ -66,6 +68,7 @@ class CourtSerializer(serializers.ModelSerializer):
             "court_photo",
             "is_active",
             "lowest_price",
+            "future_published_slot_count",
             "bookings_count",
             "can_delete",
             "delete_block_reason",
@@ -80,6 +83,7 @@ class CourtSerializer(serializers.ModelSerializer):
             "venue_city",
             "venue_facilities",
             "lowest_price",
+            "future_published_slot_count",
             "bookings_count",
             "can_delete",
             "delete_block_reason",
@@ -90,6 +94,12 @@ class CourtSerializer(serializers.ModelSerializer):
     def get_lowest_price(self, court):
         slot = court.slots.order_by("price").first()
         return str(slot.price) if slot else None
+
+    def get_future_published_slot_count(self, court):
+        now = timezone.localtime()
+        return court.slots.filter(
+            status__in=[CourtSlot.Status.AVAILABLE, CourtSlot.Status.RESERVED, CourtSlot.Status.BOOKED]
+        ).filter(Q(date__gt=now.date()) | Q(date=now.date(), start_time__gt=now.time())).count()
 
     def get_bookings_count(self, court):
         return court.bookings.count()

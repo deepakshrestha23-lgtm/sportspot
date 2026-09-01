@@ -92,6 +92,9 @@ export function DashboardIcon({ name }: { name: PlayerDashboardNavItem["icon"] }
   if (name === "bookings") {
     return <svg {...common}><path d="M7 3v3m10-3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm3 8h3m-3 4h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
   }
+  if (name === "performance") {
+    return <svg {...common}><path d="M5 20V10m7 10V4m7 16v-7M3 20h18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
+  }
   if (name === "ratings") {
     return <svg {...common}><path d="m12 3 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7L6.8 19l1-5.8L3.6 9.1l5.8-.8L12 3Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
   }

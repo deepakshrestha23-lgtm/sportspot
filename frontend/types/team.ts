@@ -4,6 +4,35 @@ export type TeamMemberType = "REGISTERED" | "GUEST";
 export type TeamMemberRole = "CAPTAIN" | "PLAYER" | "GUEST";
 export type TeamMemberStatus = "ACTIVE" | "INVITED" | "REJECTED" | "LEFT" | "REMOVED";
 
+export type TeamCricketScore = {
+  runs: number;
+  wickets: number;
+  overs: string;
+};
+
+export type TeamCricketResult = {
+  fixture_id: number;
+  challenge_id: number;
+  opponent: { id: number; name: string; team_photo: string };
+  outcome: "WIN" | "LOSS" | "TIE" | "NO_RESULT";
+  result: string;
+  completed_at: string;
+  team_score: TeamCricketScore | null;
+  opponent_score: TeamCricketScore | null;
+};
+
+export type TeamCricketRecord = {
+  matches_played: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  no_results: number;
+  win_rate: number | null;
+  runs_for: number;
+  runs_against: number;
+  recent_results: TeamCricketResult[];
+};
+
 export interface TeamMember {
   id: number;
   user: number | null;
@@ -39,6 +68,7 @@ export interface Team {
   preferred_playing_area: string;
   preferred_playing_time: string;
   skill_level: TeamSkillLevel;
+  accepts_team_challenges: boolean;
   captain: number;
   captain_name: string;
   members_count: number;
@@ -47,6 +77,7 @@ export interface Team {
   team_reliability_label: string;
   average_rating: string;
   matches_played_count: number;
+  cricket_record?: TeamCricketRecord;
   members?: TeamMember[];
   created_at: string;
   updated_at: string;
@@ -67,6 +98,7 @@ export interface TeamPayload {
   preferred_playing_area: string;
   preferred_playing_time: string;
   skill_level: TeamSkillLevel;
+  accepts_team_challenges: boolean;
 }
 
 export interface GuestMemberPayload {

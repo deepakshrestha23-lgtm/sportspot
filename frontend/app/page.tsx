@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import MediaImage from "@/components/MediaImage";
 import type { PublicVenue } from "@/types/venue";
 
 const journeySteps = [
@@ -350,13 +351,12 @@ function VenueCard({ venue }: { venue: PublicVenue }) {
   return (
     <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
       <div className="relative h-52 bg-slate-200">
-        {cover ? (
-          <img alt={venue.name} className="h-full w-full object-cover" src={cover} />
-        ) : (
-          <div className="grid h-full place-items-center bg-sportNavy text-4xl font-black text-white">
-            {getInitials(venue.name)}
-          </div>
-        )}
+        <MediaImage
+          alt={venue.name}
+          className="h-full w-full object-cover"
+          fallback={<div className="grid h-full place-items-center bg-sportNavy text-4xl font-black text-white">{getInitials(venue.name)}</div>}
+          source={cover}
+        />
         <span className="absolute left-4 top-4 rounded-full bg-white px-3 py-1 text-xs font-black text-sportGreen">Verified</span>
       </div>
       <div className="p-5">
@@ -418,14 +418,7 @@ function SectionHeader({ align = "center", description, eyebrow, title }: { alig
 
 function getVenueCover(venue: PublicVenue) {
   const image = venue.front_photo || venue.court_area_photo || venue.photos?.[0]?.image || venue.courts?.find((court) => court.court_photo)?.court_photo || "";
-  return getMediaUrl(image);
-}
-
-function getMediaUrl(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${baseUrl}${path}`;
+  return image;
 }
 
 function formatPrice(value?: string | null) {

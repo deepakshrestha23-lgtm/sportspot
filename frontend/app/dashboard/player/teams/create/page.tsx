@@ -35,6 +35,7 @@ const emptyForm: TeamPayload = {
   preferred_playing_area: "",
   preferred_playing_time: "",
   skill_level: "BEGINNER",
+  accepts_team_challenges: true,
 };
 
 type FormErrors = Partial<Record<keyof TeamPayload | "team_photo", string>>;

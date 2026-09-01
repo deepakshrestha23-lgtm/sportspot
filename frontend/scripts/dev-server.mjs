@@ -30,7 +30,9 @@ function isSportSpotNextProcess(commandLine) {
   const command = normalise(commandLine);
   return isSportSpotProcess(commandLine)
     && command.includes("next")
-    && /(?:^|\s)(?:dev|start)(?:\s|$)/.test(command);
+    // Next's child server can be launched directly as start-server.js, so the
+    // original `dev`/`start` arguments are not always present in the command line.
+    && (/(?:^|\s)(?:dev|start)(?:\s|$)/.test(command) || command.includes("start-server.js"));
 }
 
 function readWindowsProcessTable() {

@@ -267,6 +267,7 @@ function getNavLinks(user: User | null, ownerVenueStatus: VenueStatus | "NONE") 
       { label: "Courts", href: "/courts" },
       { label: "Find Games", href: "/find-game" },
       { label: "Challenge Teams", href: "/challenge-teams" },
+      { label: "Cricket Scorer", href: "/scorer" },
       { label: "Wishlist", href: "/dashboard/player/wishlist" },
     ];
   }

@@ -126,11 +126,12 @@ function CalendarStats({ calendar }: { calendar: OwnerCalendarResponse }) {
   const items = [
     { label: "Bookings", value: calendar.stats.bookings_count },
     { label: "Confirmed", value: calendar.stats.confirmed_bookings },
+    { label: "Completed", value: calendar.stats.completed_bookings },
     { label: "Payment holds", value: calendar.stats.reserved_holds },
     { label: "Blocked slots", value: calendar.stats.blocked_slots },
   ];
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
       {items.map((item) => (
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2" key={item.label}>
           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{item.label}</p>

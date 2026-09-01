@@ -15,6 +15,7 @@ import type { Booking } from "@/types/venue";
 export default function OwnerBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [filter, setFilter] = useState("ALL");
+  const [operatingDate, setOperatingDate] = useState(getLocalDateString());
   const [isLoading, setIsLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
@@ -28,13 +29,21 @@ export default function OwnerBookingsPage() {
     loadBookings();
   }, []);
 
+  useEffect(() => {
+    const requestedFilter = new URLSearchParams(window.location.search).get("filter")?.toUpperCase();
+    if (["ALL", "TODAY", "RESERVED", "CONFIRMED", "COMPLETED", "CANCELLED"].includes(requestedFilter || "")) {
+      setFilter(requestedFilter as string);
+    }
+  }, []);
+
   async function loadBookings() {
     setIsLoading(true);
     setError("");
     setNotice("");
     try {
-      const response = await api.get<{ bookings: Booking[] }>("/api/venues/owner/bookings/");
+      const response = await api.get<{ bookings: Booking[]; local_date?: string }>("/api/venues/owner/bookings/");
       setBookings(response.data.bookings);
+      if (response.data.local_date) setOperatingDate(response.data.local_date);
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, "Could not load owner bookings."));
     } finally {
@@ -77,7 +86,7 @@ export default function OwnerBookingsPage() {
 
   const visibleBookings = bookings.filter((booking) => {
     if (filter === "ALL") return true;
-    if (filter === "TODAY") return booking.slot_date === getLocalDateString();
+    if (filter === "TODAY") return booking.slot_date === operatingDate && ["CONFIRMED", "COMPLETED"].includes(booking.status);
     if (filter === "CANCELLED") return ["CANCELLED", "EXPIRED"].includes(booking.status);
     return booking.status === filter;
   });
@@ -111,7 +120,7 @@ export default function OwnerBookingsPage() {
         </div>
         <div className="owner-booking-filters" role="tablist" aria-label="Filter booking records">
           {["ALL", "TODAY", "RESERVED", "CONFIRMED", "COMPLETED", "CANCELLED"].map((item) => {
-            const count = countBookings(bookings, item);
+            const count = countBookings(bookings, item, operatingDate);
             return (
               <button aria-selected={filter === item} className="owner-booking-filter" key={item} onClick={() => setFilter(item)} role="tab" type="button">
                 <span>{formatFilterLabel(item)}</span>
@@ -197,10 +206,10 @@ function Badge({ label }: { label: string }) {
   return <span className={`owner-booking-status owner-booking-status-${getStatusTone(label)}`}>{formatStatus(label)}</span>;
 }
 
-function countBookings(bookings: Booking[], filter: string) {
+function countBookings(bookings: Booking[], filter: string, operatingDate: string) {
   return bookings.filter((booking) => {
     if (filter === "ALL") return true;
-    if (filter === "TODAY") return booking.slot_date === getLocalDateString();
+    if (filter === "TODAY") return booking.slot_date === operatingDate && ["CONFIRMED", "COMPLETED"].includes(booking.status);
     if (filter === "CANCELLED") return ["CANCELLED", "EXPIRED"].includes(booking.status);
     return booking.status === filter;
   }).length;

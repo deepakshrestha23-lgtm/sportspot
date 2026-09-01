@@ -237,12 +237,13 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
     booking_summary = serializers.SerializerMethodField()
     participants = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
+    scorecard = serializers.SerializerMethodField()
 
     class Meta:
         model = TeamFixture
         fields = (
             "id", "status", "status_label", "room_state", "room_access", "booking_summary", "result",
-            "result_submitted_at", "result_confirmed_at", "participants",
+            "result_submitted_at", "result_confirmed_at", "participants", "scorecard",
             "permissions", "created_at", "updated_at",
         )
 
@@ -299,6 +300,51 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
             context=self.context,
         ).data
 
+    def get_scorecard(self, fixture):
+        if self.get_room_access(fixture) == "NONE":
+            return None
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        from scoring.models import CricketMatch
+
+        try:
+            match = fixture.cricket_match
+        except CricketMatch.DoesNotExist:
+            match = None
+        if not match:
+            booking_ready = bool(
+                fixture.booking_id
+                and fixture.challenge.status == TeamChallenge.Status.CONFIRMED
+                and fixture.booking.status in {Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED}
+                and fixture.booking.payment_status == Booking.PaymentStatus.PAID
+            )
+            scoring_ready = fixture.challenge.is_instant_scorer_match or booking_ready
+            return {
+                "available": False,
+                "can_set_up": bool(
+                    user
+                    and user.is_authenticated
+                    and scoring_ready
+                    and fixture.status in {TeamFixture.Status.SCHEDULED, TeamFixture.Status.IN_PROGRESS}
+                    and any(
+                        team and is_active_registered_captain(team, user)
+                        for team in [fixture.challenge.challenger_team, fixture.challenge.challenged_team]
+                    )
+                ),
+            }
+        from scoring.services import get_scoring_permissions
+
+        permissions = get_scoring_permissions(match, user)
+        return {
+            "available": True,
+            "id": match.id,
+            "status": match.status,
+            "result": match.result,
+            "can_view": permissions["can_view"],
+            "can_score": permissions["can_score"],
+            "can_set_up": False,
+        }
+
     def get_permissions(self, fixture):
         request = self.context.get("request")
         user = getattr(request, "user", None)
@@ -310,6 +356,7 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
                 "can_record_attendance": False,
                 "can_submit_result": False,
                 "can_confirm_result": False,
+                "scorecard_result_pending_acknowledgement": False,
             }
         challenge = fixture.challenge
         managed_team = next(
@@ -328,6 +375,7 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
                 "can_record_attendance": False,
                 "can_submit_result": False,
                 "can_confirm_result": False,
+                "scorecard_result_pending_acknowledgement": False,
             }
         start_at = None
         if fixture.booking_id:
@@ -344,6 +392,13 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
             start_at is None or start_at > timezone.now()
         )
         is_completed = fixture.status == TeamFixture.Status.COMPLETED
+        from scoring.models import CricketMatch
+
+        try:
+            cricket_match = fixture.cricket_match
+        except CricketMatch.DoesNotExist:
+            cricket_match = None
+        has_completed_scorecard = bool(cricket_match and cricket_match.status == "COMPLETED")
         return {
             "is_captain": True,
             "team_id": managed_team.id,
@@ -355,6 +410,7 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
                 and (
                     not fixture.result
                     or fixture.result_submitted_by_id == user.id
+                    or (has_completed_scorecard and not fixture.result_submitted_by_id)
                 )
             ),
             "can_confirm_result": bool(
@@ -362,6 +418,12 @@ class TeamFixtureSerializer(serializers.ModelSerializer):
                 and fixture.result
                 and fixture.result_submitted_by_id
                 and fixture.result_submitted_by_id != user.id
+                and not fixture.result_confirmed_at
+            ),
+            "scorecard_result_pending_acknowledgement": bool(
+                has_completed_scorecard
+                and fixture.result
+                and not fixture.result_submitted_by_id
                 and not fixture.result_confirmed_at
             ),
         }
@@ -623,6 +685,7 @@ class TeamChallengeSerializer(serializers.ModelSerializer):
         model = TeamChallenge
         fields = (
             "id",
+            "source",
             "challenge_type",
             "court_mode",
             "status",

@@ -1,14 +1,15 @@
 import axios from "axios";
 
 import { clearAuthSession, getAccessToken, getRefreshToken, saveAccessToken } from "@/lib/auth";
+import { getApiBaseUrl } from "@/lib/media";
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
+  baseURL: getApiBaseUrl(),
   timeout: 15000,
 });
 
 const refreshClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
+  baseURL: getApiBaseUrl(),
   timeout: 15000,
 });
 

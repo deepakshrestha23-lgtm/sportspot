@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 
 import FeedbackToast from "@/components/FeedbackToast";
+import MediaImage from "@/components/MediaImage";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateTimeInNepal, formatTimeValue } from "@/lib/dates";
+import { getMediaSrc } from "@/lib/media";
 import type { Venue } from "@/types/venue";
 
 export default function AdminVenueApprovalsPage() {
@@ -204,15 +206,15 @@ function ReviewEvidence({ venue }: { venue: Venue }) {
             </p>
           </div>
           {venue.verification_document ? (
-            <a className="rounded-md bg-sportGreen px-4 py-2 text-sm font-black text-white hover:bg-green-700" href={getMediaUrl(venue.verification_document)} rel="noreferrer" target="_blank">
+            <a className="rounded-md bg-sportGreen px-4 py-2 text-sm font-black text-white hover:bg-green-700" href={getMediaSrc(venue.verification_document)} rel="noreferrer" target="_blank">
               Open Document
             </a>
           ) : null}
         </div>
         {venue.verification_document ? (
           isImageFile(venue.verification_document) ? (
-            <a href={getMediaUrl(venue.verification_document)} rel="noreferrer" target="_blank">
-              <img alt="Verification document" className="mt-4 max-h-80 w-full rounded-md border border-slate-200 object-contain" src={getMediaUrl(venue.verification_document)} />
+            <a href={getMediaSrc(venue.verification_document)} rel="noreferrer" target="_blank">
+              <MediaImage alt="Verification document" className="mt-4 max-h-80 w-full rounded-md border border-slate-200 object-contain" fallback={<div className="mt-4 flex h-32 items-center justify-center rounded-md border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-800">Document preview unavailable</div>} source={venue.verification_document} />
             </a>
           ) : (
             <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
@@ -233,8 +235,8 @@ function ReviewEvidence({ venue }: { venue: Venue }) {
             {venue.courts.map((court) => (
               <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-50" key={court.id}>
                 {court.court_photo ? (
-                  <a href={getMediaUrl(court.court_photo)} rel="noreferrer" target="_blank">
-                    <img alt={court.name} className="aspect-[4/3] w-full object-cover" src={getMediaUrl(court.court_photo)} />
+                  <a href={getMediaSrc(court.court_photo)} rel="noreferrer" target="_blank">
+                    <MediaImage alt={court.name} className="aspect-[4/3] w-full object-cover" fallback={<div className="flex aspect-[4/3] items-center justify-center bg-slate-100 text-sm font-semibold text-slate-500">Photo unavailable</div>} source={court.court_photo} />
                   </a>
                 ) : (
                   <div className="flex aspect-[4/3] items-center justify-center bg-slate-100 text-sm font-semibold text-slate-500">
@@ -245,7 +247,7 @@ function ReviewEvidence({ venue }: { venue: Venue }) {
                   <h5 className="font-black text-sportNavy">{court.name}</h5>
                   <p className="mt-1 text-sm text-slate-600">{formatChoice(court.court_type)} · {formatChoice(court.surface_type)}</p>
                   {court.court_photo ? (
-                    <a className="mt-3 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href={getMediaUrl(court.court_photo)} rel="noreferrer" target="_blank">
+                    <a className="mt-3 inline-flex text-sm font-black text-sportGreen hover:text-green-700" href={getMediaSrc(court.court_photo)} rel="noreferrer" target="_blank">
                       Open Full Photo
                     </a>
                   ) : null}
@@ -289,12 +291,12 @@ function VenuePhotoStrip({ venue }: { venue: Venue }) {
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         {photos.map((photo) => (
           <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-50" key={photo.id}>
-            <a href={getMediaUrl(photo.image)} rel="noreferrer" target="_blank">
-              <img alt={photo.label} className="aspect-[4/3] w-full object-cover" src={getMediaUrl(photo.image)} />
+            <a href={getMediaSrc(photo.image)} rel="noreferrer" target="_blank">
+              <MediaImage alt={photo.label} className="aspect-[4/3] w-full object-cover" fallback={<div className="flex aspect-[4/3] items-center justify-center bg-slate-100 text-sm font-semibold text-slate-500">Photo unavailable</div>} source={photo.image} />
             </a>
             <div className="flex items-center justify-between gap-2 p-2">
               <p className="text-xs font-black text-slate-600">{photo.label}</p>
-              <a className="text-xs font-black text-sportGreen hover:text-green-700" href={getMediaUrl(photo.image)} rel="noreferrer" target="_blank">
+              <a className="text-xs font-black text-sportGreen hover:text-green-700" href={getMediaSrc(photo.image)} rel="noreferrer" target="_blank">
                 Open
               </a>
             </div>
@@ -307,13 +309,6 @@ function VenuePhotoStrip({ venue }: { venue: Venue }) {
 
 function isImageFile(path: string) {
   return /\.(jpg|jpeg|png)$/i.test(path.split("?")[0]);
-}
-
-function getMediaUrl(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${baseUrl}${path}`;
 }
 
 const toTime = formatTimeValue;

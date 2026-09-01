@@ -9,9 +9,11 @@ import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getCurrentUser } from "@/lib/auth";
 import { addCalendarDays, formatDateOnly, formatDateTimeInNepal, formatTimeValue, getLocalDateString } from "@/lib/dates";
 import { buildVenueDirectionsHref } from "@/lib/maps";
+import { getMediaSrc } from "@/lib/media";
 import { emitToast } from "@/lib/toast";
 import BackButton from "@/components/BackButton";
 import LoadingIndicator from "@/components/LoadingIndicator";
+import MediaImage from "@/components/MediaImage";
 import VenueMap from "@/components/venue/VenueMap";
 import type { Booking, CourtReviewComment, CourtReviewsResponse, CourtSlot, PublicVenue } from "@/types/venue";
 
@@ -410,7 +412,7 @@ function PhotoGallery({ venue }: { venue: PublicVenue }) {
       <section className="sport-surface mt-4 overflow-hidden p-1.5 sm:p-2" aria-label={`${venue.name} photos`}>
         <div className={`grid gap-2 ${supportingImages.length ? "md:grid-cols-[1.55fr_1fr]" : ""}`}>
           <div className="relative min-w-0">
-            <img alt={`${venue.name} venue`} className="h-56 w-full rounded-lg object-cover sm:h-72 md:h-[360px]" src={images[0]} />
+            <MediaImage alt={`${venue.name} venue`} className="h-56 w-full rounded-lg bg-sportNavy object-cover sm:h-72 md:h-[360px]" fallback={<div className="flex h-56 w-full items-center justify-center rounded-lg bg-sportNavy text-3xl font-black text-white sm:h-72 md:h-[360px]">{getInitials(venue.name)}</div>} source={images[0]} />
             <button className="absolute bottom-3 right-3 inline-flex min-h-10 items-center gap-2 rounded-md bg-sportInk/90 px-3.5 py-2 text-xs font-bold text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-sportNavy focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-sportNavy" onClick={() => setIsGalleryOpen(true)} type="button">
               <PhotoIcon />
               View all photos
@@ -422,7 +424,7 @@ function PhotoGallery({ venue }: { venue: PublicVenue }) {
             <div className={`grid gap-2 ${supportingImages.length < 3 ? "grid-cols-1" : "grid-cols-2"}`}>
               {supportingImages.map((image, index) => (
                 <button aria-label={`Open ${venue.name} photo ${index + 2}`} className="group relative min-w-0 overflow-hidden rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2" key={image} onClick={() => setIsGalleryOpen(true)} type="button">
-                  <img alt={`${venue.name} view ${index + 2}`} className={`h-28 w-full object-cover transition-transform duration-200 group-hover:scale-[1.02] sm:h-36 ${supportingImages.length === 1 ? "md:h-[360px]" : "md:h-[176px]"}`} src={image} />
+                  <MediaImage alt={`${venue.name} view ${index + 2}`} className={`h-28 w-full bg-sportNavy object-cover transition-transform duration-200 group-hover:scale-[1.02] sm:h-36 ${supportingImages.length === 1 ? "md:h-[360px]" : "md:h-[176px]"}`} fallback={<div className={`flex h-28 w-full items-center justify-center bg-sportNavy text-xl font-black text-white sm:h-36 ${supportingImages.length === 1 ? "md:h-[360px]" : "md:h-[176px]"}`}>{getInitials(venue.name)}</div>} source={image} />
                 </button>
               ))}
             </div>
@@ -443,7 +445,7 @@ function PhotoGallery({ venue }: { venue: PublicVenue }) {
             </div>
             <div className="mt-5 grid max-h-[72vh] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3 sm:gap-3">
               {images.map((image, index) => (
-                <img alt={`${venue.name} photo ${index + 1}`} className="aspect-[4/3] w-full rounded-lg object-cover" key={image} src={image} />
+                <MediaImage alt={`${venue.name} photo ${index + 1}`} className="aspect-[4/3] w-full rounded-lg bg-sportNavy object-cover" fallback={<div className="flex aspect-[4/3] w-full items-center justify-center rounded-lg bg-sportNavy text-xl font-black text-white">{getInitials(venue.name)}</div>} key={image} source={image} />
               ))}
             </div>
           </div>
@@ -909,10 +911,7 @@ function getVenueImages(venue: PublicVenue) {
 }
 
 function getMediaUrl(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${baseUrl}${path}`;
+  return getMediaSrc(path);
 }
 
 function getInitials(name: string) {

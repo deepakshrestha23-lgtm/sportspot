@@ -10,6 +10,7 @@ urlpatterns = [
     path("api/teams/", include("teams.urls")),
     path("api/matchmaking/", include("matchmaking.urls")),
     path("api/team-challenges/", include("team_challenges.urls")),
+    path("api/scoring/", include("scoring.urls")),
     path("api/notifications/", include("notifications.urls")),
     path("api/venues/", include("venues.urls")),
     path("api/wishlist/", include("wishlists.urls")),

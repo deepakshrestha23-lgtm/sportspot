@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDateTimeInNepal, localDateTimeToIso } from "@/lib/dates";
+import MediaImage from "@/components/MediaImage";
 import type {
   ChallengeReferenceResponse,
   ChallengeFilterOption,
@@ -493,7 +494,16 @@ function FilterIcon() {
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) { return <section className="sport-error-state text-center"><h2 className="text-lg font-bold text-red-950">We could not load team challenges.</h2><p className="mt-2 text-sm text-red-800">{message}</p><button className="sport-primary-button mt-5 bg-red-600 hover:bg-red-700" onClick={onRetry} type="button">Try again</button></section>; }
 function ChallengeSkeleton({ variant = "teams" }: { variant?: ChallengeTab }) { const count = variant === "teams" ? 6 : 4; return <div className={`grid gap-4 ${variant === "teams" ? "md:grid-cols-2 xl:grid-cols-3" : "lg:grid-cols-2"}`}>{Array.from({ length: count }, (_, index) => <div className={`animate-pulse rounded-xl bg-white ${variant === "teams" ? "h-60" : "h-64"}`} key={index} />)}</div>; }
-function Avatar({ image, label }: { image: string; label: string }) { return image ? <img alt={`${label} logo`} className="h-14 w-14 rounded-xl border border-slate-200 object-cover" src={image} /> : <div aria-label={`${label} logo placeholder`} className="flex h-14 w-14 items-center justify-center rounded-xl bg-green-50 text-lg font-bold text-sportGreen">{label.charAt(0).toUpperCase()}</div>; }
+function Avatar({ image, label }: { image: string; label: string }) {
+  return (
+    <MediaImage
+      alt={`${label} logo`}
+      className="h-14 w-14 rounded-xl border border-slate-200 object-cover"
+      fallback={<div aria-label={`${label} logo placeholder`} className="flex h-14 w-14 items-center justify-center rounded-xl bg-green-50 text-lg font-bold text-sportGreen">{label.charAt(0).toUpperCase()}</div>}
+      source={image}
+    />
+  );
+}
 function formatLabel(value: string) { return value ? value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase()) : "Not specified"; }
 function formatDate(value: string | null) { if (!value) return "To be agreed"; const formatted = formatDateTimeInNepal(value, { dateStyle: "medium", timeStyle: "short" }); return formatted === "Not set" ? "To be agreed" : formatted; }
 function relativeDeadline(value: string, referenceNow = Date.now()) { const delta = new Date(value).getTime() - referenceNow; if (delta <= 0) return "now"; const hours = Math.floor(delta / 3600000); if (hours > 24) return `in ${Math.floor(hours / 24)}d`; if (hours > 0) return `in ${hours}h`; return `in ${Math.max(1, Math.floor(delta / 60000))}m`; }

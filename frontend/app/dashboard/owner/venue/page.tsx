@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import ConfirmActionModal from "@/components/ConfirmActionModal";
 import FeedbackToast from "@/components/FeedbackToast";
+import MediaImage from "@/components/MediaImage";
 import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import VenueMap from "@/components/venue/VenueMap";
 import { api } from "@/lib/api";
@@ -211,7 +212,7 @@ export default function OwnerVenuePage() {
             <div className="owner-venue-checklist">
               <ReadinessItem label="Admin approval" done={venue.status === "APPROVED"} />
               <ReadinessItem label="At least one active court" done={visibleCourts.length > 0} />
-              <ReadinessItem label="Future availability published" done={courts.some((court) => court.lowest_price)} />
+              <ReadinessItem label="Future availability published" done={courts.some((court) => court.future_published_slot_count > 0)} />
               <ReadinessItem label="Required venue photos" done={Boolean(venue.front_photo || venuePhotos.some((photo) => photo.category === "OUTSIDE")) && Boolean(venue.court_area_photo || venuePhotos.some((photo) => photo.category === "COURT_AREA"))} />
             </div>
           </section>
@@ -305,9 +306,9 @@ function PhotoGallery({
       </div>
       {count > 0 ? (
         <div className="owner-venue-photo-strip">
-          {legacyPhotoUrl ? <img alt={label} className="owner-venue-photo-thumb" src={getMediaUrl(legacyPhotoUrl)} /> : null}
+          {legacyPhotoUrl ? <MediaImage alt={label} className="owner-venue-photo-thumb object-cover" fallback={<div className="owner-venue-photo-thumb flex items-center justify-center bg-slate-100 text-xs font-black text-slate-500">Photo unavailable</div>} source={legacyPhotoUrl} /> : null}
           {categoryPhotos.map((photo) => (
-            <img alt={label} className="owner-venue-photo-thumb" key={photo.id} src={getMediaUrl(photo.image)} />
+            <MediaImage alt={label} className="owner-venue-photo-thumb object-cover" fallback={<div className="owner-venue-photo-thumb flex items-center justify-center bg-slate-100 text-xs font-black text-slate-500">Photo unavailable</div>} key={photo.id} source={photo.image} />
           ))}
         </div>
       ) : <p className="owner-venue-empty">Add a clear photo to complete this category.</p>}
@@ -349,11 +350,4 @@ function formatChoice(value: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function getMediaUrl(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${baseUrl}${path}`;
 }

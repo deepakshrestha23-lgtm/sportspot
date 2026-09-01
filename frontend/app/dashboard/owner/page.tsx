@@ -76,10 +76,10 @@ export default function OwnerDashboardPage() {
       <VenueStatusBanner lifecycleState={overview.lifecycle_state} overview={overview} />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard icon="calendar" href="/dashboard/owner/bookings?filter=today" label="Today's Bookings" value={overview.summary.today_bookings} />
-        <SummaryCard icon="payments" href="/dashboard/owner/bookings?filter=today" label="Today's Expected Revenue" value={`NPR ${formatMoney(overview.summary.today_expected_revenue)}`} />
-        <SummaryCard icon="venue" href="/dashboard/owner/calendar" label="Courts in Use" value={`${overview.summary.courts_in_use}/${overview.summary.total_active_courts}`} />
-        <SummaryCard icon="payments" href="/dashboard/owner/refunds" label="Pending Refund Requests" value={overview.summary.pending_refund_requests} tone={overview.summary.pending_refund_requests ? "warning" : "default"} />
+        <SummaryCard detail={overview.summary.today_payment_holds ? `${overview.summary.today_payment_holds} payment hold${overview.summary.today_payment_holds === 1 ? "" : "s"} shown separately` : "Confirmed or completed sessions"} icon="calendar" href="/dashboard/owner/bookings?filter=today" label="Today's Bookings" value={overview.summary.today_bookings} />
+        <SummaryCard detail="Collected for confirmed or completed sessions" icon="payments" href="/dashboard/owner/bookings?filter=today" label="Today's Paid Revenue" value={`NPR ${formatMoney(overview.summary.today_revenue || overview.summary.today_expected_revenue)}`} />
+        <SummaryCard detail="Active courts with a session now" icon="venue" href="/dashboard/owner/calendar" label="Courts in Use" value={`${overview.summary.courts_in_use}/${overview.summary.total_active_courts}`} />
+        <SummaryCard detail="Owner action required" icon="payments" href="/dashboard/owner/refunds" label="Pending Refund Requests" value={overview.summary.pending_refund_requests} tone={overview.summary.pending_refund_requests ? "warning" : "default"} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -156,7 +156,7 @@ function VenueStatusBanner({ lifecycleState, overview }: { lifecycleState: Owner
   );
 }
 
-function SummaryCard({ href, icon, label, tone = "default", value }: { href: string; icon: "calendar" | "payments" | "venue"; label: string; tone?: "default" | "warning"; value: string | number }) {
+function SummaryCard({ detail, href, icon, label, tone = "default", value }: { detail: string; href: string; icon: "calendar" | "payments" | "venue"; label: string; tone?: "default" | "warning"; value: string | number }) {
   return (
     <Link className="owner-kpi-link group rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-green-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-green-200" href={href}>
       <div className="flex items-start justify-between gap-3">
@@ -167,6 +167,7 @@ function SummaryCard({ href, icon, label, tone = "default", value }: { href: str
       </div>
       <p className="mt-4 text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-black text-sportNavy">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p>
     </Link>
   );
 }
@@ -177,7 +178,7 @@ function TodaySchedule({ items }: { items: OwnerScheduleItem[] }) {
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div>
           <h2 className="text-lg font-black text-sportNavy">Today's Schedule</h2>
-          <p className="mt-1 text-xs font-semibold text-slate-500">Confirmed and operationally relevant bookings</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">Confirmed sessions and active payment holds</p>
         </div>
         <Link className="text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/owner/calendar">View Full Calendar</Link>
       </div>

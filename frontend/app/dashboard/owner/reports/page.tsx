@@ -196,9 +196,6 @@ function ReportWorkspace({
 }) {
   const { summary } = report;
   const courtPerformance = [...report.courts].sort((left, right) => right.booked_slot_count - left.booked_slot_count || Number(right.paid_value) - Number(left.paid_value));
-  const confirmedOnlyCount = Math.max(0, summary.confirmed_booking_count - summary.completed_booking_count);
-  const accountedBookingCount = confirmedOnlyCount + summary.completed_booking_count + summary.cancelled_booking_count + summary.expired_booking_count;
-  const reservedBookingCount = Math.max(0, summary.booking_count - accountedBookingCount);
 
   return (
     <>
@@ -286,8 +283,8 @@ function ReportWorkspace({
           <div className="owner-report-summary-period"><span aria-hidden="true" />{formatDateOnly(report.period.start_date)} - {formatDateOnly(report.period.end_date)}</div>
         </div>
         <section aria-label="Report summary" className="owner-report-metrics">
-          <ReportMetric detail={`${summary.paid_booking_count} paid booking${summary.paid_booking_count === 1 ? "" : "s"}`} icon="payments" label="Paid booking value" value={`NPR ${formatMoney(summary.paid_value)}`} tone="primary" />
-          <ReportMetric detail={`${summary.confirmed_booking_count} confirmed or completed`} icon="bookings" label="Reservations" value={String(summary.booking_count)} />
+          <ReportMetric detail={`${summary.paid_booking_count} captured booking${summary.paid_booking_count === 1 ? "" : "s"} · net NPR ${formatMoney(summary.net_value)}`} icon="payments" label="Captured payment value" value={`NPR ${formatMoney(summary.paid_value)}`} tone="primary" />
+          <ReportMetric detail={`${summary.confirmed_booking_count + summary.completed_booking_count} confirmed or completed · ${summary.reserved_booking_count} active hold${summary.reserved_booking_count === 1 ? "" : "s"}`} icon="bookings" label="Booking records" value={String(summary.booking_count)} />
           <ReportMetric detail={`${summary.booked_slot_count} of ${summary.published_slot_count} published slots`} icon="availability" label="Slot utilization" value={formatPercent(summary.utilization_percent)} tone="success" />
           <ReportMetric detail="Court access scans recorded" icon="verification" label="Court check-ins" value={String(summary.check_in_count)} />
         </section>
@@ -299,7 +296,7 @@ function ReportWorkspace({
       </div>
 
       <div className="owner-report-grid owner-report-grid-secondary">
-        <BookingOutcomes accountedBookingCount={accountedBookingCount} confirmedOnlyCount={confirmedOnlyCount} reservedBookingCount={reservedBookingCount} summary={summary} />
+        <BookingOutcomes summary={summary} />
         <OperationalFollowUp report={report} />
       </div>
 
@@ -307,7 +304,7 @@ function ReportWorkspace({
         <p>Updated {formatDateTimeInNepal(report.server_now)}.</p>
         <details>
           <summary>How these figures are calculated</summary>
-          <p>Paid booking value includes confirmed or completed bookings with a recorded paid status. Slot utilization is booked slots divided by published slots; blocked and cancelled slots are excluded. Reports do not claim that money has been transferred to the owner.</p>
+          <p>Paid booking value includes captured payments, including bookings later cancelled with a refund or no-refund outcome. Net value subtracts processed and approved pending refunds. Slot utilization is booked slots divided by published slots; blocked and cancelled slots are excluded. Reports do not claim that money has been transferred to the owner.</p>
         </details>
       </div>
     </>
@@ -342,23 +339,23 @@ function ActivityTrend({ trend }: { trend: OwnerReportDay[] }) {
         <div>
           <p className="owner-section-kicker">Demand and value</p>
           <h2 id="owner-report-activity-heading">Booking activity</h2>
-          <p>Compare reservation volume or paid value across the selected period.</p>
+          <p>Compare booking records or captured payment value across the selected period.</p>
         </div>
         <div className="owner-report-panel-actions">
           <div aria-label="Chart metric" className="owner-report-segmented-control" role="group">
-            <button aria-pressed={metric === "bookings"} className={metric === "bookings" ? "is-active" : ""} onClick={() => setMetric("bookings")} type="button">Reservations</button>
-            <button aria-pressed={metric === "revenue"} className={metric === "revenue" ? "is-active" : ""} onClick={() => setMetric("revenue")} type="button">Paid value</button>
+            <button aria-pressed={metric === "bookings"} className={metric === "bookings" ? "is-active" : ""} onClick={() => setMetric("bookings")} type="button">Booking records</button>
+            <button aria-pressed={metric === "revenue"} className={metric === "revenue" ? "is-active" : ""} onClick={() => setMetric("revenue")} type="button">Captured value</button>
           </div>
           <Link className="owner-report-panel-link" href="/dashboard/owner/bookings">Open records <span aria-hidden="true">-&gt;</span></Link>
         </div>
       </div>
       {buckets.length ? (
         <div className="owner-report-chart-wrap">
-          <div className="owner-report-chart-summary"><strong>{metric === "bookings" ? `${totalValue} reservation${totalValue === 1 ? "" : "s"}` : `NPR ${formatCompactMoney(totalValue)}`}</strong><span>Peak: {metric === "bookings" ? `${peakValue} reservation${peakValue === 1 ? "" : "s"}` : `NPR ${formatCompactMoney(peakValue)}`}</span></div>
-          <div className="owner-report-chart" role="img" aria-label={`${metric === "bookings" ? "Reservation" : "Paid value"} trend for the selected period`}>
+          <div className="owner-report-chart-summary"><strong>{metric === "bookings" ? `${totalValue} booking record${totalValue === 1 ? "" : "s"}` : `NPR ${formatCompactMoney(totalValue)}`}</strong><span>Peak: {metric === "bookings" ? `${peakValue} record${peakValue === 1 ? "" : "s"}` : `NPR ${formatCompactMoney(peakValue)}`}</span></div>
+          <div className="owner-report-chart" role="img" aria-label={`${metric === "bookings" ? "Booking record" : "Captured payment value"} trend for the selected period`}>
           <div className="owner-report-bars">
             {buckets.map((bucket) => (
-              <div className="owner-report-bar-column" key={bucket.key} title={`${bucket.label}: ${metric === "bookings" ? `${bucket.bookingCount} reservation${bucket.bookingCount === 1 ? "" : "s"}` : `NPR ${formatMoney(bucket.paidValue)}`}`}>
+              <div className="owner-report-bar-column" key={bucket.key} title={`${bucket.label}: ${metric === "bookings" ? `${bucket.bookingCount} booking record${bucket.bookingCount === 1 ? "" : "s"}` : `NPR ${formatMoney(bucket.paidValue)}`}`}>
                 <div className="owner-report-bar-track"><span style={{ height: `${Math.max((metric === "bookings" ? bucket.bookingCount : bucket.paidValue) ? 12 : 4, ((metric === "bookings" ? bucket.bookingCount : bucket.paidValue) / maxValue) * 100)}%` }} /></div>
                 <strong>{metric === "bookings" ? bucket.bookingCount : formatCompactMoney(bucket.paidValue)}</strong>
                 <small>{bucket.label}</small>
@@ -404,25 +401,25 @@ function CourtPerformance({ courts }: { courts: OwnerReportCourt[] }) {
   );
 }
 
-function BookingOutcomes({ accountedBookingCount, confirmedOnlyCount, reservedBookingCount, summary }: { accountedBookingCount: number; confirmedOnlyCount: number; reservedBookingCount: number; summary: OwnerReportsResponse["summary"] }) {
+function BookingOutcomes({ summary }: { summary: OwnerReportsResponse["summary"] }) {
   const outcomes = [
-    { label: "Confirmed", value: confirmedOnlyCount, tone: "success" },
+    { label: "Confirmed", value: summary.confirmed_booking_count, tone: "success" },
     { label: "Completed", value: summary.completed_booking_count, tone: "primary" },
     { label: "Cancelled", value: summary.cancelled_booking_count, tone: "warning" },
     { label: "Expired holds", value: summary.expired_booking_count, tone: "muted" },
-    { label: "Reserved", value: reservedBookingCount, tone: "pending" },
+    { label: "Reserved", value: summary.reserved_booking_count, tone: "pending" },
   ];
-  const chartTotal = Math.max(accountedBookingCount + reservedBookingCount, 1);
+  const chartTotal = Math.max(summary.booking_count, 1);
   return (
     <section className="owner-report-panel" aria-labelledby="owner-report-outcomes-heading">
       <div className="owner-report-panel-header">
         <div>
           <p className="owner-section-kicker">Reservation health</p>
           <h2 id="owner-report-outcomes-heading">Booking status</h2>
-          <p>See how every reservation ended or is progressing.</p>
+          <p>See how every booking record ended or is progressing.</p>
         </div>
       </div>
-      <div className="owner-report-outcome-summary"><strong>{summary.booking_count}</strong><span>Total reservations</span></div>
+      <div className="owner-report-outcome-summary"><strong>{summary.booking_count}</strong><span>Total booking records</span></div>
       <div aria-hidden="true" className="owner-report-outcome-track">
         {outcomes.map((outcome) => outcome.value ? <span className={`owner-report-outcome-segment owner-report-outcome-${outcome.tone}`} key={outcome.label} style={{ width: `${(outcome.value / chartTotal) * 100}%` }} /> : null)}
       </div>
@@ -446,7 +443,7 @@ function OperationalFollowUp({ report }: { report: OwnerReportsResponse }) {
       </div>
       <div className="owner-report-follow-up-list">
         <ReportFollowUpRow label="Refunds awaiting review" value={summary.pending_refund_count ? `${summary.pending_refund_count} · NPR ${formatMoney(summary.pending_refund_value)}` : "None"} href="/dashboard/owner/refunds" action="Open refunds" tone={summary.pending_refund_count ? "warning" : "success"} />
-        <ReportFollowUpRow label="Active payment holds" value={summary.reserved_slot_count ? String(summary.reserved_slot_count) : "None"} href="/dashboard/owner/calendar" action="Open calendar" tone={summary.reserved_slot_count ? "warning" : "success"} />
+        <ReportFollowUpRow label="Active payment holds" value={summary.reserved_booking_count ? String(summary.reserved_booking_count) : "None"} href="/dashboard/owner/calendar" action="Open calendar" tone={summary.reserved_booking_count ? "warning" : "success"} />
         <ReportFollowUpRow label="Blocked court slots" value={summary.blocked_slot_count ? String(summary.blocked_slot_count) : "None"} href="/dashboard/owner/calendar" action="View blocks" tone={summary.blocked_slot_count ? "warning" : "success"} />
         <ReportFollowUpRow label="Refunds processed" value={`NPR ${formatMoney(summary.processed_refund_value)}`} href="/dashboard/owner/refunds" action="View refunds" />
       </div>
@@ -495,8 +492,9 @@ function downloadReportCsv(report: OwnerReportsResponse) {
     ["Reporting period", `${formatDateOnly(report.period.start_date)} - ${formatDateOnly(report.period.end_date)}`],
     [],
     ["Summary", "Value"],
-    ["Paid booking value", `NPR ${formatMoney(report.summary.paid_value)}`],
-    ["Reservations", report.summary.booking_count],
+    ["Captured payment value", `NPR ${formatMoney(report.summary.paid_value)}`],
+    ["Net booking value", `NPR ${formatMoney(report.summary.net_value)}`],
+    ["Booking records", report.summary.booking_count],
     ["Slot utilization", formatPercent(report.summary.utilization_percent)],
     ["Court check-ins", report.summary.check_in_count],
     ["Processed refunds", `NPR ${formatMoney(report.summary.processed_refund_value)}`],

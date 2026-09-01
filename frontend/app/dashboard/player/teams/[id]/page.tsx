@@ -1,7 +1,6 @@
 
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -9,8 +8,10 @@ import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateOnly, formatDateTimeInNepal, localDateTimeToIso } from "@/lib/dates";
+import { getMediaSrc } from "@/lib/media";
+import MediaImage from "@/components/MediaImage";
 import { emitToast } from "@/lib/toast";
-import type { CricksalRole, GuestMemberPayload, PlayerLookup, PlayerLookupResponse, Team, TeamMember, TeamPayload, TeamResponse, TeamSkillLevel } from "@/types/team";
+import type { CricksalRole, GuestMemberPayload, PlayerLookup, PlayerLookupResponse, Team, TeamCricketRecord, TeamMember, TeamPayload, TeamResponse, TeamSkillLevel } from "@/types/team";
 import type { TeamChallenge, TeamChallengeListResponse } from "@/types/teamChallenge";
 
 type TeamTab = "overview" | "members" | "games" | "challenges" | "settings";
@@ -284,15 +285,18 @@ export default function TeamDetailPage() {
 }
 
 function OverviewTab({ captain, onOpenProfile, recentActivity, team }: { captain: TeamMember | null; onOpenProfile: (member: TeamMember) => void; recentActivity: TeamActivity[]; team: Team }) {
+  const record = team.cricket_record;
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-5">
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Active Members" value={team.members_count} helper="Registered and guest players" />
-          <SummaryCard label="Upcoming Games" value="0" helper="No team games connected yet" />
-          <SummaryCard label="Open Games" value="0" helper="No open games created yet" />
-          <SummaryCard label="Active Challenges" value="0" helper="No challenge records yet" />
+          <SummaryCard label="Cricket Matches" value={record?.matches_played || 0} helper="Completed scorecards" />
+          <SummaryCard label="Wins" value={record?.wins || 0} helper={record?.matches_played ? `${record.losses} lost${record.ties ? `, ${record.ties} tied` : ""}` : "No completed scorecard yet"} />
+          <SummaryCard label="Win Rate" value={record?.win_rate == null ? "-" : `${record.win_rate}%`} helper="Wins across completed matches" />
         </section>
+
+        <TeamRecordSection record={record} />
 
         <section className="sport-card">
           <SectionHeading title="Team Information" description="Core team identity and playing preferences." />
@@ -324,6 +328,48 @@ function OverviewTab({ captain, onOpenProfile, recentActivity, team }: { captain
       </aside>
     </div>
   );
+}
+
+function TeamRecordSection({ record }: { record?: TeamCricketRecord }) {
+  const results = record?.recent_results || [];
+  const hasRecord = Boolean(record?.matches_played);
+  return (
+    <section className="sport-card">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <SectionHeading title="Team Record" description="Completed ball-by-ball scorecards for this team." />
+        <span className={`self-start rounded-full px-3 py-1 text-xs font-black ${hasRecord ? "bg-green-50 text-sportGreen" : "bg-slate-100 text-slate-600"}`}>{hasRecord ? `${record?.wins}-${record?.losses}-${record?.ties} W-L-T` : "No record yet"}</span>
+      </div>
+
+      <dl className="mt-5 grid divide-y divide-slate-200 border-y border-slate-200 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+        <RecordMetric label="Played" value={record?.matches_played || 0} />
+        <RecordMetric label="Won" value={record?.wins || 0} tone="success" />
+        <RecordMetric label="Lost" value={record?.losses || 0} />
+        <RecordMetric label="Tied" value={record?.ties || 0} />
+      </dl>
+
+      {hasRecord ? <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-slate-600"><span><strong className="text-sportNavy">Runs for:</strong> {record?.runs_for}</span><span><strong className="text-sportNavy">Runs against:</strong> {record?.runs_against}</span>{record?.no_results ? <span><strong className="text-sportNavy">No result:</strong> {record.no_results}</span> : null}</div> : null}
+
+      <div className="mt-6 border-t border-slate-200 pt-5">
+        <div className="flex items-center justify-between gap-3"><h3 className="text-base font-black text-sportNavy">Recent results</h3><span className="text-xs font-bold text-slate-500">Latest {Math.min(results.length, 5)} matches</span></div>
+        {results.length ? <div className="mt-3 divide-y divide-slate-100 border-y border-slate-100">{results.map((result) => <article className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between" key={result.fixture_id}><div className="flex min-w-0 items-center gap-3"><TeamLogo image={result.opponent.team_photo} name={result.opponent.name} size="md" /><div className="min-w-0"><p className="truncate font-black text-sportNavy">vs {result.opponent.name}</p><p className="mt-1 text-sm font-semibold text-slate-600">{result.result || "Completed scorecard"}</p><p className="mt-1 text-xs font-semibold text-slate-500">{formatDate(result.completed_at)}</p></div></div><div className="flex items-center justify-between gap-3 sm:justify-end"><p className="text-sm font-black text-sportNavy">{formatRecordScore(result.team_score)} <span className="text-slate-400">-</span> {formatRecordScore(result.opponent_score)}</p><RecordOutcome outcome={result.outcome} /></div></article>)}</div> : <EmptyPanel compact title="No completed scorecards yet." description="Finish a match in the cricket scorer to begin this team record." />}
+      </div>
+      <p className="mt-5 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">This record is calculated from completed ball-by-ball scorecards. If an authorised correction reopens a match, the record updates automatically.</p>
+    </section>
+  );
+}
+
+function RecordMetric({ label, tone = "default", value }: { label: string; tone?: "default" | "success"; value: string | number }) {
+  return <div className="px-4 py-3 first:pl-0 sm:first:pl-0 sm:last:pr-0"><dt className="text-[0.68rem] font-black uppercase tracking-[0.14em] text-slate-500">{label}</dt><dd className={`mt-1 text-xl font-black ${tone === "success" ? "text-sportGreen" : "text-sportNavy"}`}>{value}</dd></div>;
+}
+
+function RecordOutcome({ outcome }: { outcome: TeamCricketRecord["recent_results"][number]["outcome"] }) {
+  const label = outcome === "WIN" ? "Won" : outcome === "LOSS" ? "Lost" : outcome === "TIE" ? "Tied" : "No result";
+  const tone = outcome === "WIN" ? "bg-green-50 text-sportGreen" : outcome === "LOSS" ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-700";
+  return <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${tone}`}>{label}</span>;
+}
+
+function formatRecordScore(score: TeamCricketRecord["recent_results"][number]["team_score"]) {
+  return score ? `${score.runs}/${score.wickets} (${score.overs})` : "-";
 }
 
 function MembersTab({ activeTab, canManage, guests, invitations, onAddGuest, onCancelInvitation, onOpenProfile, onRemove, onTabChange, registered }: { activeTab: MemberTab; canManage: boolean; guests: TeamMember[]; invitations: TeamMember[]; onAddGuest: () => void; onCancelInvitation: (member: TeamMember) => void; onOpenProfile: (member: TeamMember) => void; onRemove: (member: TeamMember) => void; onTabChange: (tab: MemberTab) => void; registered: TeamMember[] }) {
@@ -477,6 +523,34 @@ function SettingsTab({ actionInProgress, editForm, onDelete, onPhotoChange, onSa
           <Field label="Preferred Play Schedule"><select className={inputClassName} required value={editForm.preferred_playing_time} onChange={(event) => setEditForm({ ...editForm, preferred_playing_time: event.target.value })}>{playingTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select></Field>
           <Field label="Skill Level"><select className={inputClassName} value={editForm.skill_level} onChange={(event) => setEditForm({ ...editForm, skill_level: event.target.value as TeamSkillLevel })}>{skills.map((skill) => <option key={skill.value} value={skill.value}>{skill.label}</option>)}</select></Field>
         </div>
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5" aria-labelledby="challenge-visibility-title">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 id="challenge-visibility-title" className="text-base font-black text-sportNavy">Accept team challenges</h3>
+                <span className={`rounded-full px-2.5 py-1 text-[0.68rem] font-black uppercase tracking-[0.12em] ${editForm.accepts_team_challenges ? "bg-green-100 text-sportGreen" : "bg-slate-200 text-slate-600"}`}>
+                  {editForm.accepts_team_challenges ? "Visible" : "Hidden"}
+                </span>
+              </div>
+              <p id="challenge-visibility-help" className="mt-2 text-sm leading-6 text-slate-600">
+                {editForm.accepts_team_challenges
+                  ? "Other teams can find your team in Challenge Teams and send a new challenge."
+                  : "Your team is hidden from new challenge searches and cannot receive new direct challenges."}
+              </p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Changing this does not cancel or change challenges already in progress.</p>
+            </div>
+            <label className="inline-flex shrink-0 cursor-pointer items-center gap-3 self-start rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-black text-sportNavy shadow-sm">
+              <span>{editForm.accepts_team_challenges ? "On" : "Off"}</span>
+              <input
+                aria-describedby="challenge-visibility-help"
+                checked={editForm.accepts_team_challenges}
+                className="h-5 w-5 accent-sportGreen"
+                onChange={(event) => setEditForm({ ...editForm, accepts_team_challenges: event.target.checked })}
+                type="checkbox"
+              />
+            </label>
+          </div>
+        </section>
         <button className="mt-5 min-h-11 rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700 disabled:bg-slate-400" disabled={actionInProgress} type="submit">{actionInProgress ? "Saving..." : "Save Changes"}</button>
       </form>
       <aside className="space-y-5">
@@ -505,7 +579,7 @@ function RecruitModal({ actionInProgress, guestForm, inviteRole, lookupError, lo
 }
 
 function PlayerLookupCard({ inviteRole, onInvite, onRoleChange, player, saving }: { inviteRole: CricksalRole; onInvite: () => void; onRoleChange: (role: CricksalRole) => void; player: PlayerLookup; saving: boolean }) {
-  return <div className="rounded-2xl border border-green-200 bg-green-50 p-4"><div className="flex gap-3"><div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sportNavy text-sm font-black text-white">{player.profile_photo ? <Image alt={`${player.full_name} profile photo`} className="object-cover" fill sizes="64px" src={getMediaSrc(player.profile_photo)} unoptimized /> : initials(player.full_name)}</div><div className="min-w-0"><h3 className="truncate text-lg font-black text-sportNavy">{player.full_name}</h3><p className="mt-1 text-xs font-black text-sportGreen">{player.sportspot_id}</p><p className="mt-2 text-sm font-semibold text-slate-600">{formatChoice(player.skill_level)} · {formatChoice(player.preferred_cricksal_role)} · {player.location}</p></div></div><div className="mt-4 grid gap-2 sm:grid-cols-3"><MiniStat label="Reliability" value={player.reliability_label} /><MiniStat label="Matches" value={player.completed_matches_count} /><MiniStat label="Rating" value={formatRating(player.average_rating)} /></div><div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"><Field label="Role in this team"><select className={inputClassName} value={inviteRole} onChange={(event) => onRoleChange(event.target.value as CricksalRole)}>{cricksalRoles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field><button className="h-12 rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700 disabled:bg-slate-400" disabled={saving} onClick={onInvite} type="button">{saving ? "Sending..." : "Send Invitation"}</button></div></div>;
+  return <div className="rounded-2xl border border-green-200 bg-green-50 p-4"><div className="flex gap-3"><MediaImage alt={`${player.full_name} profile photo`} className="h-16 w-16 shrink-0 rounded-full bg-sportNavy object-cover text-sm font-black text-white" fallback={<div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-sportNavy text-sm font-black text-white">{initials(player.full_name)}</div>} source={player.profile_photo} /><div className="min-w-0"><h3 className="truncate text-lg font-black text-sportNavy">{player.full_name}</h3><p className="mt-1 text-xs font-black text-sportGreen">{player.sportspot_id}</p><p className="mt-2 text-sm font-semibold text-slate-600">{formatChoice(player.skill_level)} · {formatChoice(player.preferred_cricksal_role)} · {player.location}</p></div></div><div className="mt-4 grid gap-2 sm:grid-cols-3"><MiniStat label="Reliability" value={player.reliability_label} /><MiniStat label="Matches" value={player.completed_matches_count} /><MiniStat label="Rating" value={formatRating(player.average_rating)} /></div><div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"><Field label="Role in this team"><select className={inputClassName} value={inviteRole} onChange={(event) => onRoleChange(event.target.value as CricksalRole)}>{cricksalRoles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></Field><button className="h-12 rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700 disabled:bg-slate-400" disabled={saving} onClick={onInvite} type="button">{saving ? "Sending..." : "Send Invitation"}</button></div></div>;
 }
 
 function PlayerProfileModal({ member, onClose }: { member: TeamMember; onClose: () => void }) {
@@ -568,13 +642,12 @@ function StatusBadge({ status }: { status: string }) {
 
 function TeamLogo({ image, name, size }: { image: string; name: string; size: "md" | "lg" }) {
   const dimension = size === "lg" ? "h-20 w-20 text-xl sm:h-24 sm:w-24" : "h-16 w-16 text-base";
-  return <div className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-sportNavy font-black text-white shadow-sm ${dimension}`}>{image ? <Image alt={`${name} team logo`} className="object-cover" fill sizes={size === "lg" ? "96px" : "64px"} src={image} unoptimized /> : initials(name)}</div>;
+  return <MediaImage alt={`${name} team logo`} className={`flex shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-sportNavy object-cover font-black text-white shadow-sm ${dimension}`} fallback={<div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-sportNavy font-black text-white shadow-sm ${dimension}`}>{initials(name)}</div>} source={image} />;
 }
 
 function PlayerAvatar({ large = false, member }: { large?: boolean; member: TeamMember }) {
   const size = large ? "h-20 w-20 text-xl" : "h-12 w-12 text-sm";
-  const src = getMediaSrc(member.profile_photo);
-  return <div className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-sportNavy font-black text-white ${size}`}>{src ? <Image alt={`${member.display_name} profile photo`} className="object-cover" fill sizes={large ? "80px" : "48px"} src={src} unoptimized /> : initials(member.display_name)}</div>;
+  return <MediaImage alt={`${member.display_name} profile photo`} className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-sportNavy object-cover font-black text-white ${size}`} fallback={<div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-sportNavy font-black text-white ${size}`}>{initials(member.display_name)}</div>} source={member.profile_photo} />;
 }
 
 function MiniStat({ label, value }: { label: string; value: string | number }) {
@@ -611,7 +684,7 @@ function buildTeamActivity(members: TeamMember[]): TeamActivity[] {
 }
 
 function cleanTeamPayload(form: TeamPayload): TeamPayload { return { ...form, name: form.name.trim(), description: form.description.trim(), location: form.location.trim(), preferred_playing_area: form.preferred_playing_area.trim(), preferred_playing_time: form.preferred_playing_time.trim() }; }
-function toTeamPayload(team: Team): TeamPayload { return { name: team.name, description: team.description || "", location: team.location, preferred_playing_area: team.preferred_playing_area, preferred_playing_time: team.preferred_playing_time, skill_level: team.skill_level }; }
+function toTeamPayload(team: Team): TeamPayload { return { name: team.name, description: team.description || "", location: team.location, preferred_playing_area: team.preferred_playing_area, preferred_playing_time: team.preferred_playing_time, skill_level: team.skill_level, accepts_team_challenges: team.accepts_team_challenges }; }
 function tabLabel(tab: TeamTab) { return tab.charAt(0).toUpperCase() + tab.slice(1); }
 function normalize(value: string) { return value.trim().toLowerCase(); }
 function initials(name: string) { return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("") || "SS"; }
@@ -619,6 +692,4 @@ function formatChoice(value?: string) { if (!value) return "Not set"; return val
 function formatRating(value?: string) { if (!value) return "Not rated yet"; const numberValue = Number(value); return Number.isFinite(numberValue) && numberValue > 0 ? numberValue.toFixed(1) : "Not rated yet"; }
 function formatDate(value?: string | null) { if (!value) return "Not set"; return formatDateOnly(value, { day: "numeric", month: "short", year: "numeric" }); }
 function formatDateTime(value?: string) { if (!value) return "Recently"; return formatDateTimeInNepal(value, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
-function getMediaSrc(value: string) { if (!value) return ""; if (value.startsWith("blob:") || value.startsWith("http")) return value; const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"; return `${apiBaseUrl}${value}`; }
-
 const inputClassName = "mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sportGreen focus:ring-2 focus:ring-green-100";

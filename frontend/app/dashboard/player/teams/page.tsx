@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
+import MediaImage from "@/components/MediaImage";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { emitToast } from "@/lib/toast";
@@ -271,8 +271,7 @@ function RoleButton({ active, label, onClick }: { active: boolean; label: string
 }
 
 function TeamAvatar({ image, name, size }: { image: string; name: string; size: "md" }) {
-  const photoSrc = getTeamPhotoSrc(image);
-  return <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-sportNavy text-sm font-black text-white">{photoSrc ? <Image alt={`${name} team logo`} className="object-cover" fill sizes="56px" src={photoSrc} unoptimized /> : getTeamInitials(name)}</div>;
+  return <MediaImage alt={`${name} team logo`} className="h-14 w-14 shrink-0 rounded-2xl border border-slate-200 bg-sportNavy object-cover text-sm font-black text-white" fallback={<div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-sportNavy text-sm font-black text-white">{getTeamInitials(name)}</div>} source={image} />;
 }
 
 function EmptyState({ description, onPrimary, primaryHref, primaryLabel, secondaryHref, secondaryLabel, title }: { description: string; onPrimary?: () => void; primaryHref?: string; primaryLabel: string; secondaryHref?: string; secondaryLabel?: string; title: string }) {
@@ -343,13 +342,6 @@ function formatDate(value?: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Recently";
   return formatDateTimeInNepal(value, { day: "numeric", month: "short", year: "numeric" });
-}
-
-function getTeamPhotoSrc(value: string) {
-  if (!value) return "";
-  if (value.startsWith("http")) return value;
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${apiBaseUrl}${value}`;
 }
 
 function getTeamInitials(name: string) {

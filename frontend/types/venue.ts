@@ -104,6 +104,7 @@ export type Court = {
   court_photo: string;
   is_active: boolean;
   lowest_price: string | null;
+  future_published_slot_count: number;
   bookings_count: number;
   can_delete: boolean;
   delete_block_reason: string;
@@ -441,7 +442,9 @@ export type OwnerLifecycleState =
 
 export type OwnerOverviewSummary = {
   today_bookings: number;
+  today_revenue: string;
   today_expected_revenue: string;
+  today_payment_holds: number;
   courts_in_use: number;
   total_active_courts: number;
   pending_refund_requests: number;
@@ -528,6 +531,7 @@ export type OwnerCalendarViewMode = "day" | "week";
 export type OwnerCalendarStats = {
   bookings_count: number;
   confirmed_bookings: number;
+  completed_bookings: number;
   reserved_holds: number;
   blocked_slots: number;
   available_slots: number;
@@ -552,6 +556,7 @@ export type OwnerReportSummary = {
   booking_count: number;
   confirmed_booking_count: number;
   completed_booking_count: number;
+  reserved_booking_count: number;
   cancelled_booking_count: number;
   expired_booking_count: number;
   paid_booking_count: number;
@@ -559,6 +564,7 @@ export type OwnerReportSummary = {
   processed_refund_value: string;
   pending_refund_count: number;
   pending_refund_value: string;
+  net_value: string;
   check_in_count: number;
   published_slot_count: number;
   booked_slot_count: number;
@@ -575,6 +581,8 @@ export type OwnerReportCourt = {
   paid_booking_count: number;
   paid_value: string;
   processed_refund_value: string;
+  pending_refund_value: string;
+  net_value: string;
   check_in_count: number;
   published_slot_count: number;
   booked_slot_count: number;
@@ -588,6 +596,9 @@ export type OwnerReportDay = {
   booking_count: number;
   paid_booking_count: number;
   paid_value: string;
+  processed_refund_value: string;
+  pending_refund_value: string;
+  net_value: string;
   booked_slot_count: number;
   published_slot_count: number;
   utilization_percent: number;

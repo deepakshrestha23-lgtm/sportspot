@@ -3,6 +3,8 @@ from rest_framework import serializers
 from players.models import PlayerProfile
 from players.services import get_player_reliability_snapshot
 from team_challenges.services import get_team_reliability_snapshot
+
+from .records import get_team_cricket_record
 from .models import Team, TeamMember
 
 
@@ -210,9 +212,10 @@ class TeamSerializer(serializers.ModelSerializer):
 
 class TeamDetailSerializer(TeamSerializer):
     members = serializers.SerializerMethodField()
+    cricket_record = serializers.SerializerMethodField()
 
     class Meta(TeamSerializer.Meta):
-        fields = TeamSerializer.Meta.fields + ("members",)
+        fields = TeamSerializer.Meta.fields + ("members", "cricket_record")
 
     def get_members(self, team):
         members = team.members.exclude(status__in=[TeamMember.MemberStatus.REMOVED, TeamMember.MemberStatus.REJECTED]).select_related(
@@ -220,6 +223,9 @@ class TeamDetailSerializer(TeamSerializer):
             "user__player_profile",
         )
         return TeamMemberSerializer(members, many=True).data
+
+    def get_cricket_record(self, team):
+        return get_team_cricket_record(team)
 
 
 class GuestMemberCreateSerializer(serializers.ModelSerializer):

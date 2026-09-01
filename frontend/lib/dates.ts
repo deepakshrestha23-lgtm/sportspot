@@ -118,7 +118,10 @@ export function splitDateTimeInput(value: string | null | undefined): [string, s
 }
 
 export function joinDateTimeInput(date: string, time: string) {
-  return date && time ? `${date}T${time}` : "";
+  // Keep partial input controlled by React while the user fills the two fields.
+  // Validation happens when the form is submitted, after both values exist.
+  if (!date && !time) return "";
+  return `${date}T${time}`;
 }
 
 /** Convert a venue-local date and clock time to an ISO timestamp for the API. */

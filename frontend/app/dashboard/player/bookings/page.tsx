@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import CancelBookingModal, { type CancelBookingPayload } from "@/components/CancelBookingModal";
+import MediaImage from "@/components/MediaImage";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateOnly, localDateTimeToIso } from "@/lib/dates";
 import { buildVenueDirectionsHref } from "@/lib/maps";
+import { getMediaSrc } from "@/lib/media";
 import { emitToast } from "@/lib/toast";
 import type { Booking, BookingStatus, RefundStatus } from "@/types/venue";
 
@@ -337,11 +339,12 @@ function BookingCard({ booking, onCancel, view }: { booking: Booking; onCancel: 
   return (
     <article className={`group overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-green-300 hover:shadow-sm ${isGrid ? "flex h-full flex-col" : "grid md:grid-cols-[176px_minmax(0,1fr)]"}`}>
       <div className={isGrid ? "relative h-28 w-full shrink-0 overflow-hidden bg-slate-100 sm:h-32" : "relative h-28 w-full shrink-0 overflow-hidden bg-slate-100 md:h-full md:min-h-[164px] md:w-auto"}>
-        {imageSrc ? (
-          <img alt={`${booking.venue_name} court`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" src={imageSrc} />
-        ) : (
-          <div className="flex h-full items-center justify-center bg-slate-900 text-green-200"><CourtIcon /></div>
-        )}
+        <MediaImage
+          alt={`${booking.venue_name} court`}
+          className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+          fallback={<div className="flex h-full items-center justify-center bg-slate-900 text-green-200"><CourtIcon /></div>}
+          source={imageSrc}
+        />
         <div className="absolute left-3 top-3"><StatusBadge status={booking.status} /></div>
       </div>
       <div className={isGrid ? "flex flex-1 flex-col p-4" : "flex min-w-0 flex-col p-4 sm:p-5"}>
@@ -719,13 +722,6 @@ function formatDuration(minutes: number) {
 
 function formatMoney(value: string) {
   return Number(value || 0).toLocaleString("en-NP", { maximumFractionDigits: 0 });
-}
-
-function getMediaSrc(value: string | null | undefined) {
-  if (!value) return "";
-  if (value.startsWith("http")) return value;
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${apiBaseUrl}${value}`;
 }
 
 const inputClassName = "sport-input mt-2";

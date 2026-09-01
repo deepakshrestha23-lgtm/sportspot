@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -180,8 +181,21 @@ class Venue(models.Model):
                 self.closing_time,
             ]
         )
-        has_court = self.courts.exists() if self.pk else False
-        has_slots = CourtSlot.objects.filter(court__venue=self).exists() if self.pk else False
+        has_court = self.courts.filter(is_active=True).exists() if self.pk else False
+        today = timezone.localdate()
+        now_time = timezone.localtime().time()
+        future_slot_filter = Q(date__gt=today) | Q(date=today, start_time__gt=now_time)
+        has_slots = (
+            CourtSlot.objects.filter(
+                court__venue=self,
+                court__is_active=True,
+                status__in=["AVAILABLE", "RESERVED", "BOOKED"],
+            )
+            .filter(future_slot_filter)
+            .exists()
+            if self.pk
+            else False
+        )
         has_outside_photo = bool(self.front_photo) or self.photos.filter(category=VenuePhoto.PhotoCategory.OUTSIDE).exists()
         has_court_area_photo = bool(self.court_area_photo) or self.photos.filter(category=VenuePhoto.PhotoCategory.COURT_AREA).exists()
         has_proof = bool(

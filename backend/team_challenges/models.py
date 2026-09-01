@@ -19,6 +19,10 @@ ACTIVE_CHALLENGE_STATUSES = (
 
 
 class TeamChallenge(models.Model):
+    class Source(models.TextChoices):
+        TEAM_CHALLENGE = "TEAM_CHALLENGE", "Team challenge"
+        INSTANT_SCORER = "INSTANT_SCORER", "Instant scorer"
+
     class ChallengeType(models.TextChoices):
         DIRECT = "DIRECT", "Direct challenge"
         OPEN = "OPEN", "Open challenge"
@@ -79,6 +83,7 @@ class TeamChallenge(models.Model):
     )
     team_pair_key = models.CharField(max_length=40, blank=True)
     status = models.CharField(max_length=35, choices=Status.choices, default=Status.OPEN)
+    source = models.CharField(max_length=24, choices=Source.choices, default=Source.TEAM_CHALLENGE)
     current_proposal = models.ForeignKey(
         "ChallengeProposal",
         on_delete=models.PROTECT,
@@ -168,6 +173,10 @@ class TeamChallenge(models.Model):
     def __str__(self):
         opponent = self.challenged_team.name if self.challenged_team_id else "Open opponent search"
         return f"{self.challenger_team.name} vs {opponent}"
+
+    @property
+    def is_instant_scorer_match(self):
+        return self.source == self.Source.INSTANT_SCORER
 
 
 class ChallengeProposal(models.Model):

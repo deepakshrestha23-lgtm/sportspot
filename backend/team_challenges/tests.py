@@ -98,6 +98,53 @@ class TeamChallengeServiceTests(TestCase):
         self.assertIsNone(full_team["team_reliability_score"])
         self.assertEqual(full_team["team_reliability_label"], "Provisional Team Reliability")
 
+    def test_captain_can_hide_team_from_new_challenges_without_affecting_existing_directory_rules(self):
+        client = APIClient()
+        client.force_authenticate(self.opponent)
+
+        response = client.patch(
+            f"/api/teams/{self.opponent_team.id}/",
+            {"accepts_team_challenges": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(response.data["team"]["accepts_team_challenges"])
+        self.assertNotIn(
+            self.opponent_team.id,
+            {team["id"] for team in APIClient().get("/api/team-challenges/teams/").data["teams"]},
+        )
+
+    def test_only_captain_can_change_team_challenge_visibility(self):
+        TeamMember.objects.create(
+            team=self.opponent_team,
+            user=self.member,
+            member_type=TeamMember.MemberType.REGISTERED,
+            role_in_team=TeamMember.TeamRole.PLAYER,
+            cricksal_role=TeamMember.CricksalRole.BOWLER,
+            status=TeamMember.MemberStatus.ACTIVE,
+        )
+        client = APIClient()
+        client.force_authenticate(self.member)
+
+        response = client.patch(
+            f"/api/teams/{self.opponent_team.id}/",
+            {"accepts_team_challenges": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403, response.data)
+        self.assertTrue(Team.objects.get(pk=self.opponent_team.id).accepts_team_challenges)
+
+    def test_direct_challenges_reject_a_team_that_is_hidden_from_new_challenges(self):
+        self.opponent_team.accepts_team_challenges = False
+        self.opponent_team.save(update_fields=["accepts_team_challenges", "updated_at"])
+
+        with self.assertRaisesMessage(ValidationError, "This team is not accepting new challenges right now."):
+            create_challenge(self.challenge_data(request_id="hidden-team-challenge"), self.host)
+
+        self.assertEqual(TeamChallenge.objects.count(), 0)
+
     def test_challenge_reference_data_keeps_supported_options_available(self):
         response = APIClient().get("/api/team-challenges/reference/")
 

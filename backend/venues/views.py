@@ -292,7 +292,12 @@ class OwnerOverviewView(APIView):
                 "lifecycle_state": get_owner_lifecycle_state(venue),
                 "summary": {
                     "today_bookings": count_today_bookings(bookings, today),
+                    # Confirmed bookings are already paid in the current
+                    # booking flow, so this is collected value for today's
+                    # sessions rather than a forecast.
+                    "today_revenue": str(today_revenue),
                     "today_expected_revenue": str(today_revenue),
+                    "today_payment_holds": count_today_payment_holds(bookings, today),
                     "courts_in_use": sum(1 for item in court_statuses if item["status"] == "OCCUPIED"),
                     "total_active_courts": sum(1 for court in courts if court.is_active),
                     "pending_refund_requests": pending_refunds_count,
@@ -918,12 +923,16 @@ class OwnerReportsView(APIView):
             .select_related("court")
             .order_by("date", "start_time", "court__name")
         )
+        release_expired_reservations(slots)
         bookings = list(
             Booking.objects.filter(venue=venue)
             .filter(Q(slot__date__range=(start_date, end_date)) | Q(slot_items__slot__date__range=(start_date, end_date)))
             .select_related("court", "slot")
             .distinct()
         )
+        for booking in bookings:
+            if booking.status in [Booking.BookingStatus.RESERVED, Booking.BookingStatus.CONFIRMED]:
+                refresh_booking_lifecycle(booking)
         check_ins = list(
             BookingCheckIn.objects.filter(
                 booking__venue=venue,
@@ -935,6 +944,7 @@ class OwnerReportsView(APIView):
             "booking_count": len(bookings),
             "confirmed_booking_count": 0,
             "completed_booking_count": 0,
+            "reserved_booking_count": 0,
             "cancelled_booking_count": 0,
             "expired_booking_count": 0,
             "paid_booking_count": 0,
@@ -953,6 +963,7 @@ class OwnerReportsView(APIView):
                 "paid_booking_count": 0,
                 "paid_value": Decimal("0.00"),
                 "processed_refund_value": Decimal("0.00"),
+                "pending_refund_value": Decimal("0.00"),
                 "check_in_count": 0,
                 "published_slot_count": 0,
                 "booked_slot_count": 0,
@@ -967,6 +978,8 @@ class OwnerReportsView(APIView):
                 "booking_count": 0,
                 "paid_booking_count": 0,
                 "paid_value": Decimal("0.00"),
+                "processed_refund_value": Decimal("0.00"),
+                "pending_refund_value": Decimal("0.00"),
                 "booked_slot_count": 0,
                 "published_slot_count": 0,
             }
@@ -974,7 +987,14 @@ class OwnerReportsView(APIView):
         }
 
         completed_statuses = {Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED}
-        processed_refund_statuses = {Booking.PaymentStatus.REFUNDED, Booking.PaymentStatus.PARTIALLY_REFUNDED}
+        captured_payment_statuses = {
+            Booking.PaymentStatus.PAID,
+            Booking.PaymentStatus.NO_REFUND,
+            Booking.PaymentStatus.REFUND_PENDING,
+            Booking.PaymentStatus.REFUNDED,
+            Booking.PaymentStatus.PARTIALLY_REFUNDED,
+        }
+        processed_refund_statuses = {Booking.RefundStatus.REFUNDED, Booking.RefundStatus.PARTIALLY_REFUNDED}
         published_slot_statuses = {CourtSlot.Status.AVAILABLE, CourtSlot.Status.RESERVED, CourtSlot.Status.BOOKED}
 
         for booking in bookings:
@@ -986,15 +1006,18 @@ class OwnerReportsView(APIView):
                 day_summary["booking_count"] += 1
 
             if booking.status in completed_statuses:
-                summary["confirmed_booking_count"] += 1
+                if booking.status == Booking.BookingStatus.CONFIRMED:
+                    summary["confirmed_booking_count"] += 1
             if booking.status == Booking.BookingStatus.COMPLETED:
                 summary["completed_booking_count"] += 1
+            if booking.status == Booking.BookingStatus.RESERVED:
+                summary["reserved_booking_count"] += 1
             if booking.status == Booking.BookingStatus.CANCELLED:
                 summary["cancelled_booking_count"] += 1
             if booking.status == Booking.BookingStatus.EXPIRED:
                 summary["expired_booking_count"] += 1
 
-            is_paid_booking = booking.status in completed_statuses and booking.payment_status == Booking.PaymentStatus.PAID
+            is_paid_booking = booking.payment_status in captured_payment_statuses
             if is_paid_booking:
                 summary["paid_booking_count"] += 1
                 summary["paid_value"] += booking.amount
@@ -1008,10 +1031,16 @@ class OwnerReportsView(APIView):
             if booking.refund_status == Booking.RefundStatus.PENDING_OWNER_ACTION:
                 summary["pending_refund_count"] += 1
                 summary["pending_refund_value"] += booking.refund_amount
-            if booking.payment_status in processed_refund_statuses:
+                if court_summary:
+                    court_summary["pending_refund_value"] += booking.refund_amount
+                if day_summary:
+                    day_summary["pending_refund_value"] += booking.refund_amount
+            if booking.refund_status in processed_refund_statuses:
                 summary["processed_refund_value"] += booking.refund_amount
                 if court_summary:
                     court_summary["processed_refund_value"] += booking.refund_amount
+                if day_summary:
+                    day_summary["processed_refund_value"] += booking.refund_amount
 
         check_in_counts = defaultdict(int)
         for court_id in check_ins:
@@ -1042,6 +1071,7 @@ class OwnerReportsView(APIView):
         summary["booked_slot_count"] = sum(item["booked_slot_count"] for item in court_data.values())
         summary["reserved_slot_count"] = sum(item["reserved_slot_count"] for item in court_data.values())
         summary["blocked_slot_count"] = sum(item["blocked_slot_count"] for item in court_data.values())
+        summary["net_value"] = net_report_value(summary)
         summary["utilization_percent"] = report_utilization(summary["booked_slot_count"], summary["published_slot_count"])
 
         return Response(
@@ -1412,11 +1442,11 @@ class OwnerBookingsView(APIView):
     def get(self, request):
         venue = get_owner_venue(request.user)
         if not venue:
-            return Response({"bookings": []})
+            return Response({"local_date": timezone.localdate().isoformat(), "bookings": []})
         bookings = Booking.objects.filter(venue=venue).select_related("player", "venue", "court", "slot").prefetch_related("slot_items__slot", "venue_messages__sender", "venue__photos", "check_in")
         for booking in bookings:
             refresh_booking_lifecycle(booking)
-        return Response({"bookings": BookingSerializer(bookings, many=True, context={"request": request}).data})
+        return Response({"local_date": timezone.localdate().isoformat(), "bookings": BookingSerializer(bookings, many=True, context={"request": request}).data})
 
 
 class OwnerBookingVerifyView(MutationThrottleMixin, APIView):
@@ -3186,7 +3216,9 @@ class BookingCancelView(APIView):
 def empty_owner_summary():
     return {
         "today_bookings": 0,
+        "today_revenue": "0.00",
         "today_expected_revenue": "0.00",
+        "today_payment_holds": 0,
         "courts_in_use": 0,
         "total_active_courts": 0,
         "pending_refund_requests": 0,
@@ -3214,11 +3246,15 @@ def count_today_bookings(bookings, today):
         1
         for booking in bookings
         if booking.slot.date == today
-        and booking.status in [
-            Booking.BookingStatus.RESERVED,
-            Booking.BookingStatus.CONFIRMED,
-            Booking.BookingStatus.COMPLETED,
-        ]
+        and booking.status in [Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED]
+    )
+
+
+def count_today_payment_holds(bookings, today):
+    return sum(
+        1
+        for booking in bookings
+        if booking.slot.date == today and booking.status == Booking.BookingStatus.RESERVED
     )
 
 
@@ -3231,7 +3267,6 @@ def build_today_schedule(bookings, today):
             Booking.BookingStatus.RESERVED,
             Booking.BookingStatus.CONFIRMED,
             Booking.BookingStatus.COMPLETED,
-            Booking.BookingStatus.CANCELLED,
         ]:
             continue
         window = build_booking_window(booking)
@@ -4009,12 +4044,22 @@ def report_utilization(booked_slots, published_slots):
     return round((booked_slots / published_slots) * 100, 1)
 
 
+def net_report_value(summary):
+    return max(
+        summary["paid_value"]
+        - summary.get("processed_refund_value", Decimal("0.00"))
+        - summary.get("pending_refund_value", Decimal("0.00")),
+        Decimal("0.00"),
+    )
+
+
 def serialize_owner_report_summary(summary):
     return {
         **summary,
         "paid_value": str(summary["paid_value"]),
         "processed_refund_value": str(summary["processed_refund_value"]),
         "pending_refund_value": str(summary["pending_refund_value"]),
+        "net_value": str(summary.get("net_value", net_report_value(summary))),
     }
 
 
@@ -4023,6 +4068,8 @@ def serialize_owner_report_court(court_summary):
         **court_summary,
         "paid_value": str(court_summary["paid_value"]),
         "processed_refund_value": str(court_summary["processed_refund_value"]),
+        "pending_refund_value": str(court_summary.get("pending_refund_value", Decimal("0.00"))),
+        "net_value": str(net_report_value(court_summary)),
         "utilization_percent": report_utilization(
             court_summary["booked_slot_count"], court_summary["published_slot_count"]
         ),
@@ -4035,6 +4082,9 @@ def serialize_owner_report_day(day_summary):
         "booking_count": day_summary["booking_count"],
         "paid_booking_count": day_summary["paid_booking_count"],
         "paid_value": str(day_summary["paid_value"]),
+        "processed_refund_value": str(day_summary.get("processed_refund_value", Decimal("0.00"))),
+        "pending_refund_value": str(day_summary.get("pending_refund_value", Decimal("0.00"))),
+        "net_value": str(net_report_value(day_summary)),
         "booked_slot_count": day_summary["booked_slot_count"],
         "published_slot_count": day_summary["published_slot_count"],
         "utilization_percent": report_utilization(
@@ -4048,6 +4098,7 @@ def build_empty_owner_report(period_days, start_date, end_date, period_mode="pre
         "booking_count": 0,
         "confirmed_booking_count": 0,
         "completed_booking_count": 0,
+        "reserved_booking_count": 0,
         "cancelled_booking_count": 0,
         "expired_booking_count": 0,
         "paid_booking_count": 0,
@@ -4055,6 +4106,7 @@ def build_empty_owner_report(period_days, start_date, end_date, period_mode="pre
         "processed_refund_value": Decimal("0.00"),
         "pending_refund_count": 0,
         "pending_refund_value": Decimal("0.00"),
+        "net_value": Decimal("0.00"),
         "check_in_count": 0,
         "published_slot_count": 0,
         "booked_slot_count": 0,
@@ -4080,6 +4132,8 @@ def build_empty_owner_report(period_days, start_date, end_date, period_mode="pre
                     "booking_count": 0,
                     "paid_booking_count": 0,
                     "paid_value": Decimal("0.00"),
+                    "processed_refund_value": Decimal("0.00"),
+                    "pending_refund_value": Decimal("0.00"),
                     "booked_slot_count": 0,
                     "published_slot_count": 0,
                 }
@@ -4105,6 +4159,7 @@ def empty_calendar_stats():
     return {
         "bookings_count": 0,
         "confirmed_bookings": 0,
+        "completed_bookings": 0,
         "reserved_holds": 0,
         "blocked_slots": 0,
         "available_slots": 0,
@@ -4114,7 +4169,8 @@ def empty_calendar_stats():
 def build_calendar_stats(slots, bookings):
     return {
         "bookings_count": len(bookings),
-        "confirmed_bookings": len([booking for booking in bookings if booking.status in [Booking.BookingStatus.CONFIRMED, Booking.BookingStatus.COMPLETED]]),
+        "confirmed_bookings": len([booking for booking in bookings if booking.status == Booking.BookingStatus.CONFIRMED]),
+        "completed_bookings": len([booking for booking in bookings if booking.status == Booking.BookingStatus.COMPLETED]),
         "reserved_holds": len([booking for booking in bookings if booking.status == Booking.BookingStatus.RESERVED]),
         "blocked_slots": len([slot for slot in slots if slot.status == CourtSlot.Status.BLOCKED]),
         "available_slots": len([slot for slot in slots if slot.status == CourtSlot.Status.AVAILABLE and not is_slot_in_past(slot)]),

@@ -4,6 +4,13 @@ export type CricksalRole = "BATSMAN" | "BOWLER" | "ALL_ROUNDER" | "WICKETKEEPER"
 export type AvailabilityDay = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
 export type AvailabilityTimePeriod = "MORNING" | "AFTERNOON" | "EVENING" | "FLEXIBLE";
 
+export interface CricketSummary {
+  matches: number;
+  total_runs: number;
+  best_score: number;
+  wickets: number;
+}
+
 export interface PlayerProfile {
   id: number;
   user: number;
@@ -29,6 +36,7 @@ export interface PlayerProfile {
   profile_completion_percentage: number;
   is_profile_complete: boolean;
   reliability_label: string;
+  cricket_summary: CricketSummary;
   created_at: string;
   updated_at: string;
 }

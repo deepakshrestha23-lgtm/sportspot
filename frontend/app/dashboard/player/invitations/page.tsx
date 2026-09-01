@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import FeedbackToast from "@/components/FeedbackToast";
+import MediaImage from "@/components/MediaImage";
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
@@ -82,11 +82,7 @@ export default function PlayerInvitationsPage() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex gap-4">
                     <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/10 text-xl font-black text-white">
-                      {invitation.team_photo ? (
-                        <Image alt={`${invitation.team_name} team photo`} className="object-cover" fill sizes="80px" src={getMediaSrc(invitation.team_photo)} unoptimized />
-                      ) : (
-                        getInitials(invitation.team_name)
-                      )}
+                      <MediaImage alt={`${invitation.team_name} team photo`} className="absolute inset-0 h-full w-full object-cover" fallback={<span>{getInitials(invitation.team_name)}</span>} source={invitation.team_photo} />
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-black uppercase tracking-wide text-green-300">Cricksal Team Invite</p>
@@ -172,13 +168,6 @@ function formatRating(value?: string) {
   if (!value) return "Not rated yet";
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue.toFixed(1) : "Not rated yet";
-}
-
-function getMediaSrc(value: string) {
-  if (!value) return "";
-  if (value.startsWith("http")) return value;
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  return `${apiBaseUrl}${value}`;
 }
 
 function getInitials(name: string) {

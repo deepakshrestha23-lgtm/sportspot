@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
+import MediaImage from "@/components/MediaImage";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { emitToast } from "@/lib/toast";
@@ -130,11 +131,7 @@ function CourtWishlistCard({ item, onRemove }: { item: WishlistItem; onRemove: (
 }
 
 function CardImage({ alt, image, name }: { alt: string; image: string; name: string }) {
-  return image ? (
-    <img alt={alt} className="h-40 w-full object-cover" src={image} />
-  ) : (
-    <div className="flex h-40 items-center justify-center bg-sportNavy text-3xl font-black text-white">{getInitials(name)}</div>
-  );
+  return <MediaImage alt={alt} className="h-40 w-full object-cover" fallback={<div className="flex h-40 items-center justify-center bg-sportNavy text-3xl font-black text-white">{getInitials(name)}</div>} source={image} />;
 }
 
 function WishlistSkeleton() {
