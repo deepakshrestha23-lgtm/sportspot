@@ -508,7 +508,7 @@ def dispute_commitment(*, commitment_id, player, reason):
     return commitment
 
 
-def finalize_pending_attendance(*, now=None, limit=100):
+def finalize_pending_attendance(*, now=None, limit=100, player=None):
     """Resolve stale attendance safely from the single platform worker.
 
     A reported absence gets a player dispute window.  A missing host/captain
@@ -517,23 +517,24 @@ def finalize_pending_attendance(*, now=None, limit=100):
     """
     now = now or timezone.now()
     submission_cutoff = now - timezone.timedelta(hours=ATTENDANCE_SUBMISSION_HOURS)
-    candidates = list(
-        ParticipationCommitment.objects.filter(
-            Q(
-                status=ParticipationCommitment.Status.NO_SHOW_REPORTED,
-                review_deadline_at__isnull=False,
-                review_deadline_at__lte=now,
-            )
-            | Q(
-                status__in=[
-                    ParticipationCommitment.Status.COMMITTED,
-                    ParticipationCommitment.Status.ATTENDANCE_PENDING,
-                ],
-                end_at__lte=submission_cutoff,
-            )
+    candidate_queryset = ParticipationCommitment.objects.filter(
+        Q(
+            status=ParticipationCommitment.Status.NO_SHOW_REPORTED,
+            review_deadline_at__isnull=False,
+            review_deadline_at__lte=now,
         )
-        .order_by("end_at", "id")
-        .values_list("id", flat=True)[:limit]
+        | Q(
+            status__in=[
+                ParticipationCommitment.Status.COMMITTED,
+                ParticipationCommitment.Status.ATTENDANCE_PENDING,
+            ],
+            end_at__lte=submission_cutoff,
+        )
+    )
+    if player:
+        candidate_queryset = candidate_queryset.filter(player=player)
+    candidates = list(
+        candidate_queryset.order_by("end_at", "id").values_list("id", flat=True)[:limit]
     )
     resolved_count = 0
     for commitment_id in candidates:
@@ -1045,7 +1046,7 @@ def create_rating_eligibilities_for_players(
                 notification_type=Notification.NotificationType.RATING_REQUIRED,
                 title="Share feedback on your completed game",
                 message="Your completed game is ready for verified player feedback. Ratings and reliability are kept separate.",
-                action_url="/dashboard/player/ratings",
+                action_url=f"/dashboard/player/ratings?rate={eligibility.id}",
                 related_entity_type=related_entity_type,
                 related_entity_id=related_entity_id,
                 action_required=True,
@@ -1063,9 +1064,202 @@ def get_pending_rating_items(player):
     eligibilities = (
         PlayerRatingEligibility.objects.filter(rater=player, status=PlayerRatingEligibility.Status.PENDING)
         .select_related("rated_player", "rated_player__player_profile")
-        .order_by("deadline_at", "-created_at", "id")[:10]
+        .order_by("deadline_at", "-created_at", "id")[:50]
     )
     return [serialize_pending_rating_eligibility(eligibility) for eligibility in eligibilities]
+
+
+def get_post_match_action_items(player):
+    """Return the post-match actions a player can act on right now.
+
+    Match rooms remain the source of truth for attendance and results. This
+    projection only makes the next action discoverable from the dashboard; it
+    never changes a commitment or unlocks ratings by itself.
+    """
+    now = timezone.now()
+    # A dashboard visit is also a reliable fallback when the platform worker
+    # is delayed: this only finalizes the current player's expired records.
+    finalize_pending_attendance(now=now, limit=100, player=player)
+    actions = []
+
+    for review in get_pending_attendance_reviews(player):
+        actions.append({
+            "id": f"attendance-review-{review['id']}",
+            "type": "ATTENDANCE_DISPUTE",
+            "title": "Review an attendance report",
+            "message": f"{review['title']} needs your response before the review window closes.",
+            "created_at": review.get("start_at"),
+            "action_url": review["action_url"],
+            "status": review["status"],
+            "deadline_at": review.get("review_deadline_at"),
+            "action_label": "Review report",
+            "priority": 0,
+        })
+
+    # Request-time synchronization keeps this list useful when the scheduled
+    # maintenance command has not run since a match ended.
+    from matchmaking.models import Game, GameParticipant
+    from matchmaking.services import ensure_game_participation_commitments, synchronize_game_lifecycle
+
+    hosted_candidates = list(
+        Game.objects.filter(
+            host=player,
+            status__in=[
+                Game.Status.RECRUITING,
+                Game.Status.FULL,
+                Game.Status.CLOSED,
+                Game.Status.BOOKING_PENDING,
+                Game.Status.IN_PROGRESS,
+            ],
+        )
+        .select_related("booking")
+        .prefetch_related("booking__slot_items__slot", "participants")
+        .order_by("-updated_at")[:50]
+    )
+    for game in hosted_candidates:
+        if game.status != Game.Status.COMPLETED:
+            synchronize_game_lifecycle(game, expire_requests=True)
+
+    completed_games = list(
+        Game.objects.filter(host=player, status=Game.Status.COMPLETED)
+        .select_related("booking")
+        .prefetch_related("booking__slot_items__slot", "participants")
+        .order_by("-updated_at")[:50]
+    )
+    unresolved_statuses = [
+        ParticipationCommitment.Status.COMMITTED,
+        ParticipationCommitment.Status.ATTENDANCE_PENDING,
+    ]
+    for game in completed_games:
+        ensure_game_participation_commitments(game, created_by=player)
+        participant_ids = list(
+            GameParticipant.objects.filter(
+                game_id=game.id,
+                user__isnull=False,
+                status=GameParticipant.Status.CONFIRMED,
+            ).exclude(
+                participant_type=GameParticipant.ParticipantType.GUEST,
+            ).values_list("id", flat=True)
+        )
+        commitments = list(
+            ParticipationCommitment.objects.filter(
+                source_type=ParticipationCommitment.SourceType.MATCHMAKING_GAME,
+                source_id=game.id,
+                source_participant_id__in=participant_ids,
+            ).order_by("source_participant_id", "-source_version", "-id")
+        )
+        latest_by_participant = {}
+        for commitment in commitments:
+            latest_by_participant.setdefault(commitment.source_participant_id, commitment)
+        pending_commitments = [
+            commitment for participant_id in participant_ids
+            if (commitment := latest_by_participant.get(participant_id))
+            and commitment.status in unresolved_statuses
+        ]
+        if not pending_commitments:
+            continue
+        deadlines = [get_attendance_submission_deadline(commitment) for commitment in pending_commitments]
+        deadlines = [deadline for deadline in deadlines if deadline]
+        deadline_at = min(deadlines) if deadlines else None
+        game_label = "Fill My Squad" if game.game_type == Game.GameType.FILL_SQUAD else "Pickup game"
+        actions.append({
+            "id": f"attendance-required-game-{game.id}",
+            "type": "ATTENDANCE_REQUIRED",
+            "title": f"Record {game_label} attendance",
+            "message": f"Confirm attendance for {len(pending_commitments)} registered player{'' if len(pending_commitments) == 1 else 's'} in {game.title}.",
+            "created_at": game.end_at.isoformat() if game.end_at else game.updated_at.isoformat(),
+            "action_url": f"/dashboard/player/games/{game.id}/room",
+            "status": "PENDING",
+            "deadline_at": deadline_at.isoformat() if deadline_at else None,
+            "action_label": "Record attendance",
+            "priority": 1,
+        })
+
+    from team_challenges.models import TeamChallenge, TeamFixture, TeamFixtureParticipant
+    from team_challenges.services import synchronize_confirmed_team_challenges
+
+    synchronize_confirmed_team_challenges(now=now, notify=True)
+    fixtures = list(
+        TeamFixture.objects.filter(status=TeamFixture.Status.COMPLETED)
+        .filter(
+            Q(challenge__challenger_team__captain_id=player.id)
+            | Q(challenge__challenged_team__captain_id=player.id)
+        )
+        .exclude(challenge__source=TeamChallenge.Source.INSTANT_SCORER)
+        .select_related("challenge", "challenge__challenger_team", "challenge__challenged_team")
+        .prefetch_related("participants")
+        .order_by("-updated_at")[:50]
+    )
+    for fixture in fixtures:
+        if fixture.challenge.challenger_team.captain_id == player.id:
+            own_team_id = fixture.challenge.challenger_team_id
+        else:
+            own_team_id = fixture.challenge.challenged_team_id
+        own_pending = fixture.participants.filter(
+            team_id=own_team_id,
+            status=TeamFixtureParticipant.Status.SELECTED,
+        ).count()
+        if own_pending:
+            actions.append({
+                "id": f"attendance-required-fixture-{fixture.id}",
+                "type": "ATTENDANCE_REQUIRED",
+                "title": "Record team match attendance",
+                "message": f"Confirm attendance for {own_pending} player{'' if own_pending == 1 else 's'} from your team.",
+                "created_at": fixture.updated_at.isoformat(),
+                "action_url": f"/challenge-teams/{fixture.challenge_id}/room",
+                "status": "PENDING",
+                "deadline_at": None,
+                "action_label": "Record attendance",
+                "priority": 1,
+            })
+            continue
+        if not fixture.result:
+            actions.append({
+                "id": f"result-required-fixture-{fixture.id}",
+                "type": "RESULT_REQUIRED",
+                "title": "Add the team match result",
+                "message": "Record the final result so both teams can close out this match and unlock verified feedback.",
+                "created_at": fixture.updated_at.isoformat(),
+                "action_url": f"/challenge-teams/{fixture.challenge_id}/room",
+                "status": "PENDING",
+                "deadline_at": None,
+                "action_label": "Open match room",
+                "priority": 2,
+            })
+        elif not fixture.result_confirmed_at and fixture.result_submitted_by_id != player.id:
+            actions.append({
+                "id": f"result-confirmation-fixture-{fixture.id}",
+                "type": "RESULT_CONFIRMATION_REQUIRED",
+                "title": "Confirm the team match result",
+                "message": "The other captain submitted a result. Confirm it before player feedback is created.",
+                "created_at": fixture.updated_at.isoformat(),
+                "action_url": f"/challenge-teams/{fixture.challenge_id}/room",
+                "status": "PENDING",
+                "deadline_at": None,
+                "action_label": "Confirm result",
+                "priority": 2,
+            })
+
+    for item in get_pending_rating_items(player):
+        actions.append({
+            "id": f"rating-required-{item['id']}",
+            "type": "RATING_REQUIRED",
+            "title": f"Rate {item['rated_player_name']}",
+            "message": f"Share verified feedback from {item['title']}. Ratings are separate from reliability.",
+            "created_at": item.get("match_date"),
+            "action_url": item["action_url"],
+            "status": "PENDING",
+            "deadline_at": item.get("deadline_at"),
+            "action_label": "Rate player",
+            "priority": 3,
+        })
+
+    def action_sort_key(action):
+        deadline = action.get("deadline_at") or "9999-12-31T23:59:59+00:00"
+        return action.get("priority", 9), deadline, action.get("created_at") or ""
+
+    actions.sort(key=action_sort_key)
+    return actions
 
 
 def expire_due_rating_eligibilities(player=None):

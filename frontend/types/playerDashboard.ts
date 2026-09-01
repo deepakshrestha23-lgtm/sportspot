@@ -41,12 +41,22 @@ export interface PlayerNextActivity {
 
 export interface PlayerPendingAction {
   id: string;
-  type: "TEAM_INVITATION" | "BOOKING_PAYMENT" | string;
+  type:
+    | "TEAM_INVITATION"
+    | "BOOKING_PAYMENT"
+    | "ATTENDANCE_REQUIRED"
+    | "ATTENDANCE_DISPUTE"
+    | "RESULT_REQUIRED"
+    | "RESULT_CONFIRMATION_REQUIRED"
+    | "RATING_REQUIRED"
+    | string;
   title: string;
   message: string;
   created_at: string | null;
   action_url: string;
   status: string;
+  deadline_at?: string | null;
+  action_label?: string;
 }
 
 export interface PlayerRecentActivity {

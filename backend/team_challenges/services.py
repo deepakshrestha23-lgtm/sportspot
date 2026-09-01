@@ -1103,12 +1103,14 @@ def synchronize_confirmed_team_challenges(*, now=None, limit=100, notify=True):
                     notify_challenge_status(
                         challenge,
                         recipients=_challenge_recipients(challenge),
-                        title="Team match completed",
-                        message="Your scheduled team match has finished. You can review the match details in your challenges.",
+                        title="Attendance is ready to record",
+                        message="Your scheduled team match has finished. Record your team's attendance so verified feedback can follow.",
                         actor=None,
-                        key_suffix="match-completed",
+                        key_suffix="attendance-required",
                         notification_type=Notification.NotificationType.MATCH_UPDATED,
-                        action_status=Notification.ActionStatus.COMPLETED,
+                        action_required=True,
+                        action_status=Notification.ActionStatus.PENDING,
+                        action_url=f"/challenge-teams/{challenge.id}/room",
                     )
                 changed += 1
                 continue
@@ -1145,6 +1147,18 @@ def _fixture_for_update(fixture_id):
         if fixture.challenge.status == TeamChallenge.Status.CONFIRMED:
             fixture.challenge.status = TeamChallenge.Status.COMPLETED
             fixture.challenge.save(update_fields=["status", "updated_at"])
+        notify_challenge_status(
+            fixture.challenge,
+            recipients=_challenge_recipients(fixture.challenge),
+            title="Attendance is ready to record",
+            message="Your scheduled team match has finished. Record your team's attendance so verified feedback can follow.",
+            actor=None,
+            key_suffix="attendance-required",
+            notification_type=Notification.NotificationType.MATCH_UPDATED,
+            action_required=True,
+            action_status=Notification.ActionStatus.PENDING,
+            action_url=f"/challenge-teams/{fixture.challenge_id}/room",
+        )
     elif start_at and start_at <= now and fixture.status == TeamFixture.Status.SCHEDULED:
         fixture.status = TeamFixture.Status.IN_PROGRESS
         fixture.save(update_fields=["status", "updated_at"])

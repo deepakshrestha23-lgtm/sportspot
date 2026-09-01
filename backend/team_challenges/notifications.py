@@ -195,6 +195,7 @@ def notify_challenge_status(
     notification_type=Notification.NotificationType.CHALLENGE_ACCEPTED,
     action_required=False,
     action_status=Notification.ActionStatus.NONE,
+    action_url=None,
 ):
     notifications = []
     for recipient in recipients:
@@ -205,7 +206,7 @@ def notify_challenge_status(
             title=title,
             message=message,
             priority=Notification.Priority.IMPORTANT,
-            action_url=_challenge_url(challenge.id),
+            action_url=action_url or _challenge_url(challenge.id),
             related_entity_type="team_challenge",
             related_entity_id=challenge.id,
             action_required=action_required,

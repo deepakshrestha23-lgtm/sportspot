@@ -19,6 +19,7 @@ from .serializers import PlayerProfileSerializer
 from .services import (
     get_pending_rating_items,
     get_pending_attendance_reviews,
+    get_post_match_action_items,
     get_player_commitment_summary,
     get_player_rating_summary,
     resolve_commitment_dispute,
@@ -187,6 +188,7 @@ class PlayerDashboardOverviewView(APIView):
                 },
                 "next_activity": serialize_booking_activity(next_booking) if next_booking else None,
                 "pending_actions": [
+                    *get_post_match_action_items(user),
                     *[serialize_invitation_action(invitation) for invitation in pending_invitations],
                     *[serialize_payment_action(booking) for booking in pending_payment_bookings[:3]],
                 ][:5],

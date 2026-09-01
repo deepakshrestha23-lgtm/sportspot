@@ -34,6 +34,14 @@ export default function PlayerRatingsPage() {
     loadSummary();
   }, []);
 
+  useEffect(() => {
+    if (!summary || ratingTarget || typeof window === "undefined") return;
+    const requestedId = new URLSearchParams(window.location.search).get("rate");
+    if (!requestedId) return;
+    const target = summary.pending_ratings.find((item) => String(item.id) === requestedId);
+    if (target) setRatingTarget(target);
+  }, [ratingTarget, summary]);
+
   async function loadSummary() {
     setIsLoading(true);
     setError("");
@@ -123,6 +131,23 @@ export default function PlayerRatingsPage() {
         </section>
       ) : null}
 
+      {summary.pending_attendance_reviews.length || summary.pending_ratings.length ? (
+        <section aria-labelledby="match-follow-up-title">
+          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-sportGreen">Match follow-up</p>
+              <h2 className="mt-1 text-xl font-black text-sportNavy" id="match-follow-up-title">Complete your post-match actions</h2>
+              <p className="mt-1 text-sm text-slate-600">Attendance reviews and verified player feedback are collected here after a match.</p>
+            </div>
+            <Link className="text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/player/games">View completed games</Link>
+          </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {summary.pending_attendance_reviews.length ? <PendingAttendanceReviews items={summary.pending_attendance_reviews} onReview={setAttendanceTarget} /> : null}
+            {summary.pending_ratings.length ? <PendingRatings items={summary.pending_ratings} onRate={setRatingTarget} /> : null}
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid gap-3 lg:grid-cols-2">
         <ReliabilityCard reliability={summary.reliability} lastUpdated={summary.last_updated} />
         <RatingCard rating={summary.rating} />
@@ -137,8 +162,6 @@ export default function PlayerRatingsPage() {
         </div>
         <div className="space-y-4">
           <RatingSummaryCard rating={summary.rating} />
-          <PendingAttendanceReviews items={summary.pending_attendance_reviews} onReview={setAttendanceTarget} />
-          <PendingRatings items={summary.pending_ratings} onRate={setRatingTarget} />
           <GuidanceCard message={summary.improvement_guidance} />
         </div>
       </section>

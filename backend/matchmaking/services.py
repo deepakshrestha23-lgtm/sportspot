@@ -409,12 +409,15 @@ def synchronize_game_lifecycle(game, now=None, expire_requests=False):
     # Keep both operations in one transaction so read endpoints can safely
     # repair stale lifecycle data without raising a transaction error.
     with transaction.atomic():
+        previous_status = game.status
         synchronize_game_host_continuity(game)
         synchronize_linked_booking_state(game, now=now)
         game.refresh_status(now=now)
         expire_pending_reconfirmations(game, now=now)
         if expire_requests and game_should_expire_open_requests(game, now):
             expire_open_join_requests_for_game(game, now=now)
+        if previous_status != Game.Status.COMPLETED and game.status == Game.Status.COMPLETED:
+            notify_game_attendance_required(game)
     return game
 
 
@@ -2260,6 +2263,25 @@ def notify_game_published(game):
         action_status=Notification.ActionStatus.COMPLETED,
         metadata={"game_id": game.id, "booking_id": game.booking_id, "creation_mode": game.creation_mode},
         deduplication_key=f"game:{game.id}:published",
+    )
+
+
+def notify_game_attendance_required(game):
+    """Give the host a durable, direct handoff to post-match attendance."""
+    return create_notification(
+        recipient=game.host,
+        actor=None,
+        notification_type=Notification.NotificationType.MATCH_UPDATED,
+        title="Attendance is ready to record",
+        message=f"{game.title} is complete. Confirm the registered players who attended so verified feedback can follow.",
+        priority=Notification.Priority.IMPORTANT,
+        action_url=f"/dashboard/player/games/{game.id}/room",
+        related_entity_type="matchmaking_game",
+        related_entity_id=game.id,
+        action_required=True,
+        action_status=Notification.ActionStatus.PENDING,
+        metadata={"game_id": game.id, "game_type": game.game_type, "post_match_step": "attendance"},
+        deduplication_key=f"matchmaking-game:{game.id}:attendance-required",
     )
 
 

@@ -127,12 +127,13 @@ export function PendingActionsCard({ actions }: { actions: PlayerPendingAction[]
             <article className="rounded-lg border border-green-100 bg-green-50/60 p-3.5" key={action.id}>
               <div className="flex gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-sportGreen">
-                  {action.type === "TEAM_INVITATION" ? <UsersIcon /> : <MoneyIcon />}
+                  {getPendingActionIcon(action.type)}
                 </span>
                 <div className="min-w-0 flex-1">
                   <h3 className="font-black text-sportNavy">{action.title}</h3>
                   <p className="mt-1 text-sm leading-6 text-slate-600">{action.message}</p>
-                  <Link className="mt-3 inline-flex rounded-md bg-sportGreen px-3.5 py-2 text-xs font-black text-white hover:bg-green-700" href={action.action_url}>Review</Link>
+                  {action.deadline_at ? <p className="mt-2 text-xs font-black uppercase tracking-wide text-amber-700">Due {formatDate(action.deadline_at)}</p> : null}
+                  <Link className="mt-3 inline-flex rounded-md bg-sportGreen px-3.5 py-2 text-xs font-black text-white hover:bg-green-700" href={action.action_url}>{action.action_label || getPendingActionLabel(action.type)}</Link>
                 </div>
               </div>
             </article>
@@ -243,6 +244,26 @@ function getActivityIcon(category: string) {
   return <SparkIcon />;
 }
 
+function getPendingActionIcon(type: string) {
+  if (type === "TEAM_INVITATION") return <UsersIcon />;
+  if (type === "BOOKING_PAYMENT") return <MoneyIcon />;
+  if (type === "RATING_REQUIRED") return <TrendIcon />;
+  if (type === "ATTENDANCE_DISPUTE") return <WarningIcon />;
+  if (type === "RESULT_REQUIRED" || type === "RESULT_CONFIRMATION_REQUIRED") return <ChallengeIcon />;
+  return <CalendarIcon />;
+}
+
+function getPendingActionLabel(type: string) {
+  if (type === "TEAM_INVITATION") return "Review invitation";
+  if (type === "BOOKING_PAYMENT") return "Complete payment";
+  if (type === "RATING_REQUIRED") return "Rate player";
+  if (type === "ATTENDANCE_DISPUTE") return "Review report";
+  if (type === "ATTENDANCE_REQUIRED") return "Record attendance";
+  if (type === "RESULT_CONFIRMATION_REQUIRED") return "Confirm result";
+  if (type === "RESULT_REQUIRED") return "Open match room";
+  return "Open match";
+}
+
 function UsersIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM8 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8 2a5 5 0 0 1 5 5M3 20a5 5 0 0 1 10 0" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>; }
 function BallIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-18v18M4.5 7.5c2.5 2 5 3 7.5 3s5-1 7.5-3M4.5 16.5c2.5-2 5-3 7.5-3s5 1 7.5 3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>; }
 function CalendarIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M7 3v3m10-3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>; }
@@ -254,3 +275,4 @@ function ClockIcon() { return <svg aria-hidden="true" className="h-6 w-6" fill="
 function LocationIcon() { return <svg aria-hidden="true" className="h-6 w-6" fill="none" viewBox="0 0 24 24"><path d="M12 21s7-4.8 7-11a7 7 0 1 0-14 0c0 6.2 7 11 7 11Zm0-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>; }
 function SparkIcon() { return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Zm6 12 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>; }
 function MoneyIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M4 7h16v10H4V7Zm3 3h.01M17 14h.01M9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>; }
+function WarningIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="m12 4 8 15H4L12 4Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" /><path d="M12 9v4m0 3h.01" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>; }

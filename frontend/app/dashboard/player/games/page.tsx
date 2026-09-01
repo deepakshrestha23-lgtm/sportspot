@@ -76,7 +76,7 @@ export default function PlayerGamesPage() {
             {activeTab === "upcoming" ? <UnifiedGameSection games={data.upcoming} teamMatches={data.team_matches?.upcoming || []} emptyTitle="You have no upcoming games." emptyAction="Find a Game" emptyHref="/find-game" /> : null}
             {activeTab === "hosted" ? <GameGrid games={data.hosted} emptyTitle="You have not created a game yet." emptyAction="Create Game" emptyHref="/dashboard/player/games/create" hostMode /> : null}
             {activeTab === "requests" ? <RequestsSection data={data} onRefresh={loadGames} /> : null}
-            {activeTab === "completed" ? <UnifiedGameSection games={data.completed} teamMatches={data.team_matches?.completed || []} emptyTitle="You have no completed games yet." /> : null}
+            {activeTab === "completed" ? <UnifiedGameSection games={data.completed} teamMatches={data.team_matches?.completed || []} emptyTitle="You have no completed games yet." showTrustLink /> : null}
             {activeTab === "cancelled" ? <UnifiedGameSection games={data.cancelled} teamMatches={data.team_matches?.cancelled || []} emptyTitle="You have no cancelled games." /> : null}
           </div>
         </section>
@@ -104,7 +104,7 @@ function GameActivityCard({ game, hostMode }: { game: MatchmakingGame; hostMode:
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500"><span className="text-sportNavy">{game.occupied_spots_count}/{game.total_capacity} players</span><span aria-hidden="true" className="text-slate-300">·</span><span>{game.available_spots} spots open</span>{game.waitlist_count ? <><span aria-hidden="true" className="text-slate-300">·</span><span>{game.waitlist_count} waitlisted</span></> : null}</div>
       </div>
       {game.requires_reconfirmation ? <div className="border-t border-amber-100 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800 sm:px-5">{game.user_state.requires_reconfirmation ? "The final booking changed. Confirm your spot before attending." : game.user_state.is_host ? `${game.registered_reconfirmation_pending_count} player response${game.registered_reconfirmation_pending_count === 1 ? "" : "s"} and ${game.guest_confirmation_pending_count} guest acknowledgement${game.guest_confirmation_pending_count === 1 ? "" : "s"} still pending.` : "The host is coordinating an updated game schedule."}</div> : null}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-5"><div className="min-w-0 text-xs font-bold text-slate-500">{isActiveGame && recruitmentCountdown ? <p className="flex items-center gap-1.5 truncate"><ClockIcon />{recruitmentCountdown}</p> : null}{isActiveGame && !game.is_booking_verified && bookingCountdown ? <p className="mt-1 truncate text-blue-700">Court booking: {bookingCountdown}</p> : null}</div><div className="flex flex-wrap gap-2"><Link className="sport-primary-button min-h-9 px-3 text-xs" href={isHost ? `/dashboard/player/games/${game.id}` : `/find-game/${game.id}`}>{isHost ? "Manage game" : "View game"}</Link>{game.user_state.room_access && game.user_state.room_access !== "NONE" ? <Link className="sport-secondary-button min-h-9 px-3 text-xs" href={`/dashboard/player/games/${game.id}/room`}>{roomLinkLabel(game)}</Link> : null}</div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-5"><div className="min-w-0 text-xs font-bold text-slate-500">{isActiveGame && recruitmentCountdown ? <p className="flex items-center gap-1.5 truncate"><ClockIcon />{recruitmentCountdown}</p> : null}{isActiveGame && !game.is_booking_verified && bookingCountdown ? <p className="mt-1 truncate text-blue-700">Court booking: {bookingCountdown}</p> : null}{game.status === "COMPLETED" && isHost ? <p className="text-amber-700">Attendance review is in the game room.</p> : null}</div><div className="flex flex-wrap gap-2"><Link className="sport-primary-button min-h-9 px-3 text-xs" href={isHost ? `/dashboard/player/games/${game.id}` : `/find-game/${game.id}`}>{isHost ? "Manage game" : "View game"}</Link>{game.user_state.room_access && game.user_state.room_access !== "NONE" ? <Link className="sport-secondary-button min-h-9 px-3 text-xs" href={`/dashboard/player/games/${game.id}/room`}>{roomLinkLabel(game, isHost)}</Link> : null}</div></div>
     </article>
   );
 }
@@ -115,17 +115,18 @@ function GameMeta({ detail, icon, label, value }: { detail: string; icon: React.
 
 function RequestsSection({ data, onRefresh }: { data: MyGamesResponse; onRefresh: () => void }) { return <div className="grid gap-5 xl:grid-cols-2"><RequestList title="My Requests" requests={data.requests} onRefresh={onRefresh} /><RequestList title="Requests to My Games" requests={data.incoming_requests} hostMode onRefresh={onRefresh} /></div>; }
 
-function roomLinkLabel(game: MatchmakingGame) { if (game.user_state.room_access === "READ_ONLY") return "View Game Record"; if (game.user_state.room_access === "RECONFIRMATION") return "Review Schedule Change"; if (game.game_type === "FILL_SQUAD") return game.is_booking_verified ? "Squad Room" : "Squad Planning"; return game.is_booking_verified ? "Open Game Room" : "Planning Room"; }
+function roomLinkLabel(game: MatchmakingGame, isHost = false) { if (game.status === "COMPLETED") return isHost ? "Record attendance" : "View game record"; if (game.user_state.room_access === "READ_ONLY") return "View game record"; if (game.user_state.room_access === "RECONFIRMATION") return "Review schedule change"; if (game.game_type === "FILL_SQUAD") return game.is_booking_verified ? "Open squad room" : "Open squad planning"; return game.is_booking_verified ? "Open game room" : "Open planning room"; }
 
 function RequestList({ hostMode = false, onRefresh, requests, title }: { title: string; requests: JoinRequest[]; hostMode?: boolean; onRefresh: () => void }) {
   if (requests.length === 0) return <EmptyState title={hostMode ? "No players have requested to join your games." : "You have no join requests."} />;
   return <section className="sport-surface p-4"><h2 className="text-lg font-black text-sportNavy">{title}</h2><div className="mt-3 space-y-3">{requests.map((request) => <RequestCard hostMode={hostMode} key={request.id} onRefresh={onRefresh} request={request} />)}</div></section>;
 }
 
-function UnifiedGameSection({ emptyAction, emptyHref, emptyTitle, games, teamMatches }: { games: MatchmakingGame[]; teamMatches: MyTeamMatch[]; emptyTitle: string; emptyAction?: string; emptyHref?: string }) {
+function UnifiedGameSection({ emptyAction, emptyHref, emptyTitle, games, showTrustLink = false, teamMatches }: { games: MatchmakingGame[]; teamMatches: MyTeamMatch[]; emptyTitle: string; emptyAction?: string; emptyHref?: string; showTrustLink?: boolean }) {
   if (games.length === 0 && teamMatches.length === 0) return <EmptyState title={emptyTitle} action={emptyAction} href={emptyHref} />;
   return (
     <div className="space-y-6">
+      {showTrustLink ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-green-100 bg-green-50/60 px-4 py-3"><p className="text-sm font-bold text-sportNavy">Match follow-up</p><Link className="text-sm font-black text-sportGreen hover:text-green-700" href="/dashboard/player/ratings">Open Ratings & Reliability</Link></div> : null}
       {games.length ? <section><h2 className="mb-3 text-lg font-black text-sportNavy">Pickup and squad games</h2><GameGrid games={games} emptyTitle={emptyTitle} /></section> : null}
       {teamMatches.length ? <section><div className="mb-3 flex flex-wrap items-baseline justify-between gap-2"><div><h2 className="text-lg font-black text-sportNavy">Team Challenge fixtures</h2><p className="mt-1 text-sm text-slate-500">Confirmed matches connected to your lineup or captain role.</p></div><Link className="text-sm font-black text-sportGreen hover:underline" href="/challenge-teams">View challenges</Link></div><TeamMatchGrid matches={teamMatches} /></section> : null}
     </div>
@@ -139,7 +140,7 @@ function TeamMatchGrid({ matches }: { matches: MyTeamMatch[] }) {
 function TeamMatchCard({ match }: { match: MyTeamMatch }) {
   const booking = match.booking_summary;
   const location = booking ? [booking.venue_name, booking.venue_area || booking.venue_city].filter(Boolean).join(" · ") : "Court details unavailable";
-  const roomLabel = match.room_access === "READ_ONLY" ? "View Match Record" : match.room_access === "RECONFIRMATION" ? "Review Schedule Change" : match.room_access === "IN_PROGRESS" ? "Open Game Room" : "Open Game Room";
+  const roomLabel = match.status === "COMPLETED" ? (match.is_captain ? "Record attendance" : "View match record") : match.room_access === "READ_ONLY" ? "View match record" : match.room_access === "RECONFIRMATION" ? "Review schedule change" : "Open game room";
   const matchStatus = match.status_label || formatStatus(match.status);
   return (
     <article className="group overflow-hidden rounded-lg border border-slate-200 bg-white transition-shadow hover:border-green-300 hover:shadow-[0_8px_24px_rgba(16,32,22,0.08)]">

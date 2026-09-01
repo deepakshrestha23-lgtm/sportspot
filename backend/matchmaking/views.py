@@ -238,6 +238,7 @@ class MyGamesView(APIView):
             TeamFixtureParticipant.Status.SELECTED,
             TeamFixtureParticipant.Status.ATTENDED,
             TeamFixtureParticipant.Status.ABSENT,
+            TeamFixtureParticipant.Status.UNVERIFIED,
         ]
         viewer_fixture_participants = TeamFixtureParticipant.objects.filter(
             player=user,
