@@ -1,6 +1,7 @@
 from datetime import timedelta
 from pathlib import Path
 import os
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -181,6 +182,11 @@ SIMPLE_JWT = {
 }
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+frontend_host = urlparse(FRONTEND_URL).hostname
+if frontend_host and frontend_host not in ALLOWED_HOSTS:
+    # AllowedHostsOriginValidator uses this list to validate browser WebSocket
+    # origins, so the configured frontend must be present in production.
+    ALLOWED_HOSTS.append(frontend_host)
 KHALTI_BASE_URL = os.getenv("KHALTI_BASE_URL", "https://dev.khalti.com/api/v2")
 KHALTI_SECRET_KEY = os.getenv("KHALTI_SECRET_KEY", "")
 KHALTI_WEBSITE_URL = os.getenv("KHALTI_WEBSITE_URL", FRONTEND_URL)
