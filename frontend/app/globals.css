@@ -17,6 +17,372 @@
   --sport-shadow: 0 1px 2px rgba(16, 32, 22, 0.04), 0 8px 22px rgba(16, 32, 22, 0.035);
 }
 
+/* Admin operations workspace: quiet, dense surfaces for scanning queues and states. */
+.admin-dashboard-theme {
+  background: var(--sport-canvas);
+}
+
+.admin-dashboard-theme .admin-dashboard-main {
+  min-height: calc(100vh - 64px);
+}
+
+.admin-dashboard-theme .admin-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dce6e0;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(12, 37, 24, 0.04);
+}
+
+.admin-dashboard-theme .admin-list-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.admin-dashboard-theme .admin-count-badge {
+  display: inline-flex;
+  min-height: 1.8rem;
+  align-items: center;
+  border: 1px solid #dce6e0;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 0.25rem 0.7rem;
+  color: #526477;
+  font-size: 0.73rem;
+  font-weight: 800;
+}
+
+.admin-dashboard-theme .admin-refresh-button {
+  display: inline-flex;
+  min-height: 2.6rem;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid #dce6e0;
+  border-radius: 0.65rem;
+  background: #ffffff;
+  padding: 0.55rem 0.85rem;
+  color: #0b1220;
+  font-size: 0.78rem;
+  font-weight: 850;
+  transition: border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.admin-dashboard-theme .admin-refresh-button:hover {
+  border-color: #a9dfbe;
+  color: #087a3e;
+  box-shadow: 0 3px 10px rgba(8, 122, 62, 0.08);
+}
+
+.admin-dashboard-theme .admin-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #e7eee9;
+  padding: 1.25rem 1.35rem;
+}
+
+.admin-dashboard-theme .admin-panel-heading h2 {
+  color: #07152b;
+  font-size: 1.1rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.admin-dashboard-theme .admin-panel-heading p {
+  margin-top: 0.35rem;
+  color: #63758a;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.admin-dashboard-theme .admin-status-pill {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  gap: 0.4rem;
+  border-width: 1px;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.admin-dashboard-theme .admin-empty-state {
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+.admin-dashboard-theme .admin-empty-icon {
+  display: inline-flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eaf5ee;
+  color: #087a3e;
+  font-weight: 900;
+}
+
+.admin-dashboard-theme .admin-empty-state h2 {
+  margin-top: 0.9rem;
+  color: #07152b;
+  font-size: 1.05rem;
+  font-weight: 850;
+}
+
+.admin-dashboard-theme .admin-empty-state p {
+  margin: 0.4rem auto 0;
+  max-width: 30rem;
+  color: #63758a;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.admin-dashboard-theme .admin-data-table {
+  width: 100%;
+  min-width: 58rem;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.admin-dashboard-theme .admin-data-table th {
+  background: #f8faf9;
+  color: #63758a;
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.09em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.admin-dashboard-theme .admin-data-table th,
+.admin-dashboard-theme .admin-data-table td {
+  border-bottom: 1px solid #e7eee9;
+  padding: 1.05rem 1.15rem;
+  vertical-align: middle;
+}
+
+.admin-dashboard-theme .admin-data-table tbody tr {
+  transition: background-color 160ms ease;
+}
+
+.admin-dashboard-theme .admin-data-table tbody tr:hover {
+  background: #fbfdfc;
+}
+
+.admin-dashboard-theme .admin-users-account {
+  width: 30%;
+}
+
+.admin-dashboard-theme .admin-users-role {
+  width: 14%;
+}
+
+.admin-dashboard-theme .admin-users-joined {
+  width: 14%;
+}
+
+.admin-dashboard-theme .admin-users-activity {
+  width: 20%;
+}
+
+.admin-dashboard-theme .admin-users-access {
+  width: 14%;
+}
+
+.admin-dashboard-theme .admin-users-action {
+  width: 8%;
+}
+
+.admin-dashboard-theme .admin-bookings-id {
+  width: 24%;
+}
+
+.admin-dashboard-theme .admin-bookings-schedule {
+  width: 16%;
+}
+
+.admin-dashboard-theme .admin-bookings-customer {
+  width: 21%;
+}
+
+.admin-dashboard-theme .admin-bookings-payment {
+  width: 16%;
+}
+
+.admin-dashboard-theme .admin-bookings-state {
+  width: 15%;
+}
+
+.admin-dashboard-theme .admin-bookings-action {
+  width: 8%;
+}
+
+.admin-dashboard-theme .admin-avatar {
+  display: inline-flex;
+  height: 2.45rem;
+  width: 2.45rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ccefd9;
+  border-radius: 0.8rem;
+  background: linear-gradient(145deg, #f1fbf5, #e1f5e9);
+  color: #087a3e;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.admin-dashboard-theme .admin-primary-text,
+.admin-dashboard-theme .admin-secondary-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-dashboard-theme .admin-primary-text {
+  color: #07152b;
+  font-size: 0.84rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.admin-dashboard-theme .admin-secondary-text {
+  margin-top: 0.25rem;
+  color: #63758a;
+  font-size: 0.74rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.admin-dashboard-theme .admin-row-action {
+  display: inline-flex;
+  min-height: 2.35rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid;
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.73rem;
+  font-weight: 850;
+  white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.admin-dashboard-theme .admin-row-action-danger {
+  border-color: #fecaca;
+  background: #ffffff;
+  color: #b42318;
+}
+
+.admin-dashboard-theme .admin-row-action-danger:hover {
+  background: #fff5f5;
+  border-color: #fca5a5;
+}
+
+.admin-dashboard-theme .admin-row-action-success {
+  border-color: #b8ebcb;
+  background: #f4fcf7;
+  color: #087a3e;
+}
+
+.admin-dashboard-theme .admin-row-action-success:hover {
+  background: #eaf8ef;
+  border-color: #86d7a4;
+}
+
+.admin-dashboard-theme .admin-no-action {
+  color: #94a3b8;
+  font-size: 0.73rem;
+  font-weight: 750;
+}
+
+.admin-dashboard-theme .admin-table-scroll {
+  overflow-x: auto;
+}
+
+.admin-dashboard-theme .admin-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  .admin-dashboard-theme .admin-data-table,
+  .admin-dashboard-theme .admin-data-table tbody,
+  .admin-dashboard-theme .admin-data-table tr,
+  .admin-dashboard-theme .admin-data-table td {
+    display: block;
+  }
+
+  .admin-dashboard-theme .admin-data-table thead {
+    display: none;
+  }
+
+  .admin-dashboard-theme .admin-data-table tr {
+    border-bottom: 1px solid #e7eee9;
+    padding: 0.65rem 1rem;
+  }
+
+  .admin-dashboard-theme .admin-list-header {
+    align-items: flex-start;
+  }
+
+  .admin-dashboard-theme .admin-list-header,
+  .admin-dashboard-theme .admin-list-header > div {
+    min-width: 0;
+  }
+
+  .admin-dashboard-theme .admin-list-header {
+    flex-direction: column;
+  }
+
+  .admin-dashboard-theme .admin-list-header .admin-refresh-button {
+    width: 100%;
+  }
+
+  .admin-dashboard-theme .admin-data-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .admin-dashboard-theme .admin-data-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 0;
+    padding: 0.42rem 0;
+    text-align: right;
+  }
+
+  .admin-dashboard-theme .admin-data-table {
+    min-width: 0;
+    table-layout: auto;
+  }
+
+  .admin-dashboard-theme .admin-data-table .admin-primary-text,
+  .admin-dashboard-theme .admin-data-table .admin-secondary-text {
+    max-width: 12rem;
+  }
+
+  .admin-dashboard-theme .admin-data-table td::before {
+    color: #63758a;
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: 0.68rem;
+    font-weight: 850;
+    letter-spacing: 0.08em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+}
+
 /* Owner feedback workspace: a compact operational surface for monitoring player voice. */
 .owner-dashboard-theme .owner-feedback-page {
   display: grid;

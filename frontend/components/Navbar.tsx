@@ -303,8 +303,9 @@ function getNavLinks(user: User | null, ownerVenueStatus: VenueStatus | "NONE") 
   return [
     { label: "Admin Dashboard", href: "/dashboard/admin" },
     { label: "Venue Approvals", href: "/dashboard/admin/venues" },
-    { label: "Bookings", href: "/dashboard/owner/bookings" },
-    { label: "Users", href: "/dashboard/admin" },
+    { label: "Bookings", href: "/dashboard/admin/bookings" },
+    { label: "Users", href: "/dashboard/admin/users" },
+    { label: "Reports", href: "/dashboard/admin/reports" },
   ];
 }
 
@@ -329,6 +330,9 @@ function getProfileLinks(user: User) {
   return [
     { label: "Admin Dashboard", href: "/dashboard/admin" },
     { label: "Venue Approvals", href: "/dashboard/admin/venues" },
+    { label: "Bookings & payments", href: "/dashboard/admin/bookings" },
+    { label: "Users", href: "/dashboard/admin/users" },
+    { label: "Reports & moderation", href: "/dashboard/admin/reports" },
   ];
 }
 

@@ -1549,12 +1549,44 @@ class AdminVenueListView(APIView):
 
     def get(self, request):
         venues = Venue.objects.select_related("owner", "reviewed_by").prefetch_related("courts")
-        status_filter = request.query_params.get("status")
-        if status_filter:
+        status_filter = str(request.query_params.get("status") or "").upper().strip()
+        if status_filter in Venue.Status.values:
             venues = venues.filter(status=status_filter)
         else:
             venues = venues.filter(status__in=[Venue.Status.PENDING, Venue.Status.NEEDS_CHANGES, Venue.Status.REJECTED, Venue.Status.APPROVED, Venue.Status.SUSPENDED])
-        return Response({"venues": AdminVenueSerializer(venues, many=True, context={"request": request}).data})
+        query = str(request.query_params.get("q") or "").strip()
+        if query:
+            venues = venues.filter(
+                Q(name__icontains=query)
+                | Q(address__icontains=query)
+                | Q(area__icontains=query)
+                | Q(city__icontains=query)
+                | Q(owner__full_name__icontains=query)
+                | Q(owner__email__icontains=query)
+            )
+        venues = venues.order_by("-submitted_at", "-updated_at", "-id")
+        try:
+            page_size = min(max(int(request.query_params.get("page_size") or 25), 1), 50)
+        except (TypeError, ValueError):
+            page_size = 25
+        try:
+            page = max(int(request.query_params.get("page") or 1), 1)
+        except (TypeError, ValueError):
+            page = 1
+        total = venues.count()
+        offset = (page - 1) * page_size
+        page_venues = venues[offset : offset + page_size]
+        return Response(
+            {
+                "venues": AdminVenueSerializer(page_venues, many=True, context={"request": request}).data,
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total,
+                    "has_more": (page * page_size) < total,
+                },
+            }
+        )
 
 
 class AdminVenueReviewView(APIView):

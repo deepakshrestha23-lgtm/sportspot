@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "notifications",
     "venues",
     "wishlists",
+    "admin_portal",
 ]
 
 MIDDLEWARE = [

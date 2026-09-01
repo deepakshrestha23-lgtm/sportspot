@@ -2,9 +2,11 @@
 
 SportSpot is a Nepal-focused sports web application for Cricksal players, teams, court owners, and administrators.
 
-Current development status: active local development. Authentication, email verification, password recovery, player profiles, player dashboard shell and core dashboard pages, teams, invitations, venue onboarding, admin venue review, court discovery, multi-slot booking, Khalti payment verification, notifications, transactional emails, owner refund actions, wishlist support, Pickup Game matchmaking, Fill My Squad temporary-player recruitment, structured Planning/Game/Squad Rooms, booking-payment reconciliation, request lifecycle history, automatic platform maintenance, shared player participation commitments with host attendance review and player dispute protection, a dedicated Venue Manager workspace shell with top bar, sidebar, Overview, and Calendar, authenticated user-scoped WebSocket notification delivery, and a partially complete Team Challenge workflow with discovery, direct/open proposals, multiple open-team responses, opponent selection, counter-proposals, acceptance, booking handoff, notifications, expiry maintenance, rescheduling/reconfirmation, and protected fixture-room coordination exist in the repository. Broader abuse/report moderation, staff dispute tooling, production deployment, Redis provisioning for shared push delivery, owner offline booking, exhaustive concurrency testing, and several admin operations are not complete.
+Current development status: active local development. The repository contains the core SportSpot venue, booking, matchmaking, team challenge, chat, notification, trust, and cricket-scoring workflows. Implemented areas include email verification and password recovery, role-based player and venue-owner workspaces, court discovery and filtering, venue onboarding and admin review, owner location pin/reverse lookup/public maps, multi-slot Khalti booking and refunds, QR/code check-in, Pickup Game and Fill My Squad recruitment, team management, Team Challenge proposals and fixtures, protected real-time chat with message notifications and five-minute edit/delete controls, attendance and reliability finality rules, peer-rating eligibility, a dedicated Cricket Scorer, completed scorecard viewing, player cricket performance, and team cricket records.
 
-Last repository verification: 2026-08-30. The latest checked branch is `main`.
+The project remains an academic/local-development MVP. Production deployment, Redis-backed multi-worker real-time delivery, owner offline booking, extensive concurrency testing, automated payment refunds, and deeper staff audit history are not complete.
+
+Last repository verification: 2026-09-01. The latest checked branch is `main`.
 
 Current sport scope: Cricksal only.
 
@@ -31,11 +33,10 @@ Outside current scope:
 - Multi-sport UI.
 - Real automatic refund transfer.
 - Split payment.
-- Team-based open games beyond Pickup Game.
-- General disputes, appeals, and abuse moderation for games and team challenges. Attendance disputes now have a bounded player review flow and protected staff resolution endpoint, while a broader case-management console remains future work.
-- Full chat-based Game Room.
-- Rating submission and recommendation engine.
-- Production deployment and monitoring.
+- Smart player/team matchmaking and recommendation ranking.
+- General abuse moderation and a full staff case-management console. Attendance disputes have a bounded player review flow and protected staff resolution endpoint.
+- Automated payment-gateway refunds and owner offline bookings.
+- Production-grade shared real-time infrastructure and operational monitoring.
 
 ## 3. User Roles and Permissions
 
@@ -44,7 +45,7 @@ Outside current scope:
 | Guest | Public visitor | View homepage and public court discovery, register, log in, request password reset | Cannot book, save wishlist, manage teams, or access dashboards |
 | Player | Cricksal participant | Verify email, log in, use the Player Dashboard, maintain profile, upload profile photo, create teams, invite by SportSpot ID, add guests, accept/reject invitations, view member profile cards, save wishlist items, discover venues, reserve consecutive slots, pay with Khalti, view bookings, cancel eligible bookings, receive notifications, and use the available Team Challenge discovery and captain-authorized proposal actions | Cannot manage venues, slots, owner refunds, or admin review |
 | Court Owner | Venue operator | Verify email, use the Venue Manager workspace, set up venue, upload photos/proof, submit for review, manage own courts, generate/block/unblock slots, view operational calendar, view bookings, view venue reports, cancel own bookings, send booking messages, process owner-side refund records | Cannot create player teams or approve venues |
-| Admin | Internal reviewer | Django admin access, frontend admin dashboard, venue approval/request-changes/rejection/suspension | Public registration is blocked; full users/bookings/reports/disputes admin is incomplete |
+| Admin | Internal reviewer | Django admin access, frontend admin control center, venue review, user access controls, booking/payment oversight, feedback moderation, and attendance-dispute resolution | Public registration is blocked; financial settlement and deeper audit tooling remain outside the current MVP |
 
 ## 4. Technology Stack
 
@@ -62,6 +63,7 @@ Outside current scope:
 | Email | Django email backend via console or SMTP | OTP, reset links, transactional emails | Simple local and real SMTP support |
 | Payment | Khalti Web Checkout API | Booking payment initiation and verification | Nepal-relevant payment provider |
 | Media | Django local media storage | Uploaded images and documents | Practical for local/FYP development |
+| Real time | Django Channels, Daphne, optional Redis | Authenticated notification, game-chat, and fixture-chat delivery | In-memory local fallback; Redis is required for multiple workers |
 
 ## 5. System Architecture
 
@@ -79,7 +81,7 @@ User
 Logical layers:
 
 - Presentation: `frontend/app`, `frontend/components`, `frontend/lib`, `frontend/types`.
-- Application/API: Django apps in `backend/accounts`, `players`, `teams`, `venues`, `matchmaking`, `team_challenges`, `notifications`, `wishlists`.
+- Application/API: Django apps in `backend/accounts`, `players`, `teams`, `venues`, `matchmaking`, `team_challenges`, `scoring`, `notifications`, `wishlists`.
 - Data/services: PostgreSQL, local media files, SMTP provider, Khalti.
 
 No architecture diagram is currently present.
@@ -97,7 +99,8 @@ No architecture diagram is currently present.
 │   ├── teams/              # Teams, members, invitations, guests
 │   ├── venues/             # Venues, courts, slots, booking, Khalti, policies
 │   ├── matchmaking/        # Pickup Game and Fill My Squad recruitment
-│   ├── team_challenges/    # Team challenges, proposals, responses, fixtures
+│   ├── team_challenges/    # Challenges, proposals, fixtures, attendance, chat
+│   ├── scoring/            # Cricket scorer, ball-by-ball logs, scorecards, performance
 │   ├── notifications/      # Notification Centre and email delivery
 │   └── wishlists/          # Player saved venues/courts
 ├── frontend/
@@ -105,8 +108,9 @@ No architecture diagram is currently present.
 │   ├── components/         # Navbar, dashboard shell, Notification Centre, modals, toasts
 │   │   ├── owner/          # Venue Manager top bar, sidebar, dashboard shell, location picker
 │   │   └── venue/          # Public venue map components
-│   ├── lib/                # API, auth, dates, toast helpers
+│   ├── lib/                # API, auth, dates, media, toast helpers
 │   ├── types/              # TypeScript domain types
+│   ├── e2e/                 # Playwright scorer and workflow coverage
 │   └── public/images/      # Logo/auth/home assets
 ├── scripts/                # Windows helpers for Gmail/Khalti env setup
 ├── .env.example
@@ -114,9 +118,20 @@ No architecture diagram is currently present.
 └── README.md
 ```
 
+### Key UI routes
+
+| Area | Routes |
+| --- | --- |
+| Public discovery | `/`, `/courts`, `/courts/{id}`, `/find-game`, `/find-game/{gameId}`, `/challenge-teams`, `/challenge-teams/{challengeId}` |
+| Player workspace | `/dashboard/player`, `/dashboard/player/profile`, `/dashboard/player/teams`, `/dashboard/player/games`, `/dashboard/player/bookings`, `/dashboard/player/ratings`, `/dashboard/player/performance`, `/dashboard/player/settings`, `/dashboard/player/wishlist` |
+| Match coordination | `/dashboard/player/games/create`, `/dashboard/player/games/{gameId}/room`, `/challenge-teams/{challengeId}/room`, `/challenge-teams/{challengeId}/scorer` |
+| Cricket scoring | `/scorer`, `/dashboard/player/performance/scorecards/{fixtureId}` |
+| Venue Manager | `/dashboard/owner`, `/dashboard/owner/venue-setup`, `/dashboard/owner/venue`, `/dashboard/owner/courts`, `/dashboard/owner/availability`, `/dashboard/owner/calendar`, `/dashboard/owner/bookings`, `/dashboard/owner/refunds`, `/dashboard/owner/reviews`, `/dashboard/owner/reports`, `/dashboard/owner/settings` |
+| Administration | `/dashboard/admin`, `/dashboard/admin/venues`, `/dashboard/admin/users`, `/dashboard/admin/bookings`, `/dashboard/admin/reports`, `/dashboard/admin/reliability`, `/dashboard/admin/operations`, `/admin/` |
+
 ## 7. Current Implementation Status
 
-Status categories used here: Completed, Partially completed, In progress, Planned, Blocked, Needs verification.
+Status categories used here: Completed, Completed (MVP), Partially completed, In progress, Planned, Blocked, Needs verification.
 
 ### Frontend Navigation and Dashboards
 
@@ -147,7 +162,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Login/JWT/refresh | Completed | `LoginSerializer`, `VerifiedTokenRefreshView` | Consider secure-cookie auth later |
 | Forgot/reset password | Completed | `PasswordResetToken`, `/forgot-password`, `/reset-password` | Production should use neutral account recovery messaging |
 | Logout | Completed | Frontend clears session | Backend refresh-token blacklist not implemented |
-| Account suspension | Planned | No full moderation flow found | Add admin user controls |
+| Account suspension | Completed (MVP) | `/api/admin/users/{id}/status/`, admin Users page, auth-version invalidation | Add richer case notes and audit history later |
 
 ### Player Profile
 
@@ -182,7 +197,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Fill My Squad creation | Partially completed | `Game.game_type`, team captain validation, booking-first/plan-first flow | Continue operational polish and deeper end-to-end coverage |
 | Join requests and host decisions | Partially completed | `GameJoinRequest`, request decision/withdraw APIs, waitlist and request history | Broaden concurrency, notification, and browser-flow tests |
 | Guests and registered-player invitations | Partially completed | Guest participant and SportSpot ID invitation APIs | Continue lifecycle and post-game invitation coverage |
-| Planning Room/Game Room | Partially completed | `/games/{game_id}/room/`, participant access rules | Richer room activity and future real-time collaboration |
+| Planning Room/Game Room | Partially completed | `/games/{game_id}/room/`, participant access rules, room chat | Richer room activity and broader collaboration coverage |
 
 ### Team Challenges
 
@@ -194,7 +209,22 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Accept, counter, decline and withdraw | Partially completed | challenge detail actions, immutable proposals, and service layer | Add more concurrency and browser-flow tests |
 | Booking-first and plan-first challenge lifecycle | Partially completed | `attach-booking/`, `reschedule/`, `reconfirm/`, `TeamFixture`, booking synchronisation service | Broaden browser/concurrency coverage and finalize dispute policy |
 | Challenge notifications and deadline expiry | Partially completed | `team_challenges/notifications.py`, captain-continuity synchroniser, `expire_team_challenges`, unified maintenance | Configure scheduled maintenance and expand notification coverage |
-| Challenge fixture/Game Room | Partially completed | `/challenges/{id}/room/`, lineup, attendance, player dispute review, result submit/confirm, participant permissions, rating eligibility | Add staff dispute tooling, richer activity, and broader end-to-end coverage |
+| Challenge fixture/Game Room | Partially completed | `/challenges/{id}/room/`, lineup, attendance, fixture chat, player dispute review, result submit/confirm, participant permissions, rating eligibility | Add staff dispute tooling, richer activity, and broader end-to-end coverage |
+| Challenge fixture chat | Completed (MVP) | `/fixtures/{fixture_id}/chat/`, authenticated chat delivery, notifications | Add moderation tools and broader delivery coverage |
+
+### Cricket Scoring and Player Performance
+
+| Feature | Status | Evidence | Remaining work |
+| --- | --- | --- | --- |
+| Cricket Scorer workspace | Completed (MVP) | `/scorer`, `backend/scoring/` | Broader browser and concurrency coverage |
+| Instant scored match request | Completed (MVP) | Captain-to-captain scoring requests and accepted fixtures | Scheduling and richer match administration later |
+| Team Challenge scorecard | Completed (MVP) | `/challenge-teams/{challengeId}/scorer` | Broader fixture/scorer QA |
+| Squad confirmation and toss | Completed | `CricketSquadPlayer`, squad confirmation, toss decision | None known for the current MVP |
+| Ball-by-ball scoring | Completed (MVP) | Runs, wides, no-balls, byes, leg-byes, wickets, innings transitions | Full professional scoring rules and scorekeeper roles later |
+| Correction controls | Completed (MVP) | Last-ball edit and undo with persisted event history | Staff correction audit tooling later |
+| Completed scorecard viewer | Completed | `/dashboard/player/performance/scorecards/{fixtureId}` | Export/share formats later |
+| Player cricket performance | Completed (MVP) | `/dashboard/player/performance`, scorer-backed batting, bowling, and fielding totals | Broader statistics and pagination later |
+| Team cricket record | Completed (MVP) | Team detail overview, completed scorecards only | League/table views later |
 
 ### Venue and Court Discovery
 
@@ -209,7 +239,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Facilities filter | Completed | backend catalogue | Align labels over time |
 | Date/time/duration filters | Completed | backend validation and URL params | Mobile filters apply immediately |
 | Price filter | Completed | real slot prices | Optional slider |
-| Rating filter/sort | Partially completed | rating fields/sort option | no real rating workflow |
+| Rating filter/sort | Completed (MVP) | rating fields/sort option and completed paid-booking review flow | More review volume, moderation, and analytics later |
 | Pagination | Completed | API and UI | None known |
 
 ### Court Owner
@@ -230,6 +260,7 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Block/unblock slots | Completed | `SlotStatusView`, block metadata on `CourtSlot` | Court-closure model can be added later |
 | Owner operations calendar | Completed | `/dashboard/owner/calendar`, `/api/venues/owner/calendar/`, `/api/venues/owner/calendar/block/` | Manual booking creation not implemented |
 | Venue owner reports | Partially completed | `/dashboard/owner/reports`, `/api/venues/owner/reports/`, bounded custom periods, CSV export | Comparison periods, forecasting, and richer staff analytics later |
+| Venue owner reviews | Completed (MVP) | `/dashboard/owner/reviews`, owner reviews/report API | Staff moderation and response tools later |
 | Payment and refund operations | Completed | `/dashboard/owner/refunds`, `/api/venues/owner/refunds/` | Automated money transfer and gateway reconciliation remain future work |
 | Offline booking | Planned | navigation concept but no complete model/API | Build owner offline booking flow |
 
@@ -266,20 +297,23 @@ Status categories used here: Completed, Partially completed, In progress, Planne
 | Feature | Status | Evidence | Remaining work |
 | --- | --- | --- | --- |
 | Django admin | Completed | app admin files | Production hardening |
-| Frontend admin dashboard | Partially completed | `/dashboard/admin` | More metrics/actions |
-| Venue review | Completed | `/dashboard/admin/venues` and admin review API | Audit log |
-| User management | Planned | no dedicated page | Build moderation UI |
-| Booking oversight | Partially completed | backend permission logic exists | frontend admin booking page missing |
-| Admin reports/disputes | Planned | no staff reporting/case-management page | Build later |
+| Frontend admin control center | Completed (MVP) | `/dashboard/admin`, responsive admin shell, KPI/attention/pipeline/activity panels, role gate | Add richer trend analytics later |
+| Venue review | Completed | `/dashboard/admin/venues` and admin review API, searchable status queues with server-side pagination | Immutable moderator audit log |
+| User management | Completed (MVP) | `/dashboard/admin/users`, search/filter, server-side pagination, safe suspend/reactivate, self/last-admin protection | Add case notes and manual verification workflows later |
+| Booking and payment oversight | Completed (MVP) | `/dashboard/admin/bookings`, booking/payment/refund filters, server-side pagination, check-in context, exceptional cancellation through existing lifecycle service | Add refund settlement reconciliation and exports later |
+| Feedback moderation | Completed (MVP) | `/dashboard/admin/reports`, searchable report queue with server-side pagination, review/dismiss state transitions, original feedback preserved | Add moderator notes and escalation history later |
+| Reliability dispute review | Completed (MVP) | `/dashboard/admin/reliability`, searchable paginated attendance ledger, attended/no-show/excused resolution, audit event service | Add richer evidence attachments and reporting later |
+| Games and scoring monitor | Completed (MVP) | `/dashboard/admin/operations`, paginated read-only games, team-challenges, and scorecard activity API | Add richer operational filters later |
+| Platform activity visibility | Completed (MVP) | Overview metrics for games, challenges, scorecards, fixtures, notifications, and failed emails | Dedicated staff case views can grow with operational needs |
 
 ### Testing and Deployment
 
 | Feature | Status | Evidence | Remaining work |
 | --- | --- | --- | --- |
-| Backend tests | Partially completed | tests in accounts, teams, venues, notifications, wishlists, matchmaking, and team challenges; latest verified run: 150 tests | Add deeper concurrency, payment, and cross-module workflow coverage |
-| Frontend tests | Planned | no test runner found | Add Playwright or React tests |
+| Backend tests | Partially completed | tests in accounts, teams, venues, notifications, wishlists, matchmaking, team challenges, and scoring; latest targeted scorer run: 14 tests | Add deeper concurrency, payment, and cross-module workflow coverage |
+| Frontend tests | Partially completed | Playwright configuration and 6 scorer-flow tests | Expand coverage to booking, owner, matchmaking, challenge, and notification flows |
 | API docs | Planned | no Swagger/OpenAPI | Add schema/docs |
-| Deployment | Planned | no Docker/CI/deployment config found | Build deployment pipeline |
+| Deployment | Planned | local-only configuration; no Docker/CI/deployment config found | Build deployment pipeline |
 
 ## 8. Completed Work
 
@@ -306,18 +340,21 @@ Verified completed work includes:
 - Central Notification Centre and global toast feedback.
 - Transactional email service with delivery audit table.
 - Player wishlist for venues/courts, exposed from the logged-in Player top navbar.
+- Protected real-time chat for Pickup/Game Rooms and confirmed Team Challenge fixtures. Chat history is paginated, messages are persisted, duplicate client retries are safe, incoming messages create configurable notifications, and authors can edit or soft-delete their own messages for five minutes.
 - Dedicated Venue Manager navigation for `/dashboard/owner/*`, including top bar, stable lifecycle-aware sidebar, venue identity/status, contextual venue actions, owner notifications, profile dropdown, and responsive mobile drawer.
 - Shared UI refinement pass: compact page headers, cards, controls, field states, empty/error states, fixed feedback toasts, route-aware back links, focus states, reduced-motion support, and smoother active navigation were applied across the main player, owner, discovery, booking, matchmaking, challenge and authentication surfaces. The Venue Manager workspace now has a scoped visual system for its shell, operational panels, KPI links, forms, empty states, and action paths without changing owner APIs or workflows. Remaining older screens are tracked as migration work rather than being presented as complete.
 - Venue Manager Bookings now uses compact, individually bounded responsive records with filter counts, avatar/code identity, court and schedule hierarchy, readable status tones, NPR totals, check-in context, and preserved message/cancel actions.
+- Venue Manager Reviews lets an owner see verified venue feedback, understand rating context, and report a problematic review without allowing the owner to delete customer feedback. Venue details and public discovery use owner-confirmed coordinates, visible maps, directions fallback links, and resilient uploaded-image URLs.
 - Team Challenge lifecycle hardening: active-captain continuity, retry-safe decisions and booking attachment, booking reuse prevention, immutable proposal-version rescheduling, participant reconfirmation deadlines, protected fixture-room access, captain-managed lineups, attendance recording, two-captain result submission/confirmation, and verified rating-eligibility creation after attended fixtures.
+- Cricket scoring workspace with captain-to-captain instant-score requests, Team Challenge scorecards, squad confirmation, toss recording, innings transitions, ball-by-ball runs/extras/wickets, last-ball correction and undo, completed scorecards, player batting/bowling/fielding performance, team win-loss-tie records, and team logos in live and final scorecard headers. Scorer-backed records are derived from finalized scorecards and remain separate from ratings and reliability.
 - Shared mutation throttling for authenticated state-changing matchmaking and challenge endpoints; safe methods remain unthrottled so browsing and read-only detail pages are not slowed by the abuse-control limit.
 
 ## 9. Partially Completed and In-Progress Work
 
 - Ratings/reliability use a shared `ParticipationCommitment` ledger for confirmed Pickup Games, Fill My Squad games, and Team fixtures. Hosts/captains have 24 hours after the scheduled end to submit attendance; silence becomes an explicit neutral `UNVERIFIED` outcome, while a reported no-show remains disputable for 24 hours. Only finalized attended, late-cancelled, or undisputed no-show outcomes affect reliability, venue QR scans are excluded, and peer-rating eligibility is created automatically only after the relevant game/fixture finality gate. Broader player-rating coverage and staff case-management tooling remain incomplete.
-- Team Challenges now have a real backend domain, migrations, discovery/create/detail screens, direct and open challenge paths, multiple open responses with creator-controlled opponent selection, immutable proposals, captain-only decisions, booking-first and plan-first states, booking ownership/status/time validation, retry-safe lifecycle actions, proposal-version rescheduling, explicit captain reconfirmation, linked-booking lifecycle synchronisation, automatic deadline expiry, active-captain continuity, and a protected fixture Game Room with lineup, captain-scoped attendance, neutral fallback, auditable disputes, and result-gated rating eligibility. Remaining work includes staff dispute tooling, richer room activity, broader end-to-end/concurrency coverage, and production scheduler configuration.
-- Pickup Game has a structured Planning Room/Game Room; live chat and reusable rooms for future challenge flows are not implemented.
-- Admin venue review works, but broader admin operations are incomplete.
+- Team Challenges now have a real backend domain, migrations, discovery/create/detail screens, direct and open challenge paths, multiple open responses with creator-controlled opponent selection, immutable proposals, captain-only decisions, booking-first and plan-first states, booking ownership/status/time validation, retry-safe lifecycle actions, proposal-version rescheduling, explicit captain reconfirmation, linked-booking lifecycle synchronisation, automatic deadline expiry, active-captain continuity, and a protected fixture Game Room with lineup, captain-scoped attendance, neutral fallback, auditable disputes, result-gated rating eligibility, and fixture chat. Remaining work includes staff dispute tooling, richer room activity, broader end-to-end/concurrency coverage, and production scheduler configuration.
+- Pickup Game and Fill My Squad have structured Planning/Game Rooms with participant-scoped real-time chat, persisted history, five-minute author edit/delete controls, notifications, reconnect/polling fallback, and closed-room history behavior. The instant Cricket Scorer is a separate match-control workspace; it does not expose an unrelated game-room route.
+- The custom admin control center now covers venue review, user access, booking/payment oversight, feedback moderation, attendance-dispute resolution, games/challenges/scorecard monitoring, and connected platform-health signals. Django admin remains available for lower-level database inspection; financial settlement, moderator notes, and immutable staff action history remain future hardening work.
 - Owner offline booking is not implemented as a full feature.
 - Venue Manager top bar, sidebar, mobile drawer, Overview, Calendar, venue/court pages, bookings, refunds, slot management, and Reports now share a scoped operational visual system. Availability & Pricing loads the owner venue and court inventory, summarizes active/publishing readiness, and provides direct slot and calendar actions. Reports load server-calculated booking, payment, refund, check-in, slot, utilization, daily activity, and per-court performance records; owners can switch the activity view between reservations and paid value and export the loaded report as CSV. Settings clearly exposes its current workflow boundaries. Comparison analytics remain tracked separately.
 - The UI migration is intentionally incremental. The shared tokens and primitives are in place, but older admin pages and a few complex owner forms still contain local styling that should be migrated after their workflows are verified.
@@ -325,7 +362,7 @@ Verified completed work includes:
 - Dual-role account switching is not supported by the current backend user model, so “Switch to Player Mode” is intentionally hidden.
 - Khalti needs environment configuration and real end-to-end verification after credentials are added.
 - Media handling is local-development only.
-- Frontend lacks automated tests.
+- Frontend has Playwright coverage for the scorer lifecycle and should be expanded to the full booking, owner, matchmaking, challenge, and notification journeys.
 
 ## 10. Remaining Features and Prioritized Roadmap
 
@@ -346,7 +383,7 @@ Verified completed work includes:
 | --- | --- | --- | --- | --- |
 | Finish booking UX QA | In progress | Test reservation, payment, cancellation, refund, notifications | Existing booking flow | Smooth player/owner booking lifecycle |
 | Complete owner operations | Partially completed | Build offline booking, refine owner destination pages, add deeper tests for calendar blocking/conflicts | Venue/court slots | Owner can protect offline bookings and use a polished management workspace |
-| Admin operations | Partially completed | Users/bookings/refund overview | Permissions | Admin can review operational risks |
+| Admin operations | Completed (MVP) | Responsive admin control center, venue review, user access, bookings/payments, feedback reports, reliability disputes, and platform activity | Admin role and existing domain services | Admin can review operational risks and take bounded, auditable actions without bypassing booking, refund, or reliability rules |
 | Pickup Game and Fill My Squad matchmaking | Partially completed | Add pagination, deeper high-concurrency tests, richer room activity, and broader end-to-end coverage | Booking, player profile, teams, notifications | Booking-first and plan-first flows work with backend deadline validation, controlled area options, role-based recruitment, skill/time/open-spot/waitlist discovery filters, transactional join-request creation, duplicate-invitation protection, invitation expiry, immutable request-event history, contiguous waitlist positions, guest participants, SportSpot ID invitations, participant-specific reconfirmation, quiet detail-page refreshes, payment handoff reconciliation, automatic maintenance, and structured least-privilege room access. Public and planning-room payloads omit registered-player account and trust details. |
 | Team challenges | Partially completed | Real challenge models/API, discovery/create/detail UI, multiple open responses with one selected opponent, proposal decisions, booking handoff, rescheduling/reconfirmation, notifications, expiry maintenance, and protected fixture-room controls | Team module, booking rules, fixture records | Captains can safely discover, create, respond to, counter, accept, withdraw, cancel, reschedule and reconfirm challenges; selected fixtures support lineup, attendance and two-captain result confirmation; disputes and broader concurrency coverage remain |
 
@@ -355,15 +392,15 @@ Verified completed work includes:
 | Objective | Current status | Main tasks | Dependencies | Completion criteria |
 | --- | --- | --- | --- | --- |
 | Ratings/reliability | Partially completed | Complete broader player-rating coverage, staff moderation, and dispute handling | Completed games and verified participants | Verified participant ratings and reliability events consistently affect trust displays |
-| Game Room expansion | Partially completed | Add richer announcement/history features and future live chat if needed | Pickup Game and team fixtures | Pickup and confirmed team fixtures have least-privilege room access; richer collaboration remains |
-| Disputes/reports | Planned | Models, admin review, notifications | Booking/match flows | Users can report serious issues |
+| Game Room expansion | Partially completed | Expand announcements, activity history, moderation, and room-level collaboration around the existing chat MVP | Pickup Game and team fixtures | Pickup and confirmed team fixtures have least-privilege rooms, persisted chat, real-time delivery, notifications, and five-minute author edit/delete controls |
+| Disputes/reports | Partially completed | Player feedback reports, admin moderation queue, attendance dispute review and notifications | Booking/match flows | Admin can review reports/disputes and preserve neutral or finalized outcomes; richer case history remains |
 | Notification expansion | Partially completed | Connect only real future module events | New modules | No fake or broken notifications |
 
 ### Priority 3 - Quality and production readiness
 
 | Objective | Current status | Main tasks | Dependencies | Completion criteria |
 | --- | --- | --- | --- | --- |
-| Frontend tests | Planned | Add Playwright/component tests | Stable UI | Core flows tested |
+| Frontend tests | Partially completed | Expand Playwright coverage beyond the scorer flows | Stable UI | Core booking, owner, matchmaking, challenge, chat, and notification journeys tested |
 | API docs | Planned | Add OpenAPI/Swagger or curated docs | Stable APIs | Developer can use endpoints easily |
 | Performance | Partially completed | Query review, indexes, pagination | More data | Discovery/dashboard stay fast |
 | Deployment | Planned | Hosting, envs, DB, media, static, scheduler | Infrastructure | Staging/prod runs reliably |
@@ -497,6 +534,31 @@ Challenge proposals carry the complete agreed plan: match date, start and end ti
 14. If the verified booking differs materially from the original proposal, each registered participant who was already in the roster must confirm or decline the new schedule without a reliability penalty. Offline guests cannot respond through an account, so they enter `Host Confirmation Required` and the host must confirm that each guest was told the final venue and time. Participants added after the booking is attached are confirmed against the final booking immediately.
 15. Host and active participants can access the structured Planning Room/Game Room/Squad Room; pending, rejected, and waitlisted users cannot access private room details.
 16. Cancelling the public game listing does not automatically cancel the court booking; booking cancellation and refunds stay in the existing My Bookings flow.
+
+### Cricket scoring
+
+SportSpot has two supported paths into the scorer:
+
+1. A team captain opens `/scorer`, selects one of their teams, searches for another registered team, and sends a private instant-scoring request.
+2. The other captain accepts the request. SportSpot creates a Team Challenge fixture for the match; the accepted fixture then appears in `Ready to Score`.
+3. A confirmed Team Challenge can also open its scorer directly from `/challenge-teams/{challengeId}/scorer`. The instant scorer is a separate match-control workspace, so it does not route through the ordinary Game Room.
+4. A captain or assigned scorer sets overs per innings, confirms the match-day squads, records the toss winner and decision, selects the opening batter/bowler, and starts the first innings.
+5. The scorer records each delivery as runs, extras, or a wicket. Legal balls, overs, batter figures, bowler figures, extras, partnerships, fall of wickets, and innings totals are derived from the persisted ball-by-ball log.
+6. The authorised scorer can undo or correct the most recent delivery. Corrections are represented as persisted revisions so the scorecard can be replayed consistently rather than silently overwriting history.
+7. The first innings closes on all out, overs complete, or another supported innings-ending condition. The second innings uses the calculated target and closes when the target is reached, the chase is all out, or overs complete.
+8. When the match is finalized, SportSpot generates the final scorecard and scorer-backed player performances. Players can open completed scorecards from `/scorer` or view their own batting, bowling, and fielding record at `/dashboard/player/performance`.
+9. Team overview records are derived only from completed scorecards. They include matches played, wins, losses, ties, runs for, runs against, and recent results. These records never change permanent team membership.
+10. Cricket performance, average player ratings, and reliability are separate datasets. A scorecard does not mark attendance, and a venue QR check-in does not create cricket performance or reliability credit.
+
+### Chat and message lifecycle
+
+1. Active participants with private room access can open chat in a Pickup/Game Room or a confirmed Team Challenge fixture room. Pending, rejected, and waitlisted users cannot read or send private room messages.
+2. Messages are stored in the database and loaded with cursor pagination. Client message IDs make retries idempotent, preventing duplicate messages after a reconnect or slow response.
+3. Registered room members receive new messages through an authenticated WebSocket when available. REST polling remains the local/reconnect fallback; production multi-worker delivery requires Redis.
+4. A new incoming chat message creates a deduplicated in-app notification and can appear as an actionable notification toast. Users can control supported chat alerts in notification settings.
+5. Authors can edit or soft-delete only their own messages. The edit window is five minutes from creation; deleted messages remain as a visible `This message was deleted.` history entry and cannot be edited.
+6. Completed rooms retain history for viewing, but no new chat messages are accepted after the room is closed. The instant Cricket Scorer has its own match-control interface and does not expose a duplicate Game Room.
+
 ### Venue onboarding and verification
 
 1. Court Owner completes venue setup.
@@ -567,7 +629,7 @@ Challenge proposals carry the complete agreed plan: match date, start and end ti
 
 ### Rating after a completed match
 
-Status: Planned. Rating fields exist, but rating submission is not implemented.
+Status: Implemented for the current core flow. After a Pickup Game, Fill My Squad game, or Team Challenge fixture passes its finality gate, SportSpot creates rating eligibilities for the relevant registered participants. Players can submit a 1-5 rating with optional feedback tags and comments from `/dashboard/player/ratings`; eligibility expires when its rating window closes and duplicate submissions are prevented. Average rating is calculated separately from reliability and scorer-backed cricket performance.
 
 ## 12. Court Discovery and Filtering Model
 
@@ -657,6 +719,8 @@ Persistent notifications are used for important records and actions:
 - Booking reservation, confirmation, payment failure, cancellation, completion.
 - Refund pending/completed or rejected owner-side outcome.
 - Important venue message for a booking.
+- Pickup Game and Team Challenge requests, decisions, invitations, deadlines, schedule reconfirmation, attendance review, result confirmation, and rating eligibility.
+- Incoming room chat messages, subject to each player's chat-notification preference.
 
 Notification Centre behaviour:
 
@@ -745,7 +809,7 @@ pip install -r requirements.txt
 copy ..\.env.example .env
 python manage.py migrate
 python manage.py createsuperuser
-python manage.py runserver 0.0.0.0:8000
+python manage.py runserver
 ```
 
 Backend on Linux/macOS:
@@ -758,7 +822,7 @@ pip install -r requirements.txt
 cp ../.env.example .env
 python manage.py migrate
 python manage.py createsuperuser
-python manage.py runserver 0.0.0.0:8000
+python manage.py runserver
 ```
 
 Create PostgreSQL database before migration if it does not exist:
@@ -776,9 +840,19 @@ copy .env.local.example .env.local
 npm run dev
 ```
 
-The frontend development command always targets port `3000`. Its launcher automatically restarts an existing SportSpot Next.js development process on that port, but will not stop an unrelated application. Run `npm run dev` once per terminal session; repeated runs safely restart the same SportSpot watcher instead of falling back to another port.
+The standard local commands are `python manage.py runserver` for Django (`127.0.0.1:8000`) and `npm run dev` for Next.js (`localhost:3000`). The frontend launcher always targets port `3000`, automatically replaces an existing SportSpot Next.js process on that port, and refuses to stop an unrelated application. Run `npm run dev` once per terminal session; repeated runs are unnecessary.
 
-The `0.0.0.0` bind keeps the API available from both the development computer and a phone on the same Wi-Fi network. Keep `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` for desktop-only testing. For phone testing, set it to the computer's LAN address, for example `http://192.168.1.10:8000`, and open the frontend with that same address. Allow Python through the private-network firewall if the phone cannot connect.
+For phone testing on the same Wi-Fi, use the optional LAN commands `python manage.py runserver 0.0.0.0:8000` and open Next.js with the computer's LAN address. Set `NEXT_PUBLIC_API_URL` to the same LAN API address, for example `http://192.168.1.10:8000`, add the frontend LAN origin to `CORS_ALLOWED_ORIGINS`, and allow Python/Node through the private-network firewall. Keep `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` for desktop-only testing.
+
+If a server reports `EADDRINUSE`, do not start another copy. Find the listener first:
+
+```powershell
+Get-NetTCPConnection -LocalPort 3000 -State Listen
+Get-NetTCPConnection -LocalPort 8000 -State Listen
+Get-Process -Id <PID>
+```
+
+Replace `<PID>` with the numeric process ID returned by the previous command. Stop only a process that you have verified belongs to SportSpot, then rerun the standard command. The repository's frontend launcher will not terminate unrelated applications automatically.
 
 Local URLs:
 
@@ -790,7 +864,7 @@ Local URLs:
 
 Database engine: PostgreSQL. Migration `0016` adds canonical venue latitude/longitude coordinates, the location source, confirmation state, and update timestamp. Coordinates are optional for backward compatibility, must be a pair inside Nepal, and public serializers expose them only after the owner confirms the pin. Existing `map_location` URLs remain a backward-compatible directions fallback for older venues.
 
-Main domain tables include accounts, email OTPs, password reset tokens, player profiles, reliability events, participation commitments, attendance audit events, player ratings and eligibilities, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, booking check-ins, Pickup Games, matchmaking participants and request history, Team Challenges, challenge proposals, open challenge responses, challenge events, team fixtures, notifications, email deliveries, and wishlist items. Migration `0008` adds the shared participation-commitment ledger used by verified attendance and reliability; migration `0009` adds the neutral attendance status and immutable audit trail; migration `0006` in `team_challenges` projects that neutral status into fixture rosters. Migration `0020` adds the venue-scoped booking check-in record used by QR/code verification. Court slots now also store block metadata (`block_type`, `block_reason`, `block_note`, `blocked_at`, `blocked_by`) for owner calendar maintenance/closure periods.
+Main domain tables include accounts, email OTPs, password reset tokens, player profiles, reliability events, participation commitments, attendance audit events, player ratings and eligibilities, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, booking check-ins, Pickup Games, matchmaking participants, request history and chat messages, Team Challenges, challenge proposals, open challenge responses, challenge events, team fixtures, fixture chat messages, cricket scoring matches, innings, deliveries, frozen match squads, player performances, notifications, email deliveries, and wishlist items. Migration `0008` adds the shared participation-commitment ledger used by verified attendance and reliability; migration `0009` adds the neutral attendance status and immutable audit trail; migration `0006` in `team_challenges` projects that neutral status into fixture rosters. Migration `0010` in `matchmaking` adds game chat; migration `0005` in `team_challenges` adds fixture chat; migration `0020` in `venues` adds the venue-scoped booking check-in record used by QR/code verification; migration `0021` updates venue location-source choices; migration `0011` in `notifications` adds the current notification type; and scoring migrations `0001`/`0002` add the durable cricket scorer, performance, and instant-match-request domain. Court slots also store block metadata (`block_type`, `block_reason`, `block_note`, `blocked_at`, `blocked_by`) for owner calendar maintenance/closure periods.
 
 Migration commands:
 
@@ -964,6 +1038,24 @@ Attendance and reliability:
 
 Team Challenge endpoints enforce active registered-captain permissions, immutable proposal versions, one selected opponent for open challenges, eligible booking ownership/status checks, booking reuse prevention, explicit schedule reconfirmation, protected fixture-room access, and active team-pair safeguards. State-changing matchmaking and challenge endpoints also use the shared mutation throttle configured by `SPORTSPOT_MUTATION_RATE`; safe read requests are not throttled by that mixin.
 
+Cricket Scorer: `/api/scoring/`
+
+- `GET /my-performance/` returns the authenticated player's finalized scorer-backed batting, bowling, and fielding record with `ALL`/`RECENT` and team filters.
+- `GET /teams/` returns the player's captain-owned teams and searchable opponent teams eligible for an instant scored match.
+- `GET/POST /match-requests/` lists or creates captain-to-captain instant scoring requests.
+- `POST /match-requests/{id}/accept|decline|cancel/` applies an idempotent request decision and creates the fixture when accepted.
+- `GET /fixtures/available/` returns ready, live, and completed scorecard fixtures available to the authenticated player.
+- `GET /fixtures/{fixture_id}/` returns a protected live/final scorecard; completed viewers use `/dashboard/player/performance/scorecards/{fixtureId}`.
+- `POST /fixtures/{fixture_id}/setup/`, `/squad/`, `/scorer/`, `/toss/`, `/innings/start/`, `/innings/bowler/`, and `/deliveries/` drive the scorer setup and ball-by-ball workflow.
+- `POST /fixtures/{fixture_id}/deliveries/undo/` and `/deliveries/edit/` correct the latest persisted scoring event without changing an unrelated historical delivery.
+
+Chat:
+
+- Pickup/Game Room chat: `GET/POST matchmaking/games/{game_id}/chat/` and `PATCH/DELETE matchmaking/games/{game_id}/chat/{message_id}/`.
+- Team Challenge fixture chat: `GET/POST team-challenges/fixtures/{fixture_id}/chat/` and `PATCH/DELETE team-challenges/fixtures/{fixture_id}/chat/{message_id}/`.
+- Both chat APIs enforce room membership and author ownership, use cursor pagination, support client retry IDs, preserve soft-deleted history, and enforce the five-minute edit window.
+- WebSockets: `/ws/notifications/`, `/ws/games/{game_id}/chat/`, and `/ws/fixtures/{fixture_id}/chat/`. Browser clients authenticate the socket with the access token as the first message rather than placing it in the URL.
+
 Venues/bookings: `/api/venues/`
 
 - Owner venue/courts/slots/bookings/refunds/message endpoints under `owner/`, including `owner/bookings/verify/` for authenticated QR or booking-code verification.
@@ -993,15 +1085,23 @@ Existing backend tests:
 - `backend/notifications/tests.py`
 - `backend/wishlists/tests.py`
 - `backend/matchmaking/tests.py`
+- `backend/matchmaking/test_chat.py`
 - `backend/team_challenges/tests.py`
+- `backend/scoring/tests.py`
 
-The latest verified backend run on 2026-08-28 passed 151 tests across the explicit app suite, including matchmaking, Team Challenge fixture lifecycle, captain continuity, booking reuse, reconfirmation, venue location coverage, and authenticated WebSocket notification delivery. A focused notification real-time test and a focused `team_challenges` run passed. The suite uses the local PostgreSQL test configuration.
+The latest recorded full backend run on 2026-08-28 passed 151 tests across the explicit app suite, including matchmaking, Team Challenge fixture lifecycle, captain continuity, booking reuse, reconfirmation, venue location coverage, and authenticated WebSocket notification delivery. The latest targeted scorer run on 2026-09-01 passed 14 tests, including finalized scorecard performance, team records, correction behavior, permissions, and team logo URL serialization. The suite uses the local PostgreSQL test configuration.
 
 Run tests:
 
 ```powershell
 cd backend
 python manage.py test accounts teams venues notifications wishlists matchmaking team_challenges --keepdb
+```
+
+Include cricket scoring in the complete local app run:
+
+```powershell
+python manage.py test accounts players teams matchmaking team_challenges notifications venues wishlists scoring --keepdb
 ```
 
 Run matchmaking lifecycle cleanup manually during local development or from a scheduler in staging/production:
@@ -1020,10 +1120,12 @@ python manage.py check
 
 ```powershell
 cd frontend
+npx tsc --noEmit
 npm run build
+npm run test:e2e -- --reporter=line
 ```
 
-No frontend test runner is configured. The production Next.js build is the current frontend compile/type verification.
+The frontend has Playwright coverage in `frontend/e2e/`. The current verified scorer suite contains 6 browser tests; broader application coverage is still required.
 
 Recommended next tests: true concurrent reservations and challenge decisions, Khalti status mapping, cancellation tiers, refund transitions, notification seen/read security, Redis-backed multi-worker WebSocket delivery, discovery zero-result filters, staff dispute resolution, and browser-level lifecycle tests.
 
@@ -1034,7 +1136,9 @@ Recommended next tests: true concurrent reservations and challenge decisions, Kh
 - Several placeholder pages still exist for future modules.
 - Future-compatible Futsal fields remain in `PlayerProfile`, but current UI must stay Cricksal-only.
 - No production deployment files, Docker config, CI/CD, or monitoring.
-- No frontend tests.
+- Frontend browser coverage is currently focused on Cricket Scorer and does not yet cover every booking, owner, matchmaking, challenge, or notification state.
+- Cricket Scorer is a complete MVP workflow, but it is not a full professional cricket scoring product yet: advanced rules, scorer-role delegation, match exports, and staff correction tooling remain future work.
+- Team and player cricket records are derived from finalized scorecards only; reopening a scorecard removes its derived record until the match is finalized again.
 - Khalti requires environment credentials and manual end-to-end verification.
 - The default map tiles and geocoder use public OpenStreetMap services for local development; they must be replaced or formally approved for production-scale traffic.
 - Media files are local and not production-secure.
@@ -1123,8 +1227,10 @@ Most recently developed areas:
 - Wishlist integration in Player top navigation.
 - Booking lifecycle, cancellation, refunds, Khalti idempotency, and paid-after-expiry safety.
 - Notifications and toast feedback.
+- Pickup/Game Room and Team Challenge fixture chat, including authenticated real-time delivery, notifications, five-minute author edit/delete controls, pagination, idempotent retries, and soft-deleted history.
 - Email verification and password recovery.
 - Team Challenge lifecycle hardening: direct/open challenges, multiple open responses with one opponent selection, immutable proposals, booking-first/plan-first handoff, retry-safe decisions, booking reuse prevention, proposal-version rescheduling, explicit reconfirmation, linked-booking synchronisation, active-captain continuity, notifications, expiry maintenance, and protected fixture-room coordination with lineup, shared attendance commitments, bounded player disputes, and result confirmation.
+- Cricket Scorer and completed scorecard viewer: instant captain-to-captain scoring requests, Team Challenge scoring, squad/toss/innings flow, ball-by-ball records, corrections, player performance, team records, and team-logo media URLs.
 
 Inspect these first before changing major flows:
 
@@ -1146,6 +1252,11 @@ Inspect these first before changing major flows:
 - `backend/team_challenges/services.py`
 - `backend/team_challenges/views.py`
 - `backend/team_challenges/tests.py`
+- `backend/scoring/models.py`
+- `backend/scoring/services.py`
+- `backend/scoring/performance.py`
+- `backend/scoring/views.py`
+- `backend/scoring/tests.py`
 - `frontend/components/Navbar.tsx`
 - `frontend/components/AppChrome.tsx`
 - `frontend/components/owner/VenueOwnerTopBar.tsx`
@@ -1155,6 +1266,8 @@ Inspect these first before changing major flows:
 - `frontend/app/dashboard/owner/calendar/page.tsx`
 - `frontend/components/NotificationCenter.tsx`
 - `frontend/components/ToastProvider.tsx`
+- `frontend/components/MediaImage.tsx`
+- `frontend/e2e/cricket-scorer.spec.ts`
 - `frontend/app/courts/page.tsx`
 - `frontend/app/courts/[id]/page.tsx`
 - `frontend/app/dashboard/owner/venue-setup/page.tsx`
@@ -1169,7 +1282,7 @@ Current blockers:
 
 Before implementing a feature, verify its current frontend, backend, database and permission status. Do not assume that a visible page means the feature is complete.
 
-Recommended next task: run browser-level QA for the completed Venue Owner destination pages and for booking, matchmaking, challenge reconfirmation, fixture attendance/result confirmation, rating eligibility, and Notification Centre push/reconnect behavior. Then add report CSV export/comparison periods, true concurrent transaction tests, dispute/moderation controls, and production-managed scheduling, Redis, and ASGI deployment.
+Recommended next task: run browser-level QA for Venue Owner destination pages, booking, matchmaking, challenge reconfirmation, fixture attendance/result confirmation, rating eligibility, chat reconnect/edit/delete behavior, and Notification Centre push/reconnect behavior. Then add true concurrent transaction tests, scorer advanced-rule coverage, dispute/moderation controls, and production-managed scheduling, Redis, media storage, and ASGI deployment.
 
 Commands before new work:
 
@@ -1177,9 +1290,11 @@ Commands before new work:
 git status --short
 cd backend
 python manage.py check
-python manage.py test accounts players teams matchmaking team_challenges notifications venues wishlists --keepdb
+python manage.py test accounts players teams matchmaking team_challenges notifications venues wishlists scoring --keepdb
 cd ..\frontend
+npx tsc --noEmit
 npm run build
+npm run test:e2e -- --reporter=line
 ```
 
 README maintenance rule: update this README in the same change as every feature, bug fix, migration, API, workflow, environment, test, or deployment update. Keep implementation status, known limitations, workflows, and handover notes aligned with verified repository evidence. Never mark a feature Completed solely because a page or endpoint exists.
