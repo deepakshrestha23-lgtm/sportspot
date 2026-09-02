@@ -12,6 +12,11 @@ import {
   adminDashboardUtilityItem,
   isAdminDashboardItemActive,
 } from "@/components/admin-dashboard/navigation";
+import {
+  isPlayerDashboardItemActive,
+  playerDashboardNavItems,
+  playerDashboardUtilityItem,
+} from "@/components/player-dashboard/navigation";
 import { api } from "@/lib/api";
 import { clearAuthSession, getCurrentUser } from "@/lib/auth";
 import type { User } from "@/types/auth";
@@ -202,7 +207,15 @@ export default function Navbar() {
                   ) : null}
                 </button>
 
-                <div className="relative">
+                <Link
+                  aria-label="Open profile"
+                  className="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-sm font-black text-white transition-colors hover:border-green-200 hover:bg-green-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 lg:hidden"
+                  href={getMobileProfileHref(user)}
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sportGreen">{user.full_name.charAt(0).toUpperCase()}</span>
+                </Link>
+
+                <div className="relative hidden lg:block">
                   <button
                     aria-expanded={isProfileOpen}
                     aria-haspopup="menu"
@@ -241,7 +254,7 @@ export default function Navbar() {
 
       {isMobileNavigationOpen ? (
         <MobileNavigationDrawer
-          links={getMobileNavigationLinks(user, ownerVenueStatus)}
+          sections={getMobileNavigationSections(user, ownerVenueStatus)}
           onClose={() => setIsMobileNavigationOpen(false)}
           onLogout={handleLogout}
           pathname={pathname}
@@ -274,9 +287,15 @@ export default function Navbar() {
   );
 }
 
-type NavigationLink = { label: string; href: string; description?: string };
+type NavigationLink = {
+  label: string;
+  href: string;
+  description?: string;
+  isActive?: (pathname: string) => boolean;
+};
+type MobileNavigationSection = { label?: string; links: NavigationLink[] };
 
-function MobileNavigationDrawer({ links, onClose, onLogout, pathname, user }: { links: NavigationLink[]; onClose: () => void; onLogout: () => void; pathname: string; user: User | null }) {
+function MobileNavigationDrawer({ onClose, onLogout, pathname, sections, user }: { onClose: () => void; onLogout: () => void; pathname: string; sections: MobileNavigationSection[]; user: User | null }) {
   return (
     <div aria-label="SportSpot navigation" aria-modal="true" className="fixed inset-0 z-[60] lg:hidden" role="dialog">
       <button aria-label="Close navigation" className="absolute inset-0 bg-sportNavy/40" onClick={onClose} type="button" />
@@ -291,22 +310,29 @@ function MobileNavigationDrawer({ links, onClose, onLogout, pathname, user }: { 
         </div>
 
         <nav aria-label="Mobile navigation" className="flex-1 overflow-y-auto px-3 py-4">
-          <div className="space-y-1">
-            {links.map((link) => {
-              const isActive = isMobileNavigationLinkActive(pathname, link.href);
-              return (
-                <Link
-                  aria-current={isActive ? "page" : undefined}
-                  className={`block rounded-md px-4 py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${isActive ? "bg-green-50 text-green-800" : "text-slate-700 hover:bg-slate-50 hover:text-sportGreen"}`}
-                  href={link.href}
-                  key={link.href}
-                  onClick={onClose}
-                >
-                  <span className="block text-sm font-black">{link.label}</span>
-                  {link.description ? <span className={`mt-0.5 block text-xs font-medium ${isActive ? "text-green-700" : "text-slate-500"}`}>{link.description}</span> : null}
-                </Link>
-              );
-            })}
+          <div className="space-y-5">
+            {sections.map((section, sectionIndex) => (
+              <section key={section.label || `navigation-section-${sectionIndex}`}>
+                {section.label ? <p className="px-3 pb-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">{section.label}</p> : null}
+                <div className="space-y-1">
+                  {section.links.map((link) => {
+                    const isActive = link.isActive?.(pathname) ?? isMobileNavigationLinkActive(pathname, link.href);
+                    return (
+                      <Link
+                        aria-current={isActive ? "page" : undefined}
+                        className={`block rounded-md px-4 py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${isActive ? "bg-green-50 text-green-800" : "text-slate-700 hover:bg-slate-50 hover:text-sportGreen"}`}
+                        href={link.href}
+                        key={link.href}
+                        onClick={onClose}
+                      >
+                        <span className="block text-sm font-black">{link.label}</span>
+                        {link.description ? <span className={`mt-0.5 block text-xs font-medium ${isActive ? "text-green-700" : "text-slate-500"}`}>{link.description}</span> : null}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
         </nav>
 
@@ -441,17 +467,46 @@ function getProfileLinks(user: User) {
   ];
 }
 
-function getMobileNavigationLinks(user: User | null, ownerVenueStatus: VenueStatus | "NONE"): NavigationLink[] {
+function getMobileNavigationSections(user: User | null, ownerVenueStatus: VenueStatus | "NONE"): MobileNavigationSection[] {
   if (user?.role === "ADMIN") {
-    return [...adminDashboardNavItems, adminDashboardSettingsItem, adminDashboardUtilityItem].map((item) => ({
-      label: item.label,
-      href: item.href,
-      description: item.description,
-    }));
+    return [{
+      label: "Admin workspace",
+      links: [...adminDashboardNavItems, adminDashboardSettingsItem, adminDashboardUtilityItem].map((item) => ({
+        label: item.label,
+        href: item.href,
+        description: item.description,
+        isActive: (pathname) => isAdminDashboardItemActive(pathname, item),
+      })),
+    }];
+  }
+
+  if (user?.role === "PLAYER") {
+    return [
+      { label: "Explore SportSpot", links: getNavLinks(user, ownerVenueStatus) },
+      {
+        label: "Your SportSpot",
+        links: playerDashboardNavItems.map((item) => ({
+          label: item.label,
+          href: item.href,
+          isActive: (pathname) => isPlayerDashboardItemActive(pathname, item),
+        })),
+      },
+      {
+        label: "Support",
+        links: [{
+          label: playerDashboardUtilityItem.label,
+          href: playerDashboardUtilityItem.href,
+          isActive: (pathname) => isPlayerDashboardItemActive(pathname, playerDashboardUtilityItem),
+        }],
+      },
+    ];
   }
 
   const links = user ? [...getNavLinks(user, ownerVenueStatus), ...getProfileLinks(user)] : getNavLinks(user, ownerVenueStatus);
-  return links.filter((link, index) => links.findIndex((candidate) => candidate.href === link.href) === index);
+  return [{
+    label: user ? "Your SportSpot" : undefined,
+    links: links.filter((link, index) => links.findIndex((candidate) => candidate.href === link.href) === index),
+  }];
 }
 
 function isMobileNavigationLinkActive(pathname: string, href: string) {
@@ -463,6 +518,12 @@ function getRoleLabel(role: User["role"]) {
   if (role === "ADMIN") return "Admin workspace";
   if (role === "COURT_OWNER") return "Venue owner workspace";
   return "Player workspace";
+}
+
+function getMobileProfileHref(user: User) {
+  if (user.role === "PLAYER") return "/dashboard/player/profile";
+  if (user.role === "ADMIN") return "/dashboard/admin/settings";
+  return "/dashboard/owner";
 }
 
 function BellIcon() {

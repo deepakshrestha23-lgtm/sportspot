@@ -1,17 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import { DashboardContentContainer } from "@/components/player-dashboard/DashboardContentContainer";
-import { MobileDashboardDrawer } from "@/components/player-dashboard/MobileDashboardDrawer";
 import { PlayerSidebar, DashboardIcon } from "@/components/player-dashboard/PlayerSidebar";
 import { getActivePlayerDashboardItem } from "@/components/player-dashboard/navigation";
 import RoleGate from "@/components/RoleGate";
 
 export default function PlayerDashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const activeItem = getActivePlayerDashboardItem(pathname);
 
   return (
@@ -26,16 +24,7 @@ export default function PlayerDashboardLayout({ children }: { children: ReactNod
                 <span className="truncate">{activeItem.label}</span>
               </div>
             </div>
-            <button
-              aria-controls="player-dashboard-mobile-menu"
-              aria-expanded={isDrawerOpen}
-              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-sportNavy shadow-sm outline-none hover:border-green-200 hover:text-sportGreen focus-visible:ring-2 focus-visible:ring-sportGreen"
-              onClick={() => setIsDrawerOpen(true)}
-              type="button"
-            >
-              <MenuIcon />
-              Menu
-            </button>
+            <span className="rounded-full bg-green-50 px-3 py-1.5 text-xs font-black text-green-800">Player</span>
           </div>
         </div>
 
@@ -45,18 +34,8 @@ export default function PlayerDashboardLayout({ children }: { children: ReactNod
             <DashboardContentContainer>{children}</DashboardContentContainer>
           </main>
         </div>
-
-        <MobileDashboardDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} pathname={pathname} />
       </div>
     </RoleGate>
-  );
-}
-
-function MenuIcon() {
-  return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-      <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-    </svg>
   );
 }
 
