@@ -62,7 +62,7 @@ Outside current scope:
 | Database | PostgreSQL | Persistent relational data | Fits bookings, slots, teams, users, notifications |
 | Email | Django email backend via console or SMTP | OTP, reset links, transactional emails | Simple local and real SMTP support |
 | Payment | Khalti Web Checkout API | Booking payment initiation and verification | Nepal-relevant payment provider |
-| Media | Django local media storage | Uploaded images and documents | Practical for local/FYP development |
+| Media | Django local media in development; S3-backed media in Beanstalk | Uploaded images, team logos, venue photos, and documents | Public images use signed S3 URLs in production; verification documents remain private |
 | Real time | Django Channels, Daphne, optional Redis | Authenticated notification, game-chat, and fixture-chat delivery | In-memory local fallback; Redis is required for multiple workers |
 
 ## 5. System Architecture
@@ -73,7 +73,7 @@ SportSpot uses a decoupled client-server architecture with a modular monolithic 
 User
 -> Next.js frontend
 -> Django REST API
--> PostgreSQL / local media / SMTP / Khalti
+-> PostgreSQL / S3 media or local media / SMTP / Khalti
 -> Django REST API response
 -> frontend UI update
 ```
@@ -82,7 +82,7 @@ Logical layers:
 
 - Presentation: `frontend/app`, `frontend/components`, `frontend/lib`, `frontend/types`.
 - Application/API: Django apps in `backend/accounts`, `players`, `teams`, `venues`, `matchmaking`, `team_challenges`, `scoring`, `notifications`, `wishlists`.
-- Data/services: PostgreSQL, local media files, SMTP provider, Khalti.
+- Data/services: PostgreSQL, S3-backed media in production (local media in development), SMTP provider, Khalti.
 
 No architecture diagram is currently present.
 

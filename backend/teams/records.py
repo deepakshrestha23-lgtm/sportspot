@@ -90,7 +90,7 @@ def get_team_cricket_record(team, *, recent_limit=5):
                     "opponent": {
                         "id": opponent.id,
                         "name": opponent.name,
-                        "team_photo": str(opponent.team_photo) if opponent.team_photo else "",
+                        "team_photo": opponent.team_photo.url if opponent.team_photo else "",
                     },
                     "outcome": outcome,
                     "result": match.result,

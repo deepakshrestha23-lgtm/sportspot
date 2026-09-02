@@ -24,13 +24,16 @@ export function getMediaSrc(value?: string | null) {
     const parsedUrl = new URL(rawValue);
     return parsedUrl.toString();
   } catch {
-    // APIs should return a public /media/... URL, but accept legacy FieldFile
-    // storage names too so a missing prefix never turns a real image into a fallback.
-    const normalizedPath = rawValue.startsWith("/")
+    // Accept both Django media URLs and legacy storage paths. Older API
+    // responses may contain /team_photos/... instead of /media/team_photos/...
+    // and those should still resolve against the API host.
+    const normalizedPath = rawValue.startsWith("/media/")
       ? rawValue
       : rawValue.startsWith("media/")
         ? `/${rawValue}`
-        : `/media/${rawValue}`;
+        : rawValue.startsWith("/")
+          ? `/media${rawValue}`
+          : `/media/${rawValue}`;
     return `${getApiBaseUrl()}${normalizedPath}`;
   }
 }

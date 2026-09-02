@@ -3,7 +3,9 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.db import connections
 from django.http import JsonResponse
-from django.urls import include, path
+from django.urls import include, path, re_path
+
+from .media_views import public_image
 
 
 def health_check(request):
@@ -28,6 +30,11 @@ urlpatterns = [
     path("api/venues/", include("venues.urls")),
     path("api/wishlist/", include("wishlists.urls")),
     path("api/admin/", include("admin_portal.urls")),
+    re_path(
+        r"^media/(?P<media_path>(?:team_photos|player_profiles|venues/photos|venues/gallery|venues/courts)/.+)$",
+        public_image,
+        name="public-image",
+    ),
 ]
 
 if settings.DEBUG:
