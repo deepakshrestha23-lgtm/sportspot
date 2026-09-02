@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import RoleGate from "@/components/RoleGate";
 import { LoadingScreen } from "@/components/LoadingIndicator";
@@ -17,7 +17,6 @@ import {
 
 export default function AdminDashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const activeItem = getActiveAdminDashboardItem(pathname);
 
   return (
@@ -32,16 +31,7 @@ export default function AdminDashboardLayout({ children }: { children: ReactNode
                 <span className="truncate">{activeItem.label}</span>
               </div>
             </div>
-            <button
-              aria-controls="admin-dashboard-mobile-menu"
-              aria-expanded={isDrawerOpen}
-              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-black text-sportNavy shadow-sm outline-none transition hover:border-green-200 hover:text-sportGreen focus-visible:ring-2 focus-visible:ring-sportGreen"
-              onClick={() => setIsDrawerOpen(true)}
-              type="button"
-            >
-              <MenuIcon />
-              Menu
-            </button>
+            <span className="rounded-full bg-green-50 px-3 py-1.5 text-xs font-black text-green-800">Admin</span>
           </div>
         </div>
 
@@ -51,8 +41,6 @@ export default function AdminDashboardLayout({ children }: { children: ReactNode
             <div className="mx-auto max-w-6xl">{children}</div>
           </main>
         </div>
-
-        {isDrawerOpen ? <AdminMobileDrawer pathname={pathname} onClose={() => setIsDrawerOpen(false)} /> : null}
       </div>
     </RoleGate>
   );
@@ -95,23 +83,6 @@ function AdminSidebarItem({ isActive, item, onNavigate }: { isActive: boolean; i
   );
 }
 
-function AdminMobileDrawer({ pathname, onClose }: { pathname: string; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Admin dashboard menu">
-      <button aria-label="Close admin menu" className="absolute inset-0 bg-sportNavy/35" onClick={onClose} type="button" />
-      <aside className="relative flex h-full w-[min(20rem,88vw)] flex-col bg-white px-4 py-5 shadow-2xl" id="admin-dashboard-mobile-menu">
-        <div className="flex items-start justify-between border-b border-slate-100 px-2 pb-5">
-          <div><p className="text-[11px] font-black uppercase tracking-[0.14em] text-sportGreen">SportSpot</p><p className="mt-1 text-base font-black text-sportNavy">Admin control center</p></div>
-          <button aria-label="Close admin menu" className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-sportNavy" onClick={onClose} type="button"><CloseIcon /></button>
-        </div>
-        <nav className="mt-5 space-y-1.5">{adminDashboardNavItems.map((item) => <AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, item)} item={item} key={item.href} onNavigate={onClose} />)}</nav>
-        <div className="flex-1" />
-        <nav aria-label="Admin dashboard utilities" className="mt-5 space-y-1.5 border-t border-slate-100 pt-4"><AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, adminDashboardSettingsItem)} item={adminDashboardSettingsItem} onNavigate={onClose} /><AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, adminDashboardUtilityItem)} item={adminDashboardUtilityItem} onNavigate={onClose} /></nav>
-      </aside>
-    </div>
-  );
-}
-
 export function AdminLoadingScreen({ label = "Loading admin workspace" }: { label?: string }) {
   return <LoadingScreen label={label} />;
 }
@@ -128,6 +99,3 @@ function AdminIcon({ name }: { name: AdminDashboardNavItem["icon"] }) {
   if (name === "settings") return <svg {...common}><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0-5v2m0 13v2M4.93 4.93l1.42 1.42m9.3 9.3 1.42 1.42M3 12h2m14 0h2M4.93 19.07l1.42-1.42m9.3-9.3 1.42-1.42" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
   return <svg {...common}><path d="M4 5h16v11H4zM8 21h8M12 16v5M8 9h8M8 12h5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
 }
-
-function MenuIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>; }
-function CloseIcon() { return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>; }

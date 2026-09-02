@@ -6,6 +6,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import Logo from "@/components/Logo";
 import NotificationCenter from "@/components/NotificationCenter";
+import {
+  adminDashboardNavItems,
+  adminDashboardSettingsItem,
+  adminDashboardUtilityItem,
+  isAdminDashboardItemActive,
+} from "@/components/admin-dashboard/navigation";
 import { api } from "@/lib/api";
 import { clearAuthSession, getCurrentUser } from "@/lib/auth";
 import type { User } from "@/types/auth";
@@ -16,6 +22,7 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
+  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [unseenNotificationsCount, setUnseenNotificationsCount] = useState(0);
@@ -89,13 +96,31 @@ export default function Navbar() {
   }, [pendingReservation]);
 
   useEffect(() => {
+    setIsMobileNavigationOpen(false);
     setIsProfileOpen(false);
     setIsNotificationsOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!isMobileNavigationOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMobileNavigationOpen(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMobileNavigationOpen]);
+
   function handleLogout() {
     clearAuthSession();
     setUser(null);
+    setIsMobileNavigationOpen(false);
     setIsProfileOpen(false);
     setIsNotificationsOpen(false);
     setUnseenNotificationsCount(0);
@@ -116,7 +141,19 @@ export default function Navbar() {
     <>
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white">
         <nav aria-label="Primary navigation" className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-4 px-4 py-2 sm:px-6 lg:px-8">
-          <Logo markClassName="h-8 max-w-[140px]" textClassName="text-[1.15rem]" />
+          <div className="flex min-w-0 items-center gap-2">
+            <Logo markClassName="h-8 max-w-[120px] sm:max-w-[140px]" textClassName="text-[1.15rem]" />
+            <button
+              aria-controls="sportspot-mobile-navigation"
+              aria-expanded={isMobileNavigationOpen}
+              aria-label="Open navigation"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition-colors hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 lg:hidden"
+              onClick={() => setIsMobileNavigationOpen(true)}
+              type="button"
+            >
+              <MenuIcon />
+            </button>
+          </div>
 
           <div className="hidden items-center gap-7 text-[13px] font-semibold text-slate-600 lg:flex">
             {getNavLinks(user, ownerVenueStatus).map((link) => {
@@ -202,6 +239,16 @@ export default function Navbar() {
         </nav>
       </header>
 
+      {isMobileNavigationOpen ? (
+        <MobileNavigationDrawer
+          links={getMobileNavigationLinks(user, ownerVenueStatus)}
+          onClose={() => setIsMobileNavigationOpen(false)}
+          onLogout={handleLogout}
+          pathname={pathname}
+          user={user}
+        />
+      ) : null}
+
       {user ? (
         <NotificationCenter
           isOpen={isNotificationsOpen}
@@ -224,6 +271,63 @@ export default function Navbar() {
         <PendingReservationBanner booking={pendingReservation} now={now} onDismiss={() => setDismissedReservationId(pendingReservation.id)} />
       ) : null}
     </>
+  );
+}
+
+type NavigationLink = { label: string; href: string; description?: string };
+
+function MobileNavigationDrawer({ links, onClose, onLogout, pathname, user }: { links: NavigationLink[]; onClose: () => void; onLogout: () => void; pathname: string; user: User | null }) {
+  return (
+    <div aria-label="SportSpot navigation" aria-modal="true" className="fixed inset-0 z-[60] lg:hidden" role="dialog">
+      <button aria-label="Close navigation" className="absolute inset-0 bg-sportNavy/40" onClick={onClose} type="button" />
+      <aside className="relative ml-auto flex h-full w-[min(21rem,88vw)] flex-col bg-white shadow-2xl" id="sportspot-mobile-navigation">
+        <div className="flex items-start justify-between border-b border-slate-100 px-5 py-5">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-sportGreen">SportSpot</p>
+            <p className="mt-1 text-lg font-black text-sportNavy">Navigation</p>
+            {user ? <p className="mt-1 text-xs font-semibold text-slate-500">{getRoleLabel(user.role)}</p> : null}
+          </div>
+          <button aria-label="Close navigation" className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2" onClick={onClose} type="button"><CloseIcon /></button>
+        </div>
+
+        <nav aria-label="Mobile navigation" className="flex-1 overflow-y-auto px-3 py-4">
+          <div className="space-y-1">
+            {links.map((link) => {
+              const isActive = isMobileNavigationLinkActive(pathname, link.href);
+              return (
+                <Link
+                  aria-current={isActive ? "page" : undefined}
+                  className={`block rounded-md px-4 py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${isActive ? "bg-green-50 text-green-800" : "text-slate-700 hover:bg-slate-50 hover:text-sportGreen"}`}
+                  href={link.href}
+                  key={link.href}
+                  onClick={onClose}
+                >
+                  <span className="block text-sm font-black">{link.label}</span>
+                  {link.description ? <span className={`mt-0.5 block text-xs font-medium ${isActive ? "text-green-700" : "text-slate-500"}`}>{link.description}</span> : null}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+
+        <div className="border-t border-slate-100 p-4">
+          {user ? (
+            <>
+              <div className="flex min-w-0 items-center gap-3 px-1 py-2">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sportGreen text-sm font-black text-white">{user.full_name.charAt(0).toUpperCase()}</span>
+                <div className="min-w-0"><p className="truncate text-sm font-black text-sportNavy">{user.full_name}</p><p className="truncate text-xs font-medium text-slate-500">{user.email}</p></div>
+              </div>
+              <button className="mt-3 flex min-h-11 w-full items-center justify-center rounded-md border border-red-200 bg-white px-3 text-sm font-black text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2" onClick={onLogout} type="button">Logout</button>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <Link className="flex min-h-11 items-center justify-center rounded-md border border-slate-200 text-sm font-black text-slate-700 transition-colors hover:border-green-200 hover:text-sportGreen" href="/login" onClick={onClose}>Login</Link>
+              <Link className="flex min-h-11 items-center justify-center rounded-md bg-sportGreen text-sm font-black text-white transition-colors hover:bg-green-700" href="/register" onClick={onClose}>Sign up</Link>
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
   );
 }
 
@@ -337,6 +441,30 @@ function getProfileLinks(user: User) {
   ];
 }
 
+function getMobileNavigationLinks(user: User | null, ownerVenueStatus: VenueStatus | "NONE"): NavigationLink[] {
+  if (user?.role === "ADMIN") {
+    return [...adminDashboardNavItems, adminDashboardSettingsItem, adminDashboardUtilityItem].map((item) => ({
+      label: item.label,
+      href: item.href,
+      description: item.description,
+    }));
+  }
+
+  const links = user ? [...getNavLinks(user, ownerVenueStatus), ...getProfileLinks(user)] : getNavLinks(user, ownerVenueStatus);
+  return links.filter((link, index) => links.findIndex((candidate) => candidate.href === link.href) === index);
+}
+
+function isMobileNavigationLinkActive(pathname: string, href: string) {
+  if (href === "/dashboard/admin") return isAdminDashboardItemActive(pathname, adminDashboardNavItems[0]);
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function getRoleLabel(role: User["role"]) {
+  if (role === "ADMIN") return "Admin workspace";
+  if (role === "COURT_OWNER") return "Venue owner workspace";
+  return "Player workspace";
+}
+
 function BellIcon() {
   return (
     <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
@@ -364,6 +492,14 @@ function ClockIcon() {
     <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8" />
       <path d="M12 7v5l3 2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
     </svg>
   );
 }
