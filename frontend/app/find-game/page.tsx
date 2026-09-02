@@ -6,9 +6,11 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { getCurrentUser } from "@/lib/auth";
 import { formatDateTimeInNepal } from "@/lib/dates";
 import LoadingIndicator, { LoadingScreen } from "@/components/LoadingIndicator";
-import type { GameIntensity, GameListResponse, GameRole, GameType, MatchmakingGame } from "@/types/matchmaking";
+import type { User } from "@/types/auth";
+import type { GameIntensity, GameListResponse, GameRecommendationMeta, GameRole, GameType, MatchmakingGame } from "@/types/matchmaking";
 
 const roles: Array<{ label: string; value: GameRole | "" }> = [
   { label: "Any role", value: "" },
@@ -69,6 +71,8 @@ export default function FindGamePage() {
 function FindGameContent() {
   const searchParams = useSearchParams();
   const [games, setGames] = useState<MatchmakingGame[]>([]);
+  const [viewer, setViewer] = useState<User | null>(null);
+  const [recommendationMeta, setRecommendationMeta] = useState<GameRecommendationMeta | null>(null);
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [bookingState, setBookingState] = useState(searchParams.get("booking_state") || "");
   const [gameType, setGameType] = useState(searchParams.get("game_type") || "");
@@ -87,6 +91,8 @@ function FindGameContent() {
   const [error, setError] = useState("");
   const requestRef = useRef<AbortController | null>(null);
   const isFirstQueryRef = useRef(true);
+
+  useEffect(() => { setViewer(getCurrentUser()); }, []);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -145,6 +151,7 @@ function FindGameContent() {
       const response = await api.get<GameListResponse>(`/api/matchmaking/games/?${params.toString()}`, { signal: controller.signal });
       if (controller.signal.aborted) return;
       setGames(response.data.games);
+      setRecommendationMeta(response.data.recommendation || null);
     } catch (requestError) {
       if (controller.signal.aborted) return;
       setError(getApiErrorMessage(requestError, "We could not load open games right now. Please try again."));
@@ -210,7 +217,7 @@ function FindGameContent() {
             </label>
             <div className="flex flex-wrap items-center gap-2">
               <button aria-controls="advanced-game-filters" aria-expanded={isFilterOpen} className="sport-secondary-button" onClick={() => setIsFilterOpen((current) => !current)} type="button"><FilterIcon /> More filters{advancedFilterCount ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-sportGreen">{advancedFilterCount}</span> : null}</button>
-              <label className="flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><span className="hidden sm:inline">Sort</span><span className="sr-only sm:hidden">Sort results</span><select aria-label="Sort results" className="bg-transparent font-bold text-sportNavy outline-none" onChange={(event) => setSort(event.target.value)} value={sort}><option value="soonest">Soonest</option><option value="newest">Newest</option><option value="spots">Most spots</option></select></label>
+              <label className="flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><span className="hidden sm:inline">Sort</span><span className="sr-only sm:hidden">Sort results</span><select aria-label="Sort results" className="bg-transparent font-bold text-sportNavy outline-none" onChange={(event) => setSort(event.target.value)} value={sort}><option value="recommended">Recommended for you</option><option value="soonest">Soonest</option><option value="newest">Newest</option><option value="spots">Most spots</option></select></label>
             </div>
           </div>
 
@@ -257,8 +264,21 @@ function FindGameContent() {
           </div> : null}
         </section>
 
+        {sort === "recommended" ? <section className="mt-5 border-l-2 border-sportGreen bg-emerald-50/70 px-4 py-3.5 sm:px-5" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-sportGreen shadow-sm"><SparkIcon /></span>
+            <div className="min-w-0">
+              <p className="text-sm font-black text-sportNavy">Recommended for you</p>
+              {recommendationMeta?.available ? <p className="mt-1 text-sm leading-6 text-slate-600">Ranked from your availability, district, skill level and preferred role. You decide which game to request.</p> : <p className="mt-1 text-sm leading-6 text-slate-600">Log in as a player to see matches ranked around your profile.</p>}
+              {recommendationMeta?.available && !recommendationMeta.profile_complete ? <Link className="mt-2 inline-flex items-center gap-1 text-sm font-black text-sportGreen underline-offset-2 hover:underline" href="/dashboard/player/profile">Complete your profile <ArrowIcon /></Link> : null}
+              {(!viewer || viewer.role !== "PLAYER") && !recommendationMeta?.available ? <Link className="mt-2 inline-flex items-center gap-1 text-sm font-black text-sportGreen underline-offset-2 hover:underline" href="/login">Log in to personalize <ArrowIcon /></Link> : null}
+              {viewer?.role === "PLAYER" && !recommendationMeta?.available ? <Link className="mt-2 inline-flex items-center gap-1 text-sm font-black text-sportGreen underline-offset-2 hover:underline" href="/dashboard/player/profile">Set up your player profile <ArrowIcon /></Link> : null}
+            </div>
+          </div>
+        </section> : null}
+
         <div className="mt-7 flex items-end justify-between gap-4">
-          <div><p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Open games</p><p aria-live="polite" className="mt-1 text-sm font-bold text-slate-700">{isLoading ? <LoadingIndicator label="Finding games" size="sm" /> : <><span className="text-lg font-black text-sportNavy">{games.length}</span> game{games.length === 1 ? "" : "s"} found</>}{isRefreshing ? <span className="ml-2 inline-flex align-middle"><LoadingIndicator label="Updating games" size="sm" /></span> : null}</p></div>
+          <div><p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{sort === "recommended" ? "Recommended games" : "Open games"}</p><p aria-live="polite" className="mt-1 text-sm font-bold text-slate-700">{isLoading ? <LoadingIndicator label="Finding games" size="sm" /> : <><span className="text-lg font-black text-sportNavy">{games.length}</span> game{games.length === 1 ? "" : "s"} found</>}{isRefreshing ? <span className="ml-2 inline-flex align-middle"><LoadingIndicator label="Updating games" size="sm" /></span> : null}</p></div>
           <p className="hidden text-xs font-semibold text-slate-500 sm:block">New openings appear automatically.</p>
         </div>
 
@@ -267,7 +287,7 @@ function FindGameContent() {
         ) : error && games.length === 0 ? (
           <StateCard title="Games unavailable" description={error} actionLabel="Retry" onAction={() => loadGames(query)} />
         ) : games.length === 0 ? (
-          <StateCard title="No games match your filters." description="Try another date, role or area. You can also create your own game from a confirmed booking or start with a plan." actionLabel="Clear filters" onAction={clearFilters} />
+          <StateCard title={sort === "recommended" ? "No recommended games yet." : "No games match your filters."} description={sort === "recommended" ? "Try a different filter or view all open games. Your profile preferences will keep improving future matches." : "Try another date, role or area. You can also create your own game from a confirmed booking or start with a plan."} actionLabel={sort === "recommended" ? "See all games" : "Clear filters"} onAction={sort === "recommended" ? () => setSort("soonest") : clearFilters} />
         ) : (
           <>
             {error ? <p className="mt-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}
@@ -294,6 +314,7 @@ function GameCard({ game }: { game: MatchmakingGame }) {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1"><span className="text-[11px] font-black uppercase tracking-[0.14em] text-sportGreen">{game.game_type === "FILL_SQUAD" ? "Fill My Squad" : "Pickup game"}</span><Badge tone={game.is_booking_verified ? "green" : "blue"}>{game.is_booking_verified ? "Verified court" : "Planning"}</Badge></div>
             <h2 className="mt-2 line-clamp-2 text-lg font-black leading-tight text-sportNavy">{game.title}</h2>
+            {game.recommendation ? <div className="mt-3 border-l-2 border-sportGreen bg-emerald-50/70 px-3 py-2.5"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="inline-flex items-center gap-1.5 text-xs font-black text-sportGreen"><SparkIcon /> Recommended for you</span><span className="text-xs font-black text-slate-500">{game.recommendation.fit_label}</span></div><p className="mt-1.5 text-xs font-semibold leading-5 text-slate-600">{game.recommendation.reasons.join(" · ")}</p></div> : null}
           </div>
           <StatusBadge game={game} />
         </div>
@@ -405,3 +426,11 @@ function today() {
 }
 
 const inputClass = "sport-input";
+
+function SparkIcon() {
+  return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="m12 3 1.4 5.6L19 10l-5.6 1.4L12 17l-1.4-5.6L5 10l5.6-1.4L12 3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" /><path d="m19 16 .6 2.4L22 19l-2.4.6L19 22l-.6-2.4L16 19l2.4-.6L19 16Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.5" /></svg>;
+}
+
+function ArrowIcon() {
+  return <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><path d="M5 12h13m-5-5 5 5-5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>;
+}

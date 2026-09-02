@@ -73,8 +73,17 @@ class GameListCreateView(MutationThrottleMixin, APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        games = get_public_games(request)
-        return Response({"games": PublicGameSerializer(games, many=True, context={"request": request}).data})
+        games, recommendation_meta = get_public_games_result(request)
+        serialized_games = PublicGameSerializer(games, many=True, context={"request": request}).data
+        payload = {"games": serialized_games}
+        if recommendation_meta is not None:
+            matches = recommendation_meta.pop("matches", {})
+            for game_payload in serialized_games:
+                recommendation = matches.get(str(game_payload["id"]))
+                if recommendation:
+                    game_payload["recommendation"] = recommendation
+            payload["recommendation"] = recommendation_meta
+        return Response(payload)
 
     def post(self, request):
         if not request.user or not request.user.is_authenticated or request.user.role != "PLAYER":
@@ -845,16 +854,31 @@ def get_game_or_none(game_id):
 
 
 def get_public_games(request):
+    games, _ = get_public_games_result(request)
+    return games
+
+
+def get_public_games_result(request):
     games = list(get_public_games_queryset(request))
     for game in games:
         synchronize_game_lifecycle(game)
     games = [game for game in games if game.status in [Game.Status.RECRUITING, Game.Status.FULL]]
     sort = str(request.query_params.get("sort", "soonest")).lower()
     if sort == "newest":
-        return sorted(games, key=lambda item: item.published_at, reverse=True)
+        return sorted(games, key=lambda item: item.published_at, reverse=True), None
     if sort == "spots":
-        return sorted(games, key=lambda item: item.available_spots, reverse=True)
-    return sorted(games, key=lambda item: item.start_at or timezone.now())
+        return sorted(games, key=lambda item: item.available_spots, reverse=True), None
+    if sort == "recommended":
+        if request.user and request.user.is_authenticated and getattr(request.user, "role", "") == "PLAYER":
+            from .recommendations import recommend_games_for_player
+
+            return recommend_games_for_player(request.user, games)
+        return sorted(games, key=lambda item: item.start_at or timezone.now()), {
+            "available": False,
+            "profile_complete": False,
+            "missing": ["Log in as a player for personalized matches"],
+        }
+    return sorted(games, key=lambda item: item.start_at or timezone.now()), None
 
 
 def get_public_games_queryset(request):

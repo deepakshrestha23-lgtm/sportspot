@@ -600,6 +600,69 @@ class PickupGameApiTests(APITestCase):
         game.refresh_from_db()
         self.assertEqual(game.status, Game.Status.CLOSED)
 
+    def test_recommended_discovery_ranks_profile_fit_and_excludes_incompatible_skill(self):
+        profile = self.player_one.player_profile
+        recommended_date = timezone.localdate() + timedelta(days=5)
+        profile.availability_days = [
+            ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")[recommended_date.weekday()]
+        ]
+        profile.availability_time_periods = ["EVENING"]
+        profile.preferred_cricksal_role = "BATSMAN"
+        profile.save(update_fields=["availability_days", "availability_time_periods", "preferred_cricksal_role", "updated_at"])
+
+        recommended = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Profile fit game",
+            proposed_date=recommended_date,
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_district="Kathmandu",
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=2),
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+            min_skill_level=Game.SkillLevel.INTERMEDIATE,
+            total_capacity=6,
+            minimum_players_to_proceed=4,
+        )
+        GameRoleRequirement.objects.create(game=recommended, role="BATSMAN", required_count=2)
+
+        incompatible = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Advanced game should not be recommended",
+            proposed_date=recommended_date,
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_district="Kathmandu",
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=2),
+            recruitment_deadline=timezone.now() + timedelta(days=1),
+            min_skill_level=Game.SkillLevel.ADVANCED,
+            total_capacity=6,
+            minimum_players_to_proceed=4,
+        )
+        GameRoleRequirement.objects.create(game=incompatible, role="BATSMAN", required_count=2)
+
+        self.client.force_authenticate(self.player_one)
+        response = self.client.get(reverse("matchmaking-games"), {"sort": "recommended"})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["recommendation"]["available"])
+        self.assertIn("profile fit game", {item["title"].lower() for item in response.data["games"]})
+        self.assertNotIn(incompatible.id, {item["id"] for item in response.data["games"]})
+        profile_item = next(item for item in response.data["games"] if item["id"] == recommended.id)
+        self.assertEqual(profile_item["recommendation"]["fit_label"], "Strong fit")
+        self.assertIn("Fits your availability", profile_item["recommendation"]["reasons"])
+        self.assertIn("In your preferred district", profile_item["recommendation"]["reasons"])
+
+    def test_default_discovery_response_has_no_recommendation_mode_metadata(self):
+        self.client.force_authenticate(self.player_one)
+        response = self.client.get(reverse("matchmaking-games"))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn("recommendation", response.data)
+
     def test_my_games_synchronizes_expired_requests_inside_a_transaction(self):
         game = Game.objects.create(
             host=self.host,

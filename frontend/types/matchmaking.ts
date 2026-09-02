@@ -143,6 +143,7 @@ export type MatchmakingGame = {
   published_at: string;
   created_at: string;
   updated_at: string;
+  recommendation?: GameRecommendation;
 };
 
 export type JoinRequest = {
@@ -209,7 +210,21 @@ export type GameCreatePayload = {
   guests?: Array<{ name: string; role: GameRole }>;
 };
 
-export type GameListResponse = { games: MatchmakingGame[] };
+export type GameRecommendation = {
+  fit_label: "Strong fit" | "Good fit" | "Worth a look";
+  reasons: string[];
+};
+
+export type GameRecommendationMeta = {
+  available: boolean;
+  profile_complete: boolean;
+  missing: string[];
+};
+
+export type GameListResponse = {
+  games: MatchmakingGame[];
+  recommendation?: GameRecommendationMeta;
+};
 export type GameResponse = { game: MatchmakingGame; room_access?: "NONE" | "PLANNING" | "RECONFIRMATION" | "CONFIRMED" | "READ_ONLY" };
 export type GameChatMessage = {
   id: number;
