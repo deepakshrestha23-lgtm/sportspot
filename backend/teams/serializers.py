@@ -191,13 +191,13 @@ class TeamSerializer(serializers.ModelSerializer):
 
         allowed_content_types = {"image/jpeg", "image/png"}
         content_type = getattr(value, "content_type", "")
-        max_size = 2 * 1024 * 1024
+        max_size = 5 * 1024 * 1024
 
         if content_type and content_type not in allowed_content_types:
             raise serializers.ValidationError("Team photo must be a JPG, JPEG, or PNG image.")
 
         if getattr(value, "size", 0) > max_size:
-            raise serializers.ValidationError("Team photo must be 2MB or smaller.")
+            raise serializers.ValidationError("Team photo must be 5MB or smaller.")
 
         return value
 

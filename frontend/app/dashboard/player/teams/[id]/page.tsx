@@ -8,6 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
 import { formatDateOnly, formatDateTimeInNepal, localDateTimeToIso } from "@/lib/dates";
+import { getImageUploadError } from "@/lib/imageUpload";
 import { getMediaSrc } from "@/lib/media";
 import MediaImage from "@/components/MediaImage";
 import { emitToast } from "@/lib/toast";
@@ -93,8 +94,8 @@ export default function TeamDetailPage() {
 
   function handleTeamPhotoChange(file: File | null) {
     if (!file) { setTeamPhotoFile(null); setTeamPhotoPreview(""); return; }
-    if (!["image/jpeg", "image/png"].includes(file.type)) { emitToast({ message: "Please upload a JPG, JPEG, or PNG image.", type: "error" }); return; }
-    if (file.size > 2 * 1024 * 1024) { emitToast({ message: "Team logo must be 2MB or smaller.", type: "error" }); return; }
+    const imageError = getImageUploadError(file, "Team logo");
+    if (imageError) { emitToast({ message: imageError, type: "error" }); return; }
     if (teamPhotoPreview) URL.revokeObjectURL(teamPhotoPreview);
     setTeamPhotoFile(file);
     setTeamPhotoPreview(URL.createObjectURL(file));
@@ -554,7 +555,7 @@ function SettingsTab({ actionInProgress, editForm, onDelete, onPhotoChange, onSa
         <button className="mt-5 min-h-11 rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700 disabled:bg-slate-400" disabled={actionInProgress} type="submit">{actionInProgress ? "Saving..." : "Save Changes"}</button>
       </form>
       <aside className="space-y-5">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><SectionHeading title="Team Logo" description="JPG, JPEG or PNG. Maximum 2MB." /><div className="mt-4 flex items-center gap-4"><TeamLogo image={photoPreview} name={editForm.name || "Team"} size="md" /><label className="inline-flex min-h-10 cursor-pointer items-center rounded-xl border border-slate-300 px-4 text-sm font-black text-slate-700 hover:bg-slate-50">Choose Logo<input accept=".jpg,.jpeg,.png,image/jpeg,image/png" className="sr-only" onChange={(event) => onPhotoChange(event.target.files?.[0] || null)} type="file" /></label></div><button className="mt-4 min-h-10 rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700 disabled:bg-slate-400" disabled={actionInProgress} onClick={onSavePhoto} type="button">Save Logo</button></section>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><SectionHeading title="Team Logo" description="JPG, JPEG or PNG. Maximum 5MB." /><div className="mt-4 flex items-center gap-4"><TeamLogo image={photoPreview} name={editForm.name || "Team"} size="md" /><label className="inline-flex min-h-10 cursor-pointer items-center rounded-xl border border-slate-300 px-4 text-sm font-black text-slate-700 hover:bg-slate-50">Choose Logo<input accept=".jpg,.jpeg,.png,image/jpeg,image/png" className="sr-only" onChange={(event) => onPhotoChange(event.target.files?.[0] || null)} type="file" /></label></div><button className="mt-4 min-h-10 rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700 disabled:bg-slate-400" disabled={actionInProgress} onClick={onSavePhoto} type="button">Save Logo</button></section>
         <section className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm"><SectionHeading title="Danger Zone" description="Use destructive actions only when this team was created by mistake." /><button className="mt-4 min-h-11 rounded-xl bg-red-600 px-4 text-sm font-black text-white hover:bg-red-700 disabled:bg-slate-400" disabled={actionInProgress} onClick={onDelete} type="button">Delete Team</button></section>
       </aside>
     </div>

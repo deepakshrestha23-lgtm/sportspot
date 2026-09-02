@@ -10,6 +10,7 @@ import TimeSelect from "@/components/TimeSelect";
 import VenueLocationPicker, { type VenueLocationChange } from "@/components/owner/VenueLocationPicker";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { getFileSizeError, getImageUploadError } from "@/lib/imageUpload";
 import { addCalendarDays, buildTimeOptions, formatDateOnly, formatTimeValue, getLocalDateString } from "@/lib/dates";
 import { isVenueMapUrl } from "@/lib/maps";
 import { estimateGeneratedSlots } from "@/lib/slotSchedule";
@@ -333,6 +334,8 @@ export default function VenueSetupPage() {
     const selectedFiles = Array.from(event.target.files || []);
     event.target.value = "";
     if (selectedFiles.length === 0) return;
+    const imageError = selectedFiles.map((file) => getImageUploadError(file, "Venue photo")).find(Boolean);
+    if (imageError) { setMessage(""); setError(imageError); return; }
 
     let activeVenue = venue;
     if (!activeVenue) {
@@ -376,6 +379,8 @@ export default function VenueSetupPage() {
     const file = event.target.files?.[0] || null;
     event.target.value = "";
     if (!file) return;
+    const imageError = getImageUploadError(file, legacyPhotoLabels[field]);
+    if (imageError) { setMessage(""); setError(imageError); return; }
 
     const savedVenue = await saveVenueDraft({ replacement: { field, file } });
     if (savedVenue) {
@@ -534,7 +539,21 @@ export default function VenueSetupPage() {
 
   function updateFile(event: ChangeEvent<HTMLInputElement>, key: string) {
     const file = event.target.files?.[0] || null;
+    event.target.value = "";
+    if (file) {
+      const fileError = getFileSizeError(file, key === "verification_document" ? "Verification document" : "File");
+      if (fileError) { setMessage(""); setError(fileError); return; }
+    }
     setFiles((current) => ({ ...current, [key]: file }));
+  }
+
+  function updateCourtPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+    if (!file) { setCourtForm((current) => ({ ...current, court_photo: null })); return; }
+    const imageError = getImageUploadError(file, "Court photo");
+    if (imageError) { setMessage(""); setError(imageError); return; }
+    setCourtForm((current) => ({ ...current, court_photo: file }));
   }
 
   function appendRule(rule: string) {
@@ -664,7 +683,7 @@ export default function VenueSetupPage() {
                   <Input label="Court Name" value={courtForm.name} onChange={(value) => setCourtForm({ ...courtForm, name: value })} />
                   <Select label="Court Type" value={courtForm.court_type} onChange={(value) => setCourtForm({ ...courtForm, court_type: value })} options={["INDOOR", "OUTDOOR", "COVERED"]} />
                   <Select label="Surface Type" value={courtForm.surface_type} onChange={(value) => setCourtForm({ ...courtForm, surface_type: value })} options={["TURF", "MAT", "CEMENT", "ARTIFICIAL_TURF"]} />
-                  <FileInput label="Court Photo Optional" onChange={(event) => setCourtForm({ ...courtForm, court_photo: event.target.files?.[0] || null })} />
+                  <FileInput label="Court Photo Optional (JPG, JPEG or PNG, up to 5 MB)" onChange={updateCourtPhoto} />
                 </div>
                 <Textarea label="Court Description" value={courtForm.description} onChange={(value) => setCourtForm({ ...courtForm, description: value })} />
                 <label className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700">
@@ -1393,7 +1412,7 @@ function VenuePhotoManager({
         <label className="owner-photo-add">
             <span className="owner-photo-add-icon"><CameraIcon /></span>
             <span className="mt-2 text-sm font-black text-sportGreen">{hasPhotos ? "Add another photo" : "Add your first photo"}</span>
-            <span className="mt-1 px-4 text-xs text-slate-500">JPG, JPEG or PNG</span>
+            <span className="mt-1 px-4 text-xs text-slate-500">JPG, JPEG or PNG, up to 5 MB</span>
             <input accept=".jpg,.jpeg,.png" className="sr-only" multiple onChange={(event) => onUpload(category, event)} type="file" />
         </label>
       </div>

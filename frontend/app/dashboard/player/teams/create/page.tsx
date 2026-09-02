@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorField, getApiErrorMessage } from "@/lib/apiErrors";
+import { getImageUploadError } from "@/lib/imageUpload";
 import { emitToast } from "@/lib/toast";
 import type { TeamPayload, TeamResponse, TeamSkillLevel } from "@/types/team";
 
@@ -75,15 +76,10 @@ export default function CreateTeamPage() {
       return;
     }
 
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      setErrors((current) => ({ ...current, team_photo: "Please upload a JPG, JPEG, or PNG image." }));
-      emitToast({ message: "Please upload a JPG, JPEG, or PNG image.", type: "error", dedupeKey: "team-photo-type" });
-      return;
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      setErrors((current) => ({ ...current, team_photo: "Team photo must be 2MB or smaller." }));
-      emitToast({ message: "Team photo must be 2MB or smaller.", type: "error", dedupeKey: "team-photo-size" });
+    const imageError = getImageUploadError(file, "Team photo");
+    if (imageError) {
+      setErrors((current) => ({ ...current, team_photo: imageError }));
+      emitToast({ message: imageError, type: "error", dedupeKey: "team-photo-upload" });
       return;
     }
 
@@ -288,7 +284,7 @@ function TeamPhotoPicker({ error, name, onChange, preview }: { error?: string; n
             Remove Photo
           </button>
         ) : null}
-        <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">Optional. JPG, JPEG, or PNG. Max size: 2MB.</p>
+        <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">Optional. JPG, JPEG, or PNG. Max size: 5MB.</p>
       </div>
       {error ? <p className="mt-2 text-xs font-semibold text-red-600">{error}</p> : null}
     </div>

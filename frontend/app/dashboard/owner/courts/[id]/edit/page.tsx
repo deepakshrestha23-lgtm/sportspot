@@ -9,6 +9,7 @@ import MediaImage from "@/components/MediaImage";
 import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { getImageUploadError } from "@/lib/imageUpload";
 import type { Court } from "@/types/venue";
 
 export default function EditOwnerCourtPage() {
@@ -57,9 +58,13 @@ export default function EditOwnerCourtPage() {
   }
 
   function selectPhoto(event: ChangeEvent<HTMLInputElement>) {
-    setPhoto(event.target.files?.[0] || null);
-    setRemovePhoto(false);
+    const file = event.target.files?.[0] || null;
     event.target.value = "";
+    if (!file) { setPhoto(null); return; }
+    const imageError = getImageUploadError(file, "Court photo");
+    if (imageError) { setPhoto(null); setError(imageError); return; }
+    setPhoto(file);
+    setRemovePhoto(false);
   }
 
   if (isLoading) return <div className="owner-panel owner-courts-loading">Loading court...</div>;
@@ -93,7 +98,7 @@ export default function EditOwnerCourtPage() {
         </form>
 
         <section className="owner-venue-section">
-          <div className="owner-venue-section-header"><div><p className="owner-section-kicker">Presentation</p><h2>Court photo</h2><p>Use a clear image of the actual play area. JPG, JPEG or PNG, up to 3 MB.</p></div></div>
+          <div className="owner-venue-section-header"><div><p className="owner-section-kicker">Presentation</p><h2>Court photo</h2><p>Use a clear image of the actual play area. JPG, JPEG or PNG, up to 5 MB.</p></div></div>
           <div className="owner-court-edit-photo">
             {court.court_photo && !removePhoto ? <MediaImage alt={`${court.name} court`} className="h-full w-full object-cover" fallback={<div className="owner-court-edit-photo-empty"><span>Photo unavailable</span></div>} source={court.court_photo} /> : <div className="owner-court-edit-photo-empty"><span>{removePhoto ? "Photo will be removed" : "No court photo"}</span></div>}
             <div className="owner-court-edit-photo-actions">

@@ -1013,7 +1013,7 @@ class AdminVenueSerializer(VenueSerializer):
     courts = CourtSerializer(many=True, read_only=True)
 
 
-def validate_upload(value, allowed_content_types, message, max_size_mb=3):
+def validate_upload(value, allowed_content_types, message, max_size_mb=5):
     if not value:
         return value
 

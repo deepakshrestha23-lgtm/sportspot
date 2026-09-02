@@ -8,6 +8,7 @@ import FeedbackToast from "@/components/FeedbackToast";
 import { OwnerPageHeader } from "@/components/owner/OwnerPageHeader";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
+import { getImageUploadError } from "@/lib/imageUpload";
 import type { Court } from "@/types/venue";
 
 export default function CreateOwnerCourtPage() {
@@ -22,6 +23,13 @@ export default function CreateOwnerCourtPage() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+
+  function selectPhoto(file: File | null) {
+    if (!file) { setPhoto(null); return; }
+    const imageError = getImageUploadError(file, "Court photo");
+    if (imageError) { setPhoto(null); setError(imageError); return; }
+    setPhoto(file);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,7 +62,7 @@ export default function CreateOwnerCourtPage() {
             <Select label="Court Type" value={form.court_type} onChange={(value) => setForm({ ...form, court_type: value })} options={["INDOOR", "OUTDOOR", "COVERED"]} />
             <Select label="Surface Type" value={form.surface_type} onChange={(value) => setForm({ ...form, surface_type: value })} options={["TURF", "MAT", "CEMENT", "ARTIFICIAL_TURF"]} />
           </div>
-          <label className="owner-court-create-upload"><span><strong>Court photo</strong><small>Optional. JPG, JPEG or PNG, up to 3 MB.</small></span><input accept=".jpg,.jpeg,.png" onChange={(event) => setPhoto(event.target.files?.[0] || null)} type="file" />{photo ? <em>{photo.name}</em> : null}</label>
+          <label className="owner-court-create-upload"><span><strong>Court photo</strong><small>Optional. JPG, JPEG or PNG, up to 5 MB.</small></span><input accept=".jpg,.jpeg,.png" onChange={(event) => selectPhoto(event.target.files?.[0] || null)} type="file" />{photo ? <em>{photo.name}</em> : null}</label>
           <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <input checked={form.is_active} onChange={(event) => setForm({ ...form, is_active: event.target.checked })} type="checkbox" />
             Court is active
