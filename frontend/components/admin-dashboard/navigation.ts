@@ -2,7 +2,7 @@ export type AdminDashboardNavItem = {
   label: string;
   description: string;
   href: string;
-  icon: "overview" | "venues" | "users" | "bookings" | "moderation" | "reliability" | "operations" | "support";
+  icon: "overview" | "venues" | "users" | "bookings" | "moderation" | "reliability" | "operations" | "settings" | "support";
   match: string[];
   exact?: boolean;
 };
@@ -25,11 +25,19 @@ export const adminDashboardUtilityItem: AdminDashboardNavItem = {
   match: ["/support"],
 };
 
+export const adminDashboardSettingsItem: AdminDashboardNavItem = {
+  label: "Settings",
+  description: "Admin account and security",
+  href: "/dashboard/admin/settings",
+  icon: "settings",
+  match: ["/dashboard/admin/settings"],
+};
+
 export function isAdminDashboardItemActive(pathname: string, item: AdminDashboardNavItem) {
   if (item.exact) return item.match.some((path) => pathname === path);
   return item.match.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
 export function getActiveAdminDashboardItem(pathname: string) {
-  return [...adminDashboardNavItems, adminDashboardUtilityItem].find((item) => isAdminDashboardItemActive(pathname, item)) || adminDashboardNavItems[0];
+  return [...adminDashboardNavItems, adminDashboardSettingsItem, adminDashboardUtilityItem].find((item) => isAdminDashboardItemActive(pathname, item)) || adminDashboardNavItems[0];
 }

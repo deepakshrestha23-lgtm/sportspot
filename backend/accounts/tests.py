@@ -590,3 +590,31 @@ class OwnerSettingsApiTests(APITestCase):
         response = self.client.get(reverse("auth-owner-settings"))
 
         self.assertEqual(response.status_code, 403)
+
+
+class AdminPasswordSettingsApiTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            email="settings-admin@example.com",
+            password="StrongPass123!",
+            full_name="Settings Admin",
+            phone="9800000199",
+        )
+        self.client.force_authenticate(self.user)
+
+    def test_admin_can_change_password_and_previous_auth_version_is_invalidated(self):
+        old_auth_version = self.user.auth_version
+        response = self.client.post(
+            reverse("auth-settings-password"),
+            {
+                "current_password": "StrongPass123!",
+                "new_password": "NewAdminPass456!",
+                "confirm_password": "NewAdminPass456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewAdminPass456!"))
+        self.assertEqual(self.user.auth_version, old_auth_version + 1)

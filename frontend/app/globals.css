@@ -310,6 +310,291 @@
   overflow-x: auto;
 }
 
+/* Admin account security workspace: one focused form with supporting trust context. */
+.admin-dashboard-theme .admin-settings-panel-heading,
+.admin-dashboard-theme .admin-settings-info-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-dashboard-theme .admin-settings-panel-heading {
+  border-bottom: 1px solid #e7eee9;
+  padding: 1.4rem 1.5rem 1.2rem;
+}
+
+.admin-dashboard-theme .admin-settings-panel-heading h2,
+.admin-dashboard-theme .admin-settings-info-heading h2,
+.admin-dashboard-theme .admin-settings-recovery-panel h2 {
+  margin-top: 0.3rem;
+  color: #07152b;
+  font-size: 1.2rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.admin-dashboard-theme .admin-settings-panel-heading p:not(.sport-eyebrow),
+.admin-dashboard-theme .admin-settings-recovery-panel > p:not(.sport-eyebrow) {
+  max-width: 42rem;
+  margin-top: 0.4rem;
+  color: #63758a;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.admin-dashboard-theme .admin-settings-heading-icon,
+.admin-dashboard-theme .admin-settings-info-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background: #eaf5ee;
+  color: #087a3e;
+}
+
+.admin-dashboard-theme .admin-settings-heading-icon {
+  height: 2.8rem;
+  width: 2.8rem;
+}
+
+.admin-dashboard-theme .admin-settings-form {
+  padding: 1.35rem 1.5rem 1.5rem;
+}
+
+.admin-dashboard-theme .admin-settings-form-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-dashboard-theme .admin-settings-field {
+  display: block;
+  min-width: 0;
+  color: #07152b;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.admin-dashboard-theme .admin-settings-field:first-child {
+  grid-column: 1 / -1;
+}
+
+.admin-dashboard-theme .admin-settings-input-wrap {
+  position: relative;
+  margin-top: 0.45rem;
+}
+
+.admin-dashboard-theme .admin-settings-input-wrap .sport-input {
+  margin-top: 0;
+}
+
+.admin-dashboard-theme .admin-settings-visibility {
+  position: absolute;
+  right: 0.65rem;
+  top: 50%;
+  display: inline-flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  border-radius: 0.4rem;
+  color: #63758a;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.admin-dashboard-theme .admin-settings-visibility:hover {
+  background: #f1f7f3;
+  color: #087a3e;
+}
+
+.admin-dashboard-theme .admin-settings-visibility:focus-visible {
+  outline: 2px solid #087a3e;
+  outline-offset: 2px;
+}
+
+.admin-dashboard-theme .admin-settings-field small {
+  display: block;
+  margin-top: 0.35rem;
+  color: #b42318;
+  font-size: 0.73rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.admin-dashboard-theme .admin-settings-input-wrap:has(input[aria-invalid="true"]) .sport-input {
+  border-color: #e6a3a3;
+}
+
+.admin-dashboard-theme .admin-settings-requirements {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1.25rem;
+  border: 1px solid #dce6e0;
+  border-radius: 0.75rem;
+  background: #f8fbf9;
+  padding: 1rem;
+}
+
+.admin-dashboard-theme .admin-settings-requirements > div:first-child {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.admin-dashboard-theme .admin-settings-requirements strong {
+  color: #07152b;
+  font-size: 0.82rem;
+}
+
+.admin-dashboard-theme .admin-settings-requirements > div:first-child span {
+  color: #63758a;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.admin-dashboard-theme .admin-settings-requirement-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 1rem;
+}
+
+.admin-dashboard-theme .admin-settings-requirement-list span {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #63758a;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.admin-dashboard-theme .admin-settings-requirement-list b {
+  display: inline-flex;
+  height: 1.2rem;
+  width: 1.2rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dce6e0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #ffffff;
+}
+
+.admin-dashboard-theme .admin-settings-requirement-list span.is-met {
+  color: #166534;
+}
+
+.admin-dashboard-theme .admin-settings-requirement-list span.is-met b {
+  border-color: #b8ebcb;
+  background: #dff4e6;
+  color: #087a3e;
+}
+
+.admin-dashboard-theme .admin-settings-form-error {
+  margin-top: 1rem;
+  border-left: 3px solid #dc2626;
+  background: #fff5f5;
+  padding: 0.7rem 0.8rem;
+  color: #991b1b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.admin-dashboard-theme .admin-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1.35rem;
+  border-top: 1px solid #e7eee9;
+  padding-top: 1rem;
+}
+
+.admin-dashboard-theme .admin-settings-info-panel,
+.admin-dashboard-theme .admin-settings-recovery-panel {
+  padding: 1.35rem 1.5rem 1.5rem;
+}
+
+.admin-dashboard-theme .admin-settings-info-icon {
+  height: 2.35rem;
+  width: 2.35rem;
+}
+
+.admin-dashboard-theme .admin-settings-account-list {
+  display: grid;
+  gap: 0;
+  margin-top: 1.2rem;
+}
+
+.admin-dashboard-theme .admin-settings-account-list > div {
+  display: grid;
+  gap: 0.25rem;
+  border-top: 1px solid #e7eee9;
+  padding: 0.8rem 0;
+}
+
+.admin-dashboard-theme .admin-settings-account-list dt {
+  color: #63758a;
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-dashboard-theme .admin-settings-account-list dd {
+  overflow-wrap: anywhere;
+  color: #07152b;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.admin-dashboard-theme .admin-settings-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #166534;
+}
+
+.admin-dashboard-theme .admin-settings-status span {
+  height: 0.45rem;
+  width: 0.45rem;
+  border-radius: 999px;
+  background: #16a34a;
+}
+
+.admin-dashboard-theme .admin-settings-session-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+  border-radius: 0.65rem;
+  background: #f8fbf9;
+  padding: 0.8rem;
+  color: #087a3e;
+}
+
+.admin-dashboard-theme .admin-settings-session-note p {
+  color: #526477;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.admin-dashboard-theme .admin-settings-recovery-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  color: #087a3e;
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.admin-dashboard-theme .admin-settings-recovery-link:hover {
+  color: #066b36;
+}
+
 .admin-dashboard-theme .admin-data-table tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -380,6 +665,33 @@
     letter-spacing: 0.08em;
     text-align: left;
     text-transform: uppercase;
+  }
+}
+
+@media (max-width: 639px) {
+  .admin-dashboard-theme .admin-settings-panel-heading,
+  .admin-dashboard-theme .admin-settings-info-panel,
+  .admin-dashboard-theme .admin-settings-recovery-panel,
+  .admin-dashboard-theme .admin-settings-form {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .admin-dashboard-theme .admin-settings-form-grid,
+  .admin-dashboard-theme .admin-settings-requirement-list {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-dashboard-theme .admin-settings-field:first-child {
+    grid-column: auto;
+  }
+
+  .admin-dashboard-theme .admin-settings-actions {
+    justify-content: stretch;
+  }
+
+  .admin-dashboard-theme .admin-settings-actions > button {
+    flex: 1;
   }
 }
 

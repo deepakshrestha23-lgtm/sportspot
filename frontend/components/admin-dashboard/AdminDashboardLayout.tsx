@@ -8,6 +8,7 @@ import RoleGate from "@/components/RoleGate";
 import { LoadingScreen } from "@/components/LoadingIndicator";
 import {
   adminDashboardNavItems,
+  adminDashboardSettingsItem,
   adminDashboardUtilityItem,
   getActiveAdminDashboardItem,
   isAdminDashboardItemActive,
@@ -70,7 +71,8 @@ function AdminSidebar({ pathname }: { pathname: string }) {
           {adminDashboardNavItems.map((item) => <AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, item)} item={item} key={item.href} />)}
         </nav>
         <div className="flex-1" />
-        <nav aria-label="Admin dashboard support" className="border-t border-slate-100 pt-4">
+        <nav aria-label="Admin dashboard utilities" className="space-y-1.5 border-t border-slate-100 pt-4">
+          <AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, adminDashboardSettingsItem)} item={adminDashboardSettingsItem} />
           <AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, adminDashboardUtilityItem)} item={adminDashboardUtilityItem} />
         </nav>
       </div>
@@ -104,7 +106,7 @@ function AdminMobileDrawer({ pathname, onClose }: { pathname: string; onClose: (
         </div>
         <nav className="mt-5 space-y-1.5">{adminDashboardNavItems.map((item) => <AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, item)} item={item} key={item.href} onNavigate={onClose} />)}</nav>
         <div className="flex-1" />
-        <nav className="border-t border-slate-100 pt-4"><AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, adminDashboardUtilityItem)} item={adminDashboardUtilityItem} onNavigate={onClose} /></nav>
+        <nav aria-label="Admin dashboard utilities" className="mt-5 space-y-1.5 border-t border-slate-100 pt-4"><AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, adminDashboardSettingsItem)} item={adminDashboardSettingsItem} onNavigate={onClose} /><AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, adminDashboardUtilityItem)} item={adminDashboardUtilityItem} onNavigate={onClose} /></nav>
       </aside>
     </div>
   );
@@ -123,6 +125,7 @@ function AdminIcon({ name }: { name: AdminDashboardNavItem["icon"] }) {
   if (name === "moderation") return <svg {...common}><path d="m12 3 7 3v5c0 4.5-2.8 8-7 10-4.2-2-7-5.5-7-10V6l7-3Zm-3 8 2 2 4-4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
   if (name === "reliability") return <svg {...common}><path d="M12 3a9 9 0 1 0 9 9M12 7v5l3 2m3.5-8.5 1.5-1.5m-5-1.5V1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
   if (name === "operations") return <svg {...common}><path d="M4 19h16M6 16V8m6 8V5m6 11v-4M4 4h16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
+  if (name === "settings") return <svg {...common}><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0-5v2m0 13v2M4.93 4.93l1.42 1.42m9.3 9.3 1.42 1.42M3 12h2m14 0h2M4.93 19.07l1.42-1.42m9.3-9.3 1.42-1.42" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
   return <svg {...common}><path d="M4 5h16v11H4zM8 21h8M12 16v5M8 9h8M8 12h5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
 }
 

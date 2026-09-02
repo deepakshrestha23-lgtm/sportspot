@@ -333,6 +333,7 @@ function getProfileLinks(user: User) {
     { label: "Bookings & payments", href: "/dashboard/admin/bookings" },
     { label: "Users", href: "/dashboard/admin/users" },
     { label: "Reports & moderation", href: "/dashboard/admin/reports" },
+    { label: "Admin Settings", href: "/dashboard/admin/settings" },
   ];
 }
 
