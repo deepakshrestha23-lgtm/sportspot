@@ -315,58 +315,65 @@ function GameCard({ game }: { game: MatchmakingGame }) {
   const participants = game.participants || [];
   const mapHref = game.is_booking_verified ? buildVenueDirectionsHref(game.venue_latitude, game.venue_longitude, game.venue_map_location) : "";
   const actionLabel = canJoin ? "Request to join" : canWaitlist ? "Join waitlist" : "View game details";
+  const deadlineLabel = game.is_booking_verified ? "Recruitment" : "Court booking";
+  const deadlineValue = game.is_booking_verified ? recruitmentCountdown || "Recruitment deadline not set" : bookingCountdown || "Booking deadline not set";
+  const gameTypeLabel = isFillSquad ? "Fill My Squad" : "Pickup Game";
+  const modeLabel = game.is_booking_verified ? "Court confirmed" : "Planning";
   return (
-    <article className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_6px_18px_rgba(16,32,22,0.05)] transition duration-200 hover:-translate-y-0.5 hover:border-green-300 hover:shadow-[0_12px_28px_rgba(16,32,22,0.10)]">
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              {isFillSquad && game.team_photo ? (
-                <MediaImage alt={`${game.team_name || "Team"} logo`} className="h-7 w-7 shrink-0 rounded-md border border-green-100 bg-white object-contain p-0.5" fallback={<span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-[9px] font-black text-sportGreen">{getInitials(game.team_name || "Team")}</span>} source={game.team_photo} />
-              ) : <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-sportGreen"><CricketIcon /></span>}
-              <span className="text-[11px] font-black uppercase tracking-[0.16em] text-sportGreen">{isFillSquad ? "Fill my squad" : "Pickup game"}</span>
-              <Badge tone={game.is_booking_verified ? "green" : "blue"}>{game.is_booking_verified ? "Verified court" : "Planning"}</Badge>
-              {game.recommendation ? <span className="inline-flex items-center gap-1 text-[11px] font-black text-sportGreen"><SparkIcon /> Recommended</span> : null}
-            </div>
-            <h2 className="mt-2 line-clamp-2 text-lg font-black leading-snug text-sportNavy sm:text-xl">{game.title}</h2>
+    <article className="group overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_4px_14px_rgba(16,32,22,0.05)] transition duration-200 hover:border-green-300 hover:shadow-[0_10px_24px_rgba(16,32,22,0.09)]">
+      <div className="p-5 sm:p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            {isFillSquad && game.team_photo ? (
+              <MediaImage alt={`${game.team_name || "Team"} logo`} className="h-10 w-10 shrink-0 rounded-md border border-green-100 bg-white object-contain p-1" fallback={<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-xs font-bold text-sportGreen">{getInitials(game.team_name || "Team")}</span>} source={game.team_photo} />
+            ) : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-sportGreen"><CricketIcon className="h-5 w-5" /></span>}
+            <p className="truncate text-sm font-bold uppercase text-sportGreen">{gameTypeLabel}</p>
+            <span aria-hidden="true" className="h-7 w-px shrink-0 bg-slate-200" />
+            <p className={`flex shrink-0 items-center gap-2 text-sm font-semibold ${game.is_booking_verified ? "text-sportGreen" : "text-blue-700"}`}><span aria-hidden="true" className={`h-2 w-2 rounded-full ${game.is_booking_verified ? "bg-sportGreen" : "bg-blue-600"}`} />{modeLabel}</p>
           </div>
-          <StatusBadge game={game} />
+          <RecruitmentState game={game} />
         </div>
 
-        <div className="mt-3 grid gap-2 border-y border-slate-100 py-3 sm:grid-cols-2">
-          <MetaItem accent="green" icon={<CalendarIcon />} label="When" value={game.start_at ? formatDateTimeInNepal(game.start_at, { weekday: "short", month: "short", day: "numeric" }) : "Date to be confirmed"} detail={game.booking_display_time} />
-          <MetaItem accent="blue" icon={<MapPinIcon />} label="Where" value={location} detail={game.game_type === "FILL_SQUAD" && game.team_name ? game.team_name : `Hosted by ${game.host_name}`} mapHref={mapHref} />
+        <h2 className="mt-6 line-clamp-2 text-2xl font-bold leading-tight text-sportNavy">{game.title}</h2>
+        {game.description ? <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600 sm:text-base">{game.description}</p> : null}
+
+        <div className="mt-5 grid gap-4 border-y border-slate-200 py-5 sm:grid-cols-2 sm:gap-5">
+          <GameMetaBlock accent="green" icon={<CalendarIcon className="h-6 w-6" />} label="When" value={game.start_at ? formatDateTimeInNepal(game.start_at, { weekday: "short", month: "short", day: "numeric" }) : "Date to be confirmed"} detail={game.booking_display_time} />
+          <GameMetaBlock accent="blue" icon={<MapPinIcon className="h-6 w-6" />} label="Where" value={location} detail={game.game_type === "FILL_SQUAD" && game.team_name ? game.team_name : `Hosted by ${game.host_name}`} mapHref={mapHref} />
         </div>
 
-        <section className="mt-3" aria-label="Squad availability">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-base font-black text-sportNavy"><span className="text-sportGreen">{occupied}</span> / {capacity} players</p>
-            <p className={game.available_spots > 0 ? "text-sm font-black text-sportGreen" : "text-sm font-black text-slate-500"}>{game.available_spots > 0 ? `${game.available_spots} open` : "Full"}</p>
+        <section className="py-5" aria-label="Squad availability">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-lg font-bold text-sportNavy"><span className="text-sportGreen">{occupied}</span> / {capacity} players</p>
+            <p className={game.available_spots > 0 ? "text-sm font-bold text-sportGreen" : "text-sm font-bold text-slate-500"}>{game.available_spots > 0 ? `${game.available_spots} open` : "Full"}</p>
           </div>
-          <div className="mt-2 flex min-w-0 items-center gap-3">
+          <div className="mt-4 grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
             <AvatarStack capacity={capacity} participants={participants} hostName={game.host_name} />
-            <div className="min-w-0 flex-1"><div aria-label={`${occupied} of ${capacity} roster spots filled`} className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full transition-all ${game.is_booking_verified ? "bg-sportGreen" : "bg-blue-500"}`} style={{ width: `${progress}%` }} /></div><p className="mt-1.5 truncate text-xs font-bold text-slate-600"><span className="mr-1 inline-flex align-middle text-blue-600"><UsersIcon /></span>{openRoles.length ? `Needs ${openRoles.slice(0, 2).map((item) => `${item.role_label} (${item.available_count})`).join(" · ")}${openRoles.length > 2 ? " · more" : ""}` : "Roles covered"}</p></div>
+            <div className="min-w-0">
+              <div aria-label={`${occupied} of ${capacity} roster spots filled`} className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-sportGreen transition-all" style={{ width: `${progress}%` }} /></div>
+              <p className="mt-3 flex min-w-0 items-center gap-2 text-sm font-medium text-slate-600"><UsersIcon className="h-5 w-5 shrink-0 text-blue-600" /><span className="truncate">{openRoles.length ? `Needs ${openRoles.slice(0, 2).map((item) => `${item.role_label} (${item.available_count})`).join(" · ")}${openRoles.length > 2 ? " · more" : ""}` : "Roles covered"}</span></p>
+            </div>
           </div>
         </section>
 
-        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 border-t border-slate-100 pt-3">
-          <GameSignal accent="green" icon={<TrophyIcon className="h-4 w-4" />} value={game.game_intensity_label} />
-          <GameSignal accent="amber" icon={<TargetIcon className="h-4 w-4" />} value={formatSkill(game.min_skill_level)} />
-          <GameSignal accent="purple" icon={<ShieldIcon className="h-4 w-4" />} value={game.host_reliability_label || "New host"} />
+        <div className="grid gap-3 border-t border-slate-200 pt-5 sm:grid-cols-3">
+          <GameFact icon={<TrophyIcon className="h-5 w-5" />} tone="green" value={game.game_intensity_label} />
+          <GameFact icon={<TargetIcon className="h-5 w-5" />} tone="amber" value={formatSkill(game.min_skill_level)} />
+          <GameFact icon={<ShieldIcon className="h-5 w-5" />} tone="purple" value={game.host_reliability_label || "New host"} />
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-5">
-        <div className="min-w-0"><DeadlineItem accent={game.is_booking_verified ? "green" : "blue"} icon={game.is_booking_verified ? <ClockIcon /> : <CalendarIcon />} value={game.is_booking_verified ? recruitmentCountdown || "Recruitment deadline not set" : bookingCountdown || "Booking deadline not set"} /></div>
-        <Link className="sport-primary-button inline-flex min-h-10 shrink-0 items-center justify-center gap-2 px-4 text-sm" href={`/find-game/${game.id}`}>{actionLabel}<ArrowIcon /></Link>
+      <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <p className={`flex min-w-0 items-center gap-2 text-sm font-semibold ${game.is_booking_verified ? "text-sportGreen" : "text-blue-700"}`}><ClockIcon className="h-5 w-5" /><span className="truncate"><span className="text-slate-500">{deadlineLabel}:</span> {deadlineValue}</span></p>
+        <Link className="sport-primary-button inline-flex min-h-11 shrink-0 items-center justify-center gap-2 px-5 text-sm" href={`/find-game/${game.id}`}>{actionLabel}<ArrowIcon /></Link>
       </div>
     </article>
   );
 }
 
-function MetaItem({ accent, detail, icon, label, mapHref, value }: { accent: "green" | "blue"; detail: string; icon: React.ReactNode; label: string; mapHref?: string; value: string }) {
-  const iconClasses = accent === "green" ? "bg-emerald-50 text-sportGreen" : "bg-blue-50 text-blue-600";
-  return <div className="flex min-w-0 items-start gap-2"><span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClasses}`}>{icon}</span><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">{label}</p><p className="mt-0.5 truncate text-sm font-black text-sportNavy">{value}</p><p className="truncate text-xs font-semibold text-slate-500">{detail}{mapHref ? <a className="ml-2 inline-flex items-center gap-1 font-black text-blue-700 hover:text-blue-800" href={mapHref} rel="noreferrer" target="_blank"><MapIcon className="h-3 w-3" />Map</a> : null}</p></div></div>;
+function GameMetaBlock({ accent, detail, icon, label, mapHref, value }: { accent: "green" | "blue"; detail: string; icon: React.ReactNode; label: string; mapHref?: string; value: string }) {
+  const iconClasses = accent === "green" ? "border-green-100 bg-emerald-50 text-sportGreen" : "border-blue-100 bg-blue-50 text-blue-600";
+  return <div className="flex min-w-0 items-start gap-3"><span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border ${iconClasses}`}>{icon}</span><div className="min-w-0"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><p className="mt-1 truncate text-base font-bold text-sportNavy">{value}</p><p className="mt-1 truncate text-sm text-slate-500">{detail}{mapHref ? <a className="ml-2 inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800" href={mapHref} rel="noreferrer" target="_blank"><MapIcon className="h-3.5 w-3.5" />Map</a> : null}</p></div></div>;
 }
 
 function AvatarStack({ capacity, hostName, participants }: { capacity: number; hostName: string; participants: MatchmakingGame["participants"] }) {
@@ -375,22 +382,23 @@ function AvatarStack({ capacity, hostName, participants }: { capacity: number; h
   const slots = Array.from({ length: visibleSlots }, (_, index) => visibleParticipants[index] || null);
   if (!slots.some(Boolean) && hostName) slots[0] = { full_name: hostName } as MatchmakingGame["participants"][number];
   const extraCount = Math.max(participants.length - visibleSlots, 0);
-  return <div className="flex min-w-0 items-center"><div className="flex items-center -space-x-1.5">{slots.map((participant, index) => participant ? <ParticipantAvatar key={participant.id || `host-${index}`} name={participant.full_name || participant.guest_name || hostName} source={participant.profile_photo} /> : <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-slate-300 shadow-sm"><UsersIcon className="h-3.5 w-3.5" /></span>)}{extraCount > 0 ? <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white bg-sportNavy text-[9px] font-black text-white shadow-sm">+{extraCount}</span> : null}</div></div>;
+  return <div className="flex min-w-0 items-center"><div className="flex items-center -space-x-2">{slots.map((participant, index) => participant ? <ParticipantAvatar key={participant.id || `host-${index}`} name={participant.full_name || participant.guest_name || hostName} source={participant.profile_photo} /> : <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-slate-400 shadow-sm"><UsersIcon className="h-4 w-4" /></span>)}{extraCount > 0 ? <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-white bg-sportNavy text-[10px] font-bold text-white shadow-sm">+{extraCount}</span> : null}</div></div>;
 }
 
 function ParticipantAvatar({ name, source }: { name: string; source?: string }) {
-  const avatarClass = "h-8 w-8 shrink-0 rounded-full border-2 border-white bg-sportNavy object-cover text-[9px] font-black text-white shadow-sm";
+  const avatarClass = "h-10 w-10 shrink-0 rounded-full border-2 border-white bg-sportNavy object-cover text-[10px] font-bold text-white shadow-sm";
   return <MediaImage alt={`${name} profile photo`} className={avatarClass} fallback={<span className={`${avatarClass} flex items-center justify-center`}>{getInitials(name)}</span>} source={source} />;
 }
 
-function GameSignal({ accent, icon, value }: { accent: "green" | "amber" | "purple"; icon: React.ReactNode; value: string }) {
-  const classes = { green: "bg-emerald-50 text-sportGreen", amber: "bg-amber-50 text-amber-600", purple: "bg-violet-50 text-violet-700" }[accent];
-  return <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-bold text-slate-600"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${classes}`}>{icon}</span><span className="max-w-[9rem] truncate">{value}</span></span>;
+function GameFact({ icon, tone, value }: { icon: React.ReactNode; tone: "green" | "amber" | "purple"; value: string }) {
+  const color = { green: "text-sportGreen", amber: "text-amber-600", purple: "text-violet-700" }[tone];
+  return <p className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-600"><span className={`shrink-0 ${color}`}>{icon}</span><span className="truncate">{value}</span></p>;
 }
 
-function DeadlineItem({ accent, icon, value }: { accent: "green" | "blue"; icon: React.ReactNode; value: string }) {
-  const color = accent === "green" ? "text-sportGreen" : "text-blue-700";
-  return <div className={`flex min-w-0 items-center gap-1.5 text-xs font-black ${color}`}><span className="shrink-0">{icon}</span><p className="truncate">{value}</p></div>;
+function RecruitmentState({ game }: { game: MatchmakingGame }) {
+  const label = game.status === "RECRUITING" ? "Recruiting" : game.status === "FULL" ? (game.waitlist_enabled ? "Waitlist open" : "Full") : game.status === "CLOSED" ? "Recruitment closed" : game.status_label;
+  const color = game.status === "CLOSED" || game.status === "CANCELLED" ? "text-red-700" : game.status === "FULL" ? "text-amber-800" : "text-sportNavy";
+  return <p className={`flex shrink-0 items-center gap-2 text-sm font-semibold ${color}`}><UsersIcon className="h-5 w-5" /><span className="hidden sm:inline">{label}</span></p>;
 }
 
 function Field({ children, label }: { children: React.ReactNode; label: string }) {
@@ -401,19 +409,8 @@ function Select({ label, onChange, options, value }: { label: string; onChange: 
   return <Field label={label}><select className={inputClass} onChange={(event) => onChange(event.target.value)} value={value}>{options.map((option) => <option key={option.value || option.label} value={option.value}>{option.label}</option>)}</select></Field>;
 }
 
-function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: "slate" | "green" | "blue" }) {
-  const classes = tone === "green" ? "border-green-200 bg-green-50 text-sportGreen" : tone === "blue" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600";
-  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${classes}`}>{children}</span>;
-}
-
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-green-200 bg-green-50 py-1 pl-2.5 pr-1 text-xs font-bold text-sportGreen"><span className="max-w-[15rem] truncate">{label}</span><button aria-label={`Remove ${label} filter`} className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-sm leading-none hover:bg-green-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400" onClick={onRemove} type="button"><CloseIcon /></button></span>;
-}
-
-function StatusBadge({ game }: { game: MatchmakingGame }) {
-  const label = game.status === "RECRUITING" ? "Recruiting" : game.status === "FULL" ? (game.waitlist_enabled ? "Waitlist open" : "Full") : game.status === "CLOSED" ? "Recruitment closed" : game.status_label;
-  const isClosed = game.status === "CLOSED" || game.status === "CANCELLED";
-  return <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black ${isClosed ? "border-red-200 bg-red-50 text-red-700" : game.status === "FULL" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-green-200 bg-green-50 text-sportGreen"}`}>{label}</span>;
 }
 
 function StateCard({ actionLabel, description, onAction, title }: { actionLabel: string; description: string; onAction: () => void; title: string }) {
@@ -460,8 +457,8 @@ function ShieldIcon({ className = "h-5 w-5" }: { className?: string }) {
   return <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24"><path d="m12 3 7 3v5c0 4.6-2.8 8-7 10-4.2-2-7-5.4-7-10V6l7-3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" /><path d="m9 12 2 2 4-4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>;
 }
 
-function ClockIcon() {
-  return <svg aria-hidden="true" className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" /><path d="M12 7v5l3 2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
+function ClockIcon({ className = "h-3.5 w-3.5 shrink-0" }: { className?: string }) {
+  return <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" /><path d="M12 7v5l3 2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" /></svg>;
 }
 
 function CloseIcon() {
