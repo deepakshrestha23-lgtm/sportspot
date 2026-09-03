@@ -75,12 +75,36 @@ const faqs = [
     answer: "SportSpot currently focuses on Cricksal only, so courts, teams, bookings, and player identity are built around Cricksal.",
   },
   {
-    question: "Can I book more than one slot?",
-    answer: "Yes. You can reserve consecutive slots for the same court and date as one booking with one payment and one booking pass.",
+    question: "Do I need an account before I book a court?",
+    answer: "You can browse public court listings without an account. Create a Player account before reserving slots, making a payment, joining a game, or managing a team.",
   },
   {
-    question: "How do venues appear on SportSpot?",
-    answer: "Court owners submit venue details, courts, slots, photos, and proof. After review, verified venues become visible to players.",
+    question: "Can I reserve more than one slot?",
+    answer: "Yes. Choose consecutive available slots for the same court and date. SportSpot keeps them together as one booking, payment, and booking pass.",
+  },
+  {
+    question: "How is a court booking confirmed?",
+    answer: "After you select available slots, SportSpot places a short reservation hold. Complete the Khalti payment before that hold expires and SportSpot verifies the payment before confirming your booking.",
+  },
+  {
+    question: "What happens if I do not complete payment in time?",
+    answer: "The temporary reservation expires automatically. Those slots become available for other players again, and you can start a new booking whenever the court is still available.",
+  },
+  {
+    question: "What does a verified venue mean?",
+    answer: "The venue owner has submitted venue details, courts, slots, photos, and verification information. SportSpot reviews that submission before the venue appears in public court discovery.",
+  },
+  {
+    question: "How do I join an open game?",
+    answer: "Open a game in Find Games and send a request to join. The host reviews requests and confirms the group, while the game room keeps the match plan and updates in one place.",
+  },
+  {
+    question: "Can I create a team or challenge another team?",
+    answer: "Yes. Registered players can create a Cricksal team, invite teammates, and use Challenge Teams to arrange a fixture with another registered team when both captains agree.",
+  },
+  {
+    question: "When can we use Cricket Scorer?",
+    answer: "Cricket Scorer is for a real match with two teams. A captain or appointed scorer prepares the squads, records the toss, then scores the match ball by ball. Finalized scorecards update player performance and team records.",
   },
 ];
 
@@ -88,7 +112,7 @@ export default function Home() {
   const [venues, setVenues] = useState<PublicVenue[]>([]);
   const [isLoadingVenues, setIsLoadingVenues] = useState(true);
   const [venueError, setVenueError] = useState("");
-  const [activeFaq, setActiveFaq] = useState(0);
+  const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [activeStep, setActiveStep] = useState(0);
 
   useEffect(() => {
@@ -262,18 +286,47 @@ export default function Home() {
       </section>
 
       <section className="bg-white py-16">
-        <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-          <SectionHeader eyebrow="Questions" title="Frequently asked questions" description="A few practical answers before you start." />
-          <div className="mt-8 space-y-3">
-            {faqs.map((faq, index) => (
-              <button className="w-full rounded-lg border border-slate-200 bg-white p-5 text-left shadow-sm hover:border-green-200" key={faq.question} onClick={() => setActiveFaq(activeFaq === index ? -1 : index)} type="button">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-black text-sportNavy">{faq.question}</span>
-                  <span className="text-xl font-black text-sportGreen">{activeFaq === index ? "-" : "+"}</span>
-                </div>
-                {activeFaq === index ? <p className="mt-3 text-sm leading-6 text-slate-600">{faq.answer}</p> : null}
-              </button>
-            ))}
+        <div className="mx-auto grid max-w-6xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.75fr_1.25fr] lg:px-8">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-sportGreen">Need to know</p>
+            <h2 className="mt-3 text-3xl font-black tracking-tight text-sportNavy sm:text-4xl">Frequently asked questions</h2>
+            <p className="mt-4 max-w-sm text-sm leading-6 text-slate-600">Useful answers about booking courts, payments, teams, open games, and Cricket Scorer.</p>
+            <Link className="mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-black text-sportNavy transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen" href="/support">
+              Get support
+              <span aria-hidden="true" className="ml-2">-&gt;</span>
+            </Link>
+          </div>
+          <div className="border-y border-slate-200 bg-white">
+            {faqs.map((faq, index) => {
+              const isOpen = activeFaq === index;
+              const buttonId = `home-faq-button-${index}`;
+              const answerId = `home-faq-answer-${index}`;
+
+              return (
+                <article className="border-b border-slate-200 last:border-b-0" key={faq.question}>
+                  <h3>
+                    <button
+                      aria-controls={answerId}
+                      aria-expanded={isOpen}
+                      className="flex min-h-16 w-full items-center justify-between gap-5 px-5 py-4 text-left transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sportGreen sm:px-6"
+                      id={buttonId}
+                      onClick={() => setActiveFaq(isOpen ? null : index)}
+                      type="button"
+                    >
+                      <span className="text-sm font-black leading-6 text-sportNavy sm:text-base">{faq.question}</span>
+                      <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-lg font-black text-sportGreen">
+                        {isOpen ? "-" : "+"}
+                      </span>
+                    </button>
+                  </h3>
+                  {isOpen ? (
+                    <div aria-labelledby={buttonId} className="px-5 pb-5 sm:px-6 sm:pb-6" id={answerId} role="region">
+                      <p className="max-w-2xl text-sm leading-6 text-slate-600">{faq.answer}</p>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
           </div>
         </div>
       </section>

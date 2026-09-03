@@ -4,9 +4,10 @@
 
 :root {
   color-scheme: light;
-  --sport-ink: #18231c;
+  --sport-ink: #243446;
+  --sport-heading: #17233a;
   --sport-navy: #0b1220;
-  --sport-muted: #68756d;
+  --sport-muted: #607084;
   --sport-line: #dce5de;
   --sport-surface: #ffffff;
   --sport-canvas: #f4f7f5;
@@ -1511,8 +1512,21 @@ body {
   color: var(--sport-ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 15px;
+  font-weight: 400;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+/* Keep the navy brand surface dark, while making reading text less stark. */
+.text-sportNavy {
+  color: var(--sport-heading);
+}
+
+/* Tailwind's default 900 is too assertive for a product interface. */
+.font-black {
+  font-weight: 700;
 }
 
 html {
