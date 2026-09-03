@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 
-from .reference_data import SPORTSPOT_AREAS_BY_DISTRICT
+from .reference_data import SPORTSPOT_AREAS_BY_DISTRICT, canonical_service_area
 
 
 class LocationProviderError(Exception):
@@ -96,6 +96,15 @@ def _normalize_result(item):
         )
         if area.casefold() == district.casefold():
             area = ""
+    service_area = canonical_service_area(
+        area=area,
+        district=district,
+        latitude=latitude,
+        longitude=longitude,
+    )
+    if service_area:
+        district = service_area["district"]
+        area = service_area["label"]
     return {
         "latitude": latitude,
         "longitude": longitude,
@@ -103,6 +112,7 @@ def _normalize_result(item):
         "place_type": str(item.get("type") or item.get("class") or "place").strip(),
         "district": district,
         "area": area,
+        "service_area_code": service_area["code"] if service_area else "",
     }
 
 

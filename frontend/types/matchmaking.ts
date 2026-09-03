@@ -116,6 +116,7 @@ export type MatchmakingGame = {
   proposed_end_time: string | null;
   preferred_district: string;
   preferred_area: string;
+  preferred_area_code: string;
   preferred_venue_name: string;
   alternative_details: string;
   booking_deadline: string | null;
@@ -203,6 +204,7 @@ export type GameCreatePayload = {
   proposed_end_time?: string | null;
   preferred_district?: string;
   preferred_area?: string;
+  preferred_area_code?: string;
   preferred_venue_name?: string;
   alternative_details?: string;
   booking_deadline?: string | null;

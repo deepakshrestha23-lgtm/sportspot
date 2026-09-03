@@ -16,6 +16,7 @@ from venues.models import Booking, Court, CourtSlot, Venue
 from matchmaking.services import booking_end_at, get_booking_start_at, player_has_overlapping_commitment
 
 from .models import ChallengeEvent, ChallengeProposal, OpenChallengeResponse, TeamChallenge, TeamFixture, TeamFixtureChatMessage, TeamFixtureParticipant
+from .serializers import TeamChallengeCreateSerializer
 from .services import (
     counter_challenge,
     cancel_challenges_for_booking,
@@ -260,6 +261,28 @@ class TeamChallengeServiceTests(TestCase):
             create_challenge(data, self.host)
 
         self.assertEqual(TeamChallenge.objects.count(), 0)
+
+    def test_plan_first_create_accepts_a_map_resolved_service_area_code(self):
+        serializer = TeamChallengeCreateSerializer(
+            data={
+                "challenge_type": TeamChallenge.ChallengeType.DIRECT,
+                "challenger_team": self.host_team.id,
+                "challenged_team": self.opponent_team.id,
+                "court_mode": TeamChallenge.CourtMode.PLAN_FIRST,
+                "proposed_date": (timezone.localdate() + timedelta(days=3)).isoformat(),
+                "proposed_start_time": "18:00",
+                "proposed_end_time": "20:00",
+                "preferred_area_code": "baneshwor",
+                "players_per_side": 6,
+                "intensity": "CASUAL",
+                "response_deadline": (timezone.now() + timedelta(hours=4)).isoformat(),
+                "booking_deadline": (timezone.now() + timedelta(hours=5)).isoformat(),
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["preferred_area"], "Baneshwor")
+        self.assertEqual(serializer.validated_data["preferred_district"], "Kathmandu")
 
     @patch("team_challenges.services.notify_challenge_decision")
     @patch("team_challenges.services.notify_challenge_received")

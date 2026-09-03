@@ -5,7 +5,11 @@ from rest_framework import serializers
 from teams.models import Team, TeamMember
 from venues.models import Booking
 from venues.policies import get_booking_start_at
-from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG
+from venues.reference_data import (
+    SPORTSPOT_AREAS_BY_DISTRICT,
+    SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG,
+    canonical_service_area,
+)
 from venues.serializers import BookingSerializer
 
 from .models import (
@@ -134,6 +138,27 @@ AREA_TO_DISTRICT = {
     for district, areas in SPORTSPOT_AREAS_BY_DISTRICT.items()
     for area in areas
 }
+
+
+def normalize_plan_first_service_area(attrs, *, required=False):
+    """Convert a map-picked code or legacy labels into canonical plan data."""
+    provided_code = str(attrs.pop("preferred_area_code", "") or "").strip()
+    provided_area = str(attrs.get("preferred_area") or "").strip()
+    provided_district = str(attrs.get("preferred_district") or "").strip()
+    if not (provided_code or provided_area):
+        if required:
+            raise serializers.ValidationError({"preferred_area": "Choose a supported SportSpot service area."})
+        return attrs
+    service_area = canonical_service_area(
+        code=provided_code,
+        area=provided_area,
+        district=provided_district,
+    )
+    if not service_area:
+        raise serializers.ValidationError({"preferred_area": "Choose a supported SportSpot service area."})
+    attrs["preferred_area"] = service_area["label"]
+    attrs["preferred_district"] = service_area["district"]
+    return attrs
 
 
 class GameRoleRequirementSerializer(serializers.ModelSerializer):
@@ -310,10 +335,18 @@ class GameHostUpdateSerializer(serializers.Serializer):
     proposed_end_time = serializers.TimeField(required=False)
     preferred_district = serializers.CharField(max_length=50, required=False, allow_blank=True)
     preferred_area = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    preferred_area_code = serializers.CharField(max_length=64, required=False, allow_blank=True)
     preferred_venue_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
     alternative_details = serializers.CharField(max_length=300, required=False, allow_blank=True)
     booking_deadline = serializers.DateTimeField(required=False)
     role_requirements = GameRoleRequirementSerializer(many=True, required=False)
+
+    def validate(self, attrs):
+        if any(field in attrs for field in ("preferred_area_code", "preferred_area")):
+            normalize_plan_first_service_area(attrs)
+        else:
+            attrs.pop("preferred_area_code", None)
+        return attrs
 
 
 class GameSerializer(serializers.ModelSerializer):
@@ -343,6 +376,7 @@ class GameSerializer(serializers.ModelSerializer):
     end_at = serializers.SerializerMethodField()
     date = serializers.SerializerMethodField()
     preferred_district = serializers.SerializerMethodField()
+    preferred_area_code = serializers.SerializerMethodField()
     confirmed_participants_count = serializers.IntegerField(read_only=True)
     provisional_participants_count = serializers.IntegerField(read_only=True)
     occupied_spots_count = serializers.IntegerField(read_only=True)
@@ -410,6 +444,7 @@ class GameSerializer(serializers.ModelSerializer):
             "proposed_end_time",
             "preferred_district",
             "preferred_area",
+            "preferred_area_code",
             "preferred_venue_name",
             "alternative_details",
             "booking_deadline",
@@ -448,6 +483,13 @@ class GameSerializer(serializers.ModelSerializer):
 
     def get_preferred_district(self, game):
         return game.preferred_district or AREA_TO_DISTRICT.get((game.preferred_area or "").strip().casefold(), "")
+
+    def get_preferred_area_code(self, game):
+        service_area = canonical_service_area(
+            area=game.preferred_area,
+            district=game.preferred_district,
+        )
+        return service_area["code"] if service_area else ""
 
     def get_team_name(self, game):
         return game.team.name if game.team_id else ""
@@ -641,6 +683,7 @@ class GameCreateSerializer(serializers.Serializer):
     proposed_end_time = serializers.TimeField(required=False, allow_null=True)
     preferred_district = serializers.CharField(max_length=50, required=False, allow_blank=True)
     preferred_area = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    preferred_area_code = serializers.CharField(max_length=64, required=False, allow_blank=True)
     preferred_venue_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
     alternative_details = serializers.CharField(max_length=300, required=False, allow_blank=True)
     booking_deadline = serializers.DateTimeField(required=False, allow_null=True)
@@ -706,15 +749,7 @@ class GameCreateSerializer(serializers.Serializer):
             proposed_end_time = attrs.get("proposed_end_time")
             if not proposed_date or not proposed_start_time or not proposed_end_time:
                 raise serializers.ValidationError({"proposed_date": "Choose a proposed date and time."})
-            preferred_area = str(attrs.get("preferred_area") or "").strip()
-            if preferred_area.casefold() not in SUPPORTED_PLAN_AREAS:
-                raise serializers.ValidationError({"preferred_area": "Choose an area from the supported SportSpot locations."})
-            preferred_district = str(attrs.get("preferred_district") or "").strip()
-            inferred_district = AREA_TO_DISTRICT[preferred_area.casefold()]
-            if preferred_district and preferred_district != inferred_district:
-                raise serializers.ValidationError({"preferred_district": "Choose an area from the selected district."})
-            attrs["preferred_district"] = preferred_district or inferred_district
-            attrs["preferred_area"] = preferred_area
+            normalize_plan_first_service_area(attrs, required=True)
             if proposed_end_time <= proposed_start_time:
                 raise serializers.ValidationError({"proposed_end_time": "The end time must be after the start time."})
             proposed_start = timezone.make_aware(
@@ -779,6 +814,7 @@ class GameCreateSerializer(serializers.Serializer):
         validated_data.pop("selected_team_member_ids", None)
         validated_data.pop("booking_id", None)
         validated_data.pop("team_id", None)
+        validated_data.pop("preferred_area_code", None)
         client_request_id = str(validated_data.get("client_request_id") or "").strip()
         game = Game.objects.create(host=request.user, **validated_data)
         self.was_idempotent_replay = False

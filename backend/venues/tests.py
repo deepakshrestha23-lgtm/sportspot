@@ -42,6 +42,30 @@ class VenueLocationApiTests(APITestCase):
             role="PLAYER",
         )
 
+    def test_player_map_point_resolves_to_a_controlled_service_area(self):
+        self.client.force_authenticate(self.player)
+
+        response = self.client.get(
+            "/api/venues/service-areas/resolve/",
+            {"lat": "27.6914", "lng": "85.3420"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["service_area_code"], "baneshwor")
+        self.assertEqual(response.data["area"], "Baneshwor")
+        self.assertEqual(response.data["district"], "Kathmandu")
+
+    def test_player_map_point_outside_supported_valley_areas_is_rejected(self):
+        self.client.force_authenticate(self.player)
+
+        response = self.client.get(
+            "/api/venues/service-areas/resolve/",
+            {"lat": "28.2096", "lng": "83.9856"},
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("supported SportSpot service area", response.data["detail"])
+
     def test_owner_can_save_a_confirmed_coordinate_pair(self):
         self.client.force_authenticate(self.owner)
         response = self.client.post(

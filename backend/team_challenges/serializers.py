@@ -6,7 +6,7 @@ from players.models import ParticipationCommitment
 from players.services import get_attendance_submission_deadline
 from sportspot_api.chat import can_edit_chat_message, chat_edit_deadline
 from venues.models import Booking
-from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
+from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS, canonical_service_area
 
 from .models import (
     ChallengeProposal,
@@ -32,6 +32,27 @@ CHALLENGE_SORT_CHOICES = (
     ("updated_desc", "Recently updated"),
     ("name_asc", "Team name"),
 )
+
+
+def normalize_challenge_service_area(attrs, *, required=False):
+    """Accept a map-resolved area code while keeping legacy label clients valid."""
+    provided_code = str(attrs.pop("preferred_area_code", "") or "").strip()
+    provided_area = str(attrs.get("preferred_area") or "").strip()
+    provided_district = str(attrs.get("preferred_district") or "").strip()
+    if not (provided_code or provided_area):
+        if required:
+            raise serializers.ValidationError({"preferred_area": "Choose a supported SportSpot service area."})
+        return attrs
+    service_area = canonical_service_area(
+        code=provided_code,
+        area=provided_area,
+        district=provided_district,
+    )
+    if not service_area:
+        raise serializers.ValidationError({"preferred_area": "Choose a supported SportSpot service area."})
+    attrs["preferred_area"] = service_area["label"]
+    attrs["preferred_district"] = service_area["district"]
+    return attrs
 
 class TeamChallengeFilterSerializer(serializers.Serializer):
     search = serializers.CharField(required=False, allow_blank=True, max_length=100)
@@ -176,6 +197,7 @@ class ChallengeProposalSerializer(serializers.ModelSerializer):
     created_by_team_name = serializers.CharField(source="created_by_team.name", read_only=True)
     booking_summary = serializers.SerializerMethodField()
     is_current = serializers.SerializerMethodField()
+    preferred_area_code = serializers.SerializerMethodField()
 
     class Meta:
         model = ChallengeProposal
@@ -191,6 +213,7 @@ class ChallengeProposalSerializer(serializers.ModelSerializer):
             "proposed_end_time",
             "preferred_district",
             "preferred_area",
+            "preferred_area_code",
             "preferred_venue_name",
             "players_per_side",
             "intensity",
@@ -211,6 +234,13 @@ class ChallengeProposalSerializer(serializers.ModelSerializer):
     def get_is_current(self, proposal):
         challenge = getattr(proposal, "challenge", None)
         return bool(challenge and challenge.current_proposal_id == proposal.id)
+
+    def get_preferred_area_code(self, proposal):
+        service_area = canonical_service_area(
+            area=proposal.preferred_area,
+            district=proposal.preferred_district,
+        )
+        return service_area["code"] if service_area else ""
 
 
 class OpenChallengeResponseSerializer(serializers.ModelSerializer):
@@ -888,6 +918,7 @@ class TeamChallengeCreateSerializer(serializers.Serializer):
     proposed_end_time = serializers.TimeField(required=False, allow_null=True)
     preferred_district = serializers.CharField(required=False, allow_blank=True, max_length=50)
     preferred_area = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    preferred_area_code = serializers.CharField(required=False, allow_blank=True, max_length=64)
     preferred_venue_name = serializers.CharField(required=False, allow_blank=True, max_length=120)
     players_per_side = serializers.IntegerField(min_value=2, max_value=30, default=6)
     intensity = serializers.ChoiceField(choices=[("CASUAL", "Casual"), ("COMPETITIVE", "Competitive"), ("PRACTICE", "Practice")], default="CASUAL")
@@ -911,8 +942,11 @@ class TeamChallengeCreateSerializer(serializers.Serializer):
                 raise serializers.ValidationError({field: "This field is required for a planned challenge." for field in missing})
             if not attrs.get("booking_deadline"):
                 raise serializers.ValidationError({"booking_deadline": "Choose a court-booking deadline."})
+            normalize_challenge_service_area(attrs, required=True)
         elif attrs.get("booking_deadline"):
             raise serializers.ValidationError({"booking_deadline": "A booking deadline is only used for a planned challenge."})
+        else:
+            attrs.pop("preferred_area_code", None)
         if attrs.get("proposed_start_time") and attrs.get("proposed_end_time") and attrs["proposed_end_time"] <= attrs["proposed_start_time"]:
             raise serializers.ValidationError({"proposed_end_time": "End time must be after start time."})
         return attrs
@@ -929,6 +963,7 @@ class ChallengeCounterSerializer(serializers.Serializer):
     proposed_end_time = serializers.TimeField()
     preferred_district = serializers.CharField(required=False, allow_blank=True, max_length=50)
     preferred_area = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    preferred_area_code = serializers.CharField(required=False, allow_blank=True, max_length=64)
     preferred_venue_name = serializers.CharField(required=False, allow_blank=True, max_length=120)
     players_per_side = serializers.IntegerField(min_value=2, max_value=30, default=6)
     intensity = serializers.ChoiceField(choices=[("CASUAL", "Casual"), ("COMPETITIVE", "Competitive"), ("PRACTICE", "Practice")], default="CASUAL")
@@ -941,6 +976,7 @@ class ChallengeCounterSerializer(serializers.Serializer):
             raise serializers.ValidationError({"proposed_end_time": "End time must be after start time."})
         if not attrs.get("booking_deadline"):
             raise serializers.ValidationError({"booking_deadline": "Choose a court-booking deadline."})
+        normalize_challenge_service_area(attrs, required=True)
         return attrs
 
 

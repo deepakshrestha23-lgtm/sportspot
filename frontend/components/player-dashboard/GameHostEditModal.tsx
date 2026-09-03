@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import LoadingIndicator from "@/components/LoadingIndicator";
+import ServiceAreaPicker, { type ServiceAreaSelection } from "@/components/location/ServiceAreaPicker";
 import TimeSelect from "@/components/TimeSelect";
 import { buildTimeOptions, formatDateTimeInNepal, joinDateTimeInput, parseDateTimeInput, splitDateTimeInput, toDateTimeInput, toNepalDate } from "@/lib/dates";
 import type { GameRole, GameRoleRequirement, GameSkillLevel, MatchmakingGame } from "@/types/matchmaking";
@@ -32,6 +33,7 @@ export type GameHostEditValues = {
   proposed_end_time: string;
   preferred_district: string;
   preferred_area: string;
+  preferred_area_code: string;
   preferred_venue_name: string;
   alternative_details: string;
   booking_deadline: string;
@@ -67,6 +69,7 @@ function initialValues(game: MatchmakingGame): GameHostEditValues {
     proposed_end_time: game.proposed_end_time?.slice(0, 5) || "",
     preferred_district: game.preferred_district || "",
     preferred_area: game.preferred_area || "",
+    preferred_area_code: game.preferred_area_code || "",
     preferred_venue_name: game.preferred_venue_name || "",
     alternative_details: game.alternative_details || "",
     booking_deadline: toDateTimeInput(game.booking_deadline),
@@ -107,6 +110,9 @@ export default function GameHostEditModal({ game, isSaving, onClose, onSave }: G
   const scheduleError = isPlanFirst && recruitmentDeadline && bookingDeadline && bookingDeadline.getTime() - recruitmentDeadline.getTime() < 30 * 60 * 1000
     ? `Recruitment must close by ${formatDateTimeInNepal(new Date(bookingDeadline.getTime() - 30 * 60 * 1000).toISOString(), { dateStyle: "medium", timeStyle: "short" })}, at least 30 minutes before the ${formatDateTimeInNepal(bookingDeadline.toISOString(), { dateStyle: "medium", timeStyle: "short" })} court-booking deadline.`
     : "";
+  const selectedServiceArea: ServiceAreaSelection | null = values.preferred_area_code && values.preferred_area && values.preferred_district
+    ? { code: values.preferred_area_code, area: values.preferred_area, district: values.preferred_district }
+    : null;
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -188,11 +194,10 @@ export default function GameHostEditModal({ game, isSaving, onClose, onSave }: G
                   {scheduleError ? <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-900 sm:col-span-2" role="alert">{scheduleError}</p> : null}
                   {isPlanFirst ? <>
                     <label className="block text-sm font-black text-slate-700">Proposed date<input className={inputClass} required type="date" value={values.proposed_date} onChange={(event) => setValue("proposed_date", event.target.value)} /></label>
-                    <label className="block text-sm font-black text-slate-700">Preferred district<input className={inputClass} value={values.preferred_district} onChange={(event) => setValue("preferred_district", event.target.value)} /></label>
                     <label className="block text-sm font-black text-slate-700">Start time<TimeSelect ariaLabel="Proposed start time" className={inputClass} options={buildTimeOptions()} required value={values.proposed_start_time} onChange={(value) => setValue("proposed_start_time", value)} /></label>
                     <label className="block text-sm font-black text-slate-700">End time<TimeSelect ariaLabel="Proposed end time" className={inputClass} options={buildTimeOptions()} required value={values.proposed_end_time} onChange={(value) => setValue("proposed_end_time", value)} /></label>
-                    <label className="block text-sm font-black text-slate-700">Preferred area<input className={inputClass} required value={values.preferred_area} onChange={(event) => setValue("preferred_area", event.target.value)} /></label>
                     <label className="block text-sm font-black text-slate-700">Preferred venue <span className="font-semibold text-slate-400">Optional</span><input className={inputClass} value={values.preferred_venue_name} onChange={(event) => setValue("preferred_venue_name", event.target.value)} /></label>
+                    <div className="sm:col-span-2"><ServiceAreaPicker compact id="edit-game-service-area" onChange={(selection) => setValues((current) => ({ ...current, preferred_area_code: selection.code, preferred_area: selection.area, preferred_district: selection.district }))} value={selectedServiceArea} /></div>
                     <label className="block text-sm font-black text-slate-700 sm:col-span-2">Alternative area or time <span className="font-semibold text-slate-400">Optional</span><input className={inputClass} value={values.alternative_details} onChange={(event) => setValue("alternative_details", event.target.value)} /></label>
                     <p className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold leading-6 text-blue-800 sm:col-span-2">Changing the proposed date, time, or area will ask existing players to reconfirm their spot.</p>
                   </> : <p className="rounded-md bg-slate-50 px-4 py-3 text-sm font-semibold leading-6 text-slate-600 sm:col-span-2">Your confirmed booking controls the venue, court, date, and time. You can extend or bring forward recruitment within the booking time.</p>}

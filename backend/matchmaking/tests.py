@@ -742,7 +742,58 @@ class PickupGameApiTests(APITestCase):
         self.assertLess(ids.index(near_game.id), ids.index(far_game.id))
         near_item = next(item for item in response.data["games"] if item["id"] == near_game.id)
         self.assertLess(near_item["recommendation"]["distance_km"], 1)
-        self.assertTrue(any("km from your preferred area" in reason for reason in near_item["recommendation"]["reasons"]))
+        self.assertTrue(any("km to the confirmed court" in reason for reason in near_item["recommendation"]["reasons"]))
+
+    def test_recommended_discovery_distinguishes_service_areas_within_one_district(self):
+        profile = self.player_one.player_profile
+        profile.location = "Kathmandu"
+        profile.preferred_area = "Baneshwor"
+        profile.location_confirmed = False
+        profile.latitude = None
+        profile.longitude = None
+        profile.save()
+        proposed_date = timezone.localdate() + timedelta(days=5)
+
+        same_area = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Baneshwor evening cricket",
+            proposed_date=proposed_date,
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_district="Kathmandu",
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=2),
+            total_capacity=6,
+            minimum_players_to_proceed=4,
+        )
+        different_area = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Thamel evening cricket",
+            proposed_date=proposed_date,
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_district="Kathmandu",
+            preferred_area="Thamel",
+            booking_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=2),
+            total_capacity=6,
+            minimum_players_to_proceed=4,
+        )
+
+        self.client.force_authenticate(self.player_one)
+        response = self.client.get(reverse("matchmaking-games"), {"sort": "recommended"})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        games = response.data["games"]
+        ids = [item["id"] for item in games]
+        self.assertLess(ids.index(same_area.id), ids.index(different_area.id))
+        same_item = next(item for item in games if item["id"] == same_area.id)
+        different_item = next(item for item in games if item["id"] == different_area.id)
+        self.assertIn("In your preferred playing area", same_item["recommendation"]["reasons"])
+        self.assertIn("In your preferred district", different_item["recommendation"]["reasons"])
 
     def test_my_games_synchronizes_expired_requests_inside_a_transaction(self):
         game = Game.objects.create(

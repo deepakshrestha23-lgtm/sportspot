@@ -12,18 +12,20 @@ from django.utils import timezone
 
 from players.models import PlayerProfile
 
+from venues.reference_data import canonical_service_area, service_area_distance_km
+
 from .models import ACTIVE_PARTICIPANT_STATUSES, Game, GameParticipant
 from .services import player_has_overlapping_commitment
 
 
 MATCH_WEIGHTS = {
     "availability": 30,
-    "location": 25,
-    "skill": 20,
-    "role": 15,
-    # There is no structured game-mood preference on PlayerProfile yet.  Keep
-    # this neutral so recommendations never infer a preference from free text.
-    "game_preference": 10,
+    "location": 30,
+    "skill": 18,
+    "role": 17,
+    # A verified court is a useful quality signal, but planned games remain
+    # discoverable and can still rank highly when they fit the player better.
+    "booking_readiness": 5,
 }
 
 SKILL_RANK = {
@@ -78,19 +80,20 @@ def recommend_games_for_player(player, games):
             continue
 
         distance_km = _distance_to_game(profile, game)
+        location_fit, location_reason = _location_match(profile, game, distance_km)
         factors = {
             "availability": _availability_fit(profile, game),
-            "location": _location_fit(profile, game, distance_km),
+            "location": location_fit,
             "skill": _skill_fit(profile, game),
             "role": _role_fit(profile, game),
-            "game_preference": 0.5,
+            "booking_readiness": 1.0 if game.is_booking_verified else 0.65,
         }
         score = sum(factors[name] * weight for name, weight in MATCH_WEIGHTS.items())
         ranked.append(
             {
                 "game": game,
                 "score": score,
-                "recommendation": _recommendation_summary(profile, game, factors, distance_km),
+                "recommendation": _recommendation_summary(profile, game, factors, distance_km, location_reason),
             }
         )
 
@@ -170,43 +173,71 @@ def _availability_fit(profile, game):
     return 0.15
 
 
-def _location_fit(profile, game, distance_km=None):
+def _location_match(profile, game, distance_km=None):
     if distance_km is not None:
         radius = max(float(profile.travel_radius_km or 10), 1.0)
         if distance_km <= min(2.0, radius):
-            return 1.0
+            return 1.0, f"{distance_km:.1f} km to the confirmed court"
         if distance_km <= radius:
             inner_span = max(radius - 2.0, 1.0)
-            return 1.0 - (0.35 * ((distance_km - 2.0) / inner_span))
+            return 1.0 - (0.35 * ((distance_km - 2.0) / inner_span)), f"{distance_km:.1f} km to the confirmed court"
         if distance_km <= radius * 2:
-            return 0.65 - (0.30 * ((distance_km - radius) / radius))
-        return 0.15
+            return 0.65 - (0.30 * ((distance_km - radius) / radius)), f"{distance_km:.1f} km to the confirmed court"
+        return 0.15, f"{distance_km:.1f} km to the confirmed court"
 
-    player_locations = {
-        _normalise_text(value)
-        for value in (profile.location, profile.preferred_area)
-        if value
-    }
-    if not player_locations:
-        return 0.5
+    player_area = _profile_service_area(profile)
+    game_area = _game_service_area(game)
+    if player_area and game_area:
+        if player_area["code"] == game_area["code"]:
+            return 1.0, "In your preferred playing area"
+        area_distance_km = service_area_distance_km(player_area, game_area)
+        if area_distance_km is not None and area_distance_km <= 3.5:
+            return 0.82, "Near your preferred playing area"
+        if player_area["district"] == game_area["district"]:
+            return 0.58, "In your preferred district"
+        if area_distance_km is not None and area_distance_km <= 9:
+            return 0.4, "Within your broader playing area"
+        return 0.15, ""
 
-    targets = {
-        _normalise_text(value)
-        for value in (
-            game.preferred_district,
-            game.preferred_area,
-            game.booking.venue.city if game.booking_id else "",
-            game.booking.venue.area if game.booking_id else "",
+    player_district = _normalise_text(profile.location)
+    game_district = _normalise_text(
+        game.booking.venue.city if game.booking_id else game.preferred_district
+    )
+    if player_district and game_district:
+        if player_district == game_district:
+            return 0.58, "In your preferred district"
+        if player_district in game_district or game_district in player_district:
+            return 0.45, "Within your broader playing area"
+        return 0.2, ""
+    return 0.5, ""
+
+
+def _location_fit(profile, game, distance_km=None):
+    """Compatibility helper retained for callers that only need the score."""
+    return _location_match(profile, game, distance_km)[0]
+
+
+def _profile_service_area(profile):
+    return canonical_service_area(
+        area=profile.preferred_area,
+        district=profile.location,
+        latitude=profile.latitude if profile.location_confirmed else None,
+        longitude=profile.longitude if profile.location_confirmed else None,
+    )
+
+
+def _game_service_area(game):
+    if game.booking_id:
+        return canonical_service_area(
+            area=game.booking.venue.area,
+            district=game.booking.venue.city,
+            latitude=game.booking.venue.latitude if game.booking.venue.location_confirmed else None,
+            longitude=game.booking.venue.longitude if game.booking.venue.location_confirmed else None,
         )
-        if value
-    }
-    if not targets:
-        return 0.5
-    if player_locations & targets:
-        return 1.0
-    if any(player_location in target or target in player_location for player_location in player_locations for target in targets):
-        return 0.8
-    return 0.2
+    return canonical_service_area(
+        area=game.preferred_area,
+        district=game.preferred_district,
+    )
 
 
 def _distance_to_game(profile, game):
@@ -277,17 +308,15 @@ def _role_fit(profile, game):
     return 0.45
 
 
-def _recommendation_summary(profile, game, factors, distance_km=None):
+def _recommendation_summary(profile, game, factors, distance_km=None, location_reason=""):
     reasons = []
     if factors["availability"] >= 0.99:
         reasons.append("Fits your availability")
     elif factors["availability"] >= 0.6:
         reasons.append("Works with part of your availability")
 
-    if distance_km is not None:
-        reasons.append(f"{distance_km:.1f} km from your preferred area")
-    elif factors["location"] >= 0.8:
-        reasons.append("In your preferred district")
+    if location_reason and (distance_km is not None or factors["location"] >= 0.4):
+        reasons.append(location_reason)
 
     if factors["role"] >= 0.95 and profile.preferred_cricksal_role != PlayerProfile.CricksalRole.NONE:
         reasons.append(f"Needs your preferred role: {_role_label(profile.preferred_cricksal_role)}")
@@ -312,7 +341,7 @@ def _recommendation_summary(profile, game, factors, distance_km=None):
     score += factors["location"] * MATCH_WEIGHTS["location"]
     score += factors["skill"] * MATCH_WEIGHTS["skill"]
     score += factors["role"] * MATCH_WEIGHTS["role"]
-    score += factors["game_preference"] * MATCH_WEIGHTS["game_preference"]
+    score += factors["booking_readiness"] * MATCH_WEIGHTS["booking_readiness"]
     if score >= 80:
         fit_label = "Strong fit"
     elif score >= 60:

@@ -35,7 +35,7 @@ from .khalti import (
     npr_to_paisa,
 )
 from .models import Booking, BookingCheckIn, BookingMessage, BookingSlot, Court, CourtFeedbackReport, CourtFeedbackReaction, CourtReview, CourtReviewComment, CourtSlot, Venue, VenuePhoto
-from .location import LocationProviderError, reverse_location, search_locations
+from .location import LocationProviderError, reverse_location, search_locations, validate_coordinates
 from .policies import build_cancellation_policy_snapshot, get_booking_start_at, get_cancellation_quote
 from .reference_data import (
     SPORTSPOT_AREAS_BY_DISTRICT,
@@ -45,6 +45,7 @@ from .reference_data import (
     SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG,
     SPORTSPOT_TIME_PERIODS,
     SPORTSPOT_PLANNING_START_TIMES,
+    canonical_service_area,
 )
 from .permissions import IsAdminRole, IsCourtOwner, IsPlayer
 from .serializers import AdminVenueSerializer, BookingMessageSerializer, BookingSerializer, BookingVerificationSerializer, CourtFeedbackReactionInputSerializer, CourtFeedbackReportInputSerializer, CourtReviewCommentSerializer, CourtReviewSerializer, CourtSerializer, PublicCourtDetailSerializer, PublicVenueSerializer, SlotSerializer, VenuePhotoSerializer, VenueSerializer
@@ -200,6 +201,38 @@ class OwnerLocationReverseView(APIView):
         return Response(serialize_location_result(result))
 
 
+class ServiceAreaResolveView(APIView):
+    """Resolve a private planning pin to a public, controlled service area."""
+
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def get(self, request):
+        try:
+            latitude, longitude = validate_coordinates(
+                request.query_params.get("lat"),
+                request.query_params.get("lng"),
+            )
+        except LocationProviderError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        service_area = canonical_service_area(latitude=latitude, longitude=longitude)
+        if not service_area:
+            return Response(
+                {"detail": "Choose a point within a supported SportSpot service area in Kathmandu Valley."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            {
+                "latitude": latitude,
+                "longitude": longitude,
+                "service_area_code": service_area["code"],
+                "district": service_area["district"],
+                "area": service_area["label"],
+                "distance_from_center_km": round(service_area["distance_km"], 1),
+            }
+        )
+
+
 def serialize_location_result(result):
     return {
         "latitude": result.get("latitude"),
@@ -208,6 +241,7 @@ def serialize_location_result(result):
         "place_type": str(result.get("place_type") or "place").strip(),
         "district": str(result.get("district") or "").strip(),
         "area": str(result.get("area") or "").strip(),
+        "service_area_code": str(result.get("service_area_code") or "").strip(),
     }
 
 

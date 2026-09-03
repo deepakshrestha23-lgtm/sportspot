@@ -186,6 +186,7 @@ export default function GameManagePage() {
       payload.proposed_end_time = values.proposed_end_time;
       payload.preferred_district = values.preferred_district.trim();
       payload.preferred_area = values.preferred_area.trim();
+      payload.preferred_area_code = values.preferred_area_code;
       payload.preferred_venue_name = values.preferred_venue_name.trim();
       payload.alternative_details = values.alternative_details.trim();
       payload.booking_deadline = toIsoDateTime(values.booking_deadline);

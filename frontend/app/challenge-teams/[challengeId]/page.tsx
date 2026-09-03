@@ -10,14 +10,13 @@ import { getCurrentUser } from "@/lib/auth";
 import { buildTimeOptions, formatDateTimeInNepal, formatTimeValue, joinDateTimeInput, localDateTimeToIso, parseDateTimeInput, splitDateTimeInput, toDateTimeInput, toNepalDate } from "@/lib/dates";
 import { emitToast } from "@/lib/toast";
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
+import ServiceAreaPicker, { type ServiceAreaSelection } from "@/components/location/ServiceAreaPicker";
 import TimeSelect from "@/components/TimeSelect";
 import type { EligibleBookingsResponse, EligibleGameBooking } from "@/types/matchmaking";
 import type { MyTeamsResponse, Team } from "@/types/team";
 import type { OpenChallengeResponse, TeamChallenge, TeamChallengeResponse } from "@/types/teamChallenge";
 
 type Action = "decision" | "counter" | "respond" | "select" | "withdraw" | "withdraw-response" | "reconfirm" | "attach" | "reschedule" | "cancel" | null;
-type ReferenceOption = { value: string; label: string };
-type DiscoveryReferenceResponse = { filters?: { districts?: ReferenceOption[]; areas_by_district?: Record<string, ReferenceOption[]> }; districts?: ReferenceOption[]; areas_by_district?: Record<string, ReferenceOption[]> };
 const toLocalDate = toNepalDate;
 const formatTimeLabel = formatTimeValue;
 const splitLocalDateTime = splitDateTimeInput;
@@ -47,6 +46,7 @@ export default function TeamChallengeDetailsPage() {
   const [counterEnd, setCounterEnd] = useState("");
   const [counterDistrict, setCounterDistrict] = useState("");
   const [counterArea, setCounterArea] = useState("");
+  const [counterAreaCode, setCounterAreaCode] = useState("");
   const [counterVenue, setCounterVenue] = useState("");
   const [counterResponseDeadline, setCounterResponseDeadline] = useState("");
   const [counterBookingDeadline, setCounterBookingDeadline] = useState("");
@@ -60,8 +60,6 @@ export default function TeamChallengeDetailsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [action, setAction] = useState<Action>(null);
-  const [districts, setDistricts] = useState<ReferenceOption[]>([]);
-  const [areasByDistrict, setAreasByDistrict] = useState<Record<string, ReferenceOption[]>>({});
   const [clock, setClock] = useState(() => Date.now());
   const captainTeams = useMemo(() => myTeams.filter((team) => team.is_captain), [myTeams]);
 
@@ -95,6 +93,7 @@ export default function TeamChallengeDetailsPage() {
     setCounterEnd(shortTime(proposal.proposed_end_time));
     setCounterDistrict(proposal.preferred_district || "");
     setCounterArea(proposal.preferred_area || "");
+    setCounterAreaCode(proposal.preferred_area_code || "");
     setCounterVenue(proposal.preferred_venue_name || "");
     setCounterResponseDeadline(toDateTimeInput(new Date(proposal.response_deadline)));
     setCounterBookingDeadline(proposal.booking_deadline ? toDateTimeInput(new Date(proposal.booking_deadline)) : "");
@@ -109,10 +108,9 @@ export default function TeamChallengeDetailsPage() {
       const response = await api.get<TeamChallengeResponse>(`/api/team-challenges/challenges/${challengeId}/`);
       setChallenge(response.data.challenge);
       if (user) {
-        const [teamsResult, bookingsResult, referenceResult] = await Promise.allSettled([
+        const [teamsResult, bookingsResult] = await Promise.allSettled([
           api.get<MyTeamsResponse>("/api/teams/my-teams/"),
           api.get<EligibleBookingsResponse>("/api/matchmaking/games/eligible-bookings/"),
-          api.get<DiscoveryReferenceResponse>("/api/venues/discovery/reference/"),
         ]);
         if (teamsResult.status === "fulfilled") {
           const captainTeams = teamsResult.value.data.teams.filter((team) => team.is_captain);
@@ -120,11 +118,6 @@ export default function TeamChallengeDetailsPage() {
           if (!selectedTeamId && captainTeams.length) setSelectedTeamId(captainTeams[0].id);
         }
         if (bookingsResult.status === "fulfilled") setEligibleBookings(bookingsResult.value.data.bookings);
-        if (referenceResult.status === "fulfilled") {
-          const reference = referenceResult.value.data;
-          setDistricts(reference.filters?.districts || reference.districts || []);
-          setAreasByDistrict(reference.filters?.areas_by_district || reference.areas_by_district || {});
-        }
       }
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, "We could not load this team challenge right now.", { notify: false }));
@@ -171,7 +164,7 @@ export default function TeamChallengeDetailsPage() {
 
   function submitCounter() {
     if (action) return;
-    if (!counterDate || !counterStart || !counterEnd || !counterDistrict || !counterArea || !counterResponseDeadline || !counterBookingDeadline) {
+    if (!counterDate || !counterStart || !counterEnd || !counterAreaCode || !counterResponseDeadline || !counterBookingDeadline) {
       emitToast({ message: "Add the proposed schedule, location and both deadlines.", type: "warning", dedupeKey: "challenge-counter-required" });
       return;
     }
@@ -206,6 +199,7 @@ export default function TeamChallengeDetailsPage() {
       proposed_end_time: counterEnd,
       preferred_district: counterDistrict,
       preferred_area: counterArea,
+      preferred_area_code: counterAreaCode,
       preferred_venue_name: counterVenue,
       players_per_side: challenge?.current_proposal.players_per_side || 6,
       intensity: challenge?.current_proposal.intensity || "CASUAL",
@@ -226,7 +220,9 @@ export default function TeamChallengeDetailsPage() {
   const hasAvailableAction = challenge.permissions.can_accept || challenge.permissions.can_withdraw || challenge.permissions.can_cancel || challenge.permissions.can_counter || challenge.permissions.can_attach_booking || challenge.permissions.can_withdraw_response || challenge.permissions.can_reconfirm || challenge.permissions.can_reschedule;
   const dateText = booking?.start_at || (proposal.proposed_date && proposal.proposed_start_time ? localDateTimeToIso(proposal.proposed_date, proposal.proposed_start_time) : null);
   const placeText = booking ? `${booking.venue_name} · ${booking.court_name}` : [proposal.preferred_venue_name, proposal.preferred_area, proposal.preferred_district].filter(Boolean).join(" · ") || "Court details to be agreed";
-  const counterAreaOptions = counterDistrict ? areasByDistrict[counterDistrict] || [] : [];
+  const counterServiceArea: ServiceAreaSelection | null = counterAreaCode && counterArea && counterDistrict
+    ? { code: counterAreaCode, area: counterArea, district: counterDistrict }
+    : null;
   return (
     <main className="min-h-[calc(100vh-68px)] bg-[var(--sport-canvas)] px-4 py-7 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-5">
@@ -268,7 +264,7 @@ export default function TeamChallengeDetailsPage() {
 
             {challenge.status === "RECONFIRMATION_REQUIRED" && challenge.permissions.can_reconfirm ? <section className="rounded-xl border border-amber-200 bg-amber-50 p-5"><SectionTitle title="Confirm the updated schedule" description="The court or match time changed. Both team captains must respond before the deadline." /><p className="mt-3 text-sm font-semibold leading-6 text-amber-900">Respond by {formatDate(challenge.reconfirmation_deadline || challenge.response_deadline)}. If your team cannot attend, the match will not remain scheduled.</p><div className="mt-4 flex flex-wrap gap-2"><button className="sport-primary-button" disabled={Boolean(action)} onClick={() => reconfirm("ACCEPT")} type="button">Confirm schedule</button><button className="sport-secondary-button border-amber-300 text-amber-900 hover:bg-amber-100" disabled={Boolean(action)} onClick={() => reconfirm("DECLINE")} type="button">Cannot attend</button></div></section> : null}
             {challenge.permissions.can_counter && !showCounter ? <button className="sport-secondary-button" onClick={() => setShowCounter(true)} type="button">Make a counter-proposal</button> : null}
-            {showCounter ? <CounterForm action={action} area={counterArea} areaOptions={counterAreaOptions} bookingDeadline={counterBookingDeadline} date={counterDate} district={counterDistrict} districts={districts} end={counterEnd} message={counterMessage} onArea={(value) => setCounterArea(value)} onBookingDeadline={setCounterBookingDeadline} onCancel={() => setShowCounter(false)} onDate={setCounterDate} onDistrict={(value) => { setCounterDistrict(value); setCounterArea(""); }} onEnd={setCounterEnd} onMessage={setCounterMessage} onResponseDeadline={setCounterResponseDeadline} onStart={setCounterStart} onSubmit={submitCounter} onVenue={setCounterVenue} responseDeadline={counterResponseDeadline} start={counterStart} venue={counterVenue} /> : null}
+            {showCounter ? <CounterForm action={action} bookingDeadline={counterBookingDeadline} date={counterDate} end={counterEnd} message={counterMessage} onBookingDeadline={setCounterBookingDeadline} onCancel={() => setShowCounter(false)} onDate={setCounterDate} onEnd={setCounterEnd} onMessage={setCounterMessage} onResponseDeadline={setCounterResponseDeadline} onServiceArea={(selection) => { setCounterAreaCode(selection.code); setCounterArea(selection.area); setCounterDistrict(selection.district); }} onStart={setCounterStart} onSubmit={submitCounter} onVenue={setCounterVenue} responseDeadline={counterResponseDeadline} serviceArea={counterServiceArea} start={counterStart} venue={counterVenue} /> : null}
           </div>
 
           <aside className="space-y-4 xl:sticky xl:top-5">
@@ -290,9 +286,24 @@ function OpenResponses({ responses, action, onSelect }: { responses: OpenChallen
   return <section className="sport-surface p-5 sm:p-6"><SectionTitle title="Interested teams" description="Review the teams that responded before selecting one opponent." /><div className="mt-5 space-y-3">{responses.length ? responses.filter((response) => response.status === "PENDING").map((response) => <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between" key={response.id}><div className="min-w-0"><p className="font-bold text-sportNavy">{response.responding_team.name}</p><p className="mt-1 text-sm text-slate-500">{response.responding_team.location || "Location not added"} · {formatLabel(response.responding_team.skill_level)}</p>{response.message ? <p className="mt-2 text-sm text-slate-600">{response.message}</p> : null}</div><button className="sport-primary-button shrink-0" disabled={action === "select"} onClick={() => onSelect(response.id)} type="button">Select team</button></div>) : <p className="rounded-md bg-slate-50 p-4 text-sm text-slate-600">No teams have responded yet.</p>}</div></section>;
 }
 
-function CounterForm({ action, area, areaOptions, bookingDeadline, date, district, districts, end, message, onArea, onBookingDeadline, onCancel, onDate, onDistrict, onEnd, onMessage, onResponseDeadline, onStart, onSubmit, onVenue, responseDeadline, start, venue }: { action: Action; area: string; areaOptions: ReferenceOption[]; bookingDeadline: string; date: string; district: string; districts: ReferenceOption[]; end: string; message: string; onArea: (value: string) => void; onBookingDeadline: (value: string) => void; onCancel: () => void; onDate: (value: string) => void; onDistrict: (value: string) => void; onEnd: (value: string) => void; onMessage: (value: string) => void; onResponseDeadline: (value: string) => void; onStart: (value: string) => void; onSubmit: () => void; onVenue: (value: string) => void; responseDeadline: string; start: string; venue: string }) {
+function CounterForm({ action, bookingDeadline, date, end, message, onBookingDeadline, onCancel, onDate, onEnd, onMessage, onResponseDeadline, onServiceArea, onStart, onSubmit, onVenue, responseDeadline, serviceArea, start, venue }: { action: Action; bookingDeadline: string; date: string; end: string; message: string; onBookingDeadline: (value: string) => void; onCancel: () => void; onDate: (value: string) => void; onEnd: (value: string) => void; onMessage: (value: string) => void; onResponseDeadline: (value: string) => void; onServiceArea: (selection: ServiceAreaSelection) => void; onStart: (value: string) => void; onSubmit: () => void; onVenue: (value: string) => void; responseDeadline: string; serviceArea: ServiceAreaSelection | null; start: string; venue: string }) {
   const timeOptions = buildTimeOptions();
-  return <section className="rounded-lg border border-blue-200 bg-blue-50/50 p-5"><SectionTitle title="Counter-proposal" description="The other captain will respond to this complete new plan." /><div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="text-sm font-semibold text-sportNavy">Date<input className="sport-field mt-1 w-full" min={toLocalDate(new Date())} onChange={(event) => onDate(event.target.value)} type="date" value={date} /></label><label className="text-sm font-semibold text-sportNavy">Start<TimeSelect ariaLabel="Counter-proposal start time" className="sport-field mt-1 w-full" options={timeOptions.filter((time) => timeOptions.some((endTime) => endTime > time))} placeholder="Choose time" value={start} onChange={(value) => { onStart(value); if (end && value >= end) onEnd(""); }} /></label><label className="text-sm font-semibold text-sportNavy">End<TimeSelect ariaLabel="Counter-proposal end time" className="sport-field mt-1 w-full" disabled={!start} options={timeOptions.filter((time) => !start || time > start)} placeholder={start ? "Choose time" : "Choose start first"} value={end} onChange={onEnd} /></label></div><div className="mt-3 grid gap-3 sm:grid-cols-3"><label className="text-sm font-semibold text-sportNavy">District<select className="sport-field mt-1 w-full" onChange={(event) => onDistrict(event.target.value)} value={district}><option value="">Choose district</option>{districts.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="text-sm font-semibold text-sportNavy">Area<select className="sport-field mt-1 w-full" disabled={!district} onChange={(event) => onArea(event.target.value)} value={area}><option value="">{district ? "Choose area" : "Choose district first"}</option>{areaOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="text-sm font-semibold text-sportNavy">Preferred venue <span className="font-normal text-slate-500">(optional)</span><input className="sport-field mt-1 w-full" maxLength={120} onChange={(event) => onVenue(event.target.value)} placeholder="Any suitable venue" value={venue} /></label></div><p className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-sm leading-6 text-slate-700">Changing the location creates a new proposal. The other captain must accept the updated district and area before a matching booking can be attached.</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><DeadlineField helper="When the other captain must decide" label="Response deadline" onChange={onResponseDeadline} options={timeOptions} value={responseDeadline} /><DeadlineField helper="When a paid court must be secured" label="Court-booking deadline" onChange={onBookingDeadline} options={timeOptions} value={bookingDeadline} /></div><textarea className="sport-field mt-3 min-h-24 w-full" maxLength={500} onChange={(event) => onMessage(event.target.value)} placeholder="Optional note" value={message} /><div className="mt-4 flex flex-wrap gap-2"><button className="sport-secondary-button" onClick={onCancel} type="button">Cancel</button><button className="sport-primary-button" disabled={action === "counter"} onClick={onSubmit} type="button">{action === "counter" ? "Sending..." : "Send Counter-proposal"}</button></div></section>;
+  return (
+    <section className="rounded-lg border border-blue-200 bg-blue-50/50 p-5">
+      <SectionTitle title="Counter-proposal" description="The other captain will respond to this complete new plan." />
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <label className="text-sm font-semibold text-sportNavy">Date<input className="sport-field mt-1 w-full" min={toLocalDate(new Date())} onChange={(event) => onDate(event.target.value)} type="date" value={date} /></label>
+        <label className="text-sm font-semibold text-sportNavy">Start<TimeSelect ariaLabel="Counter-proposal start time" className="sport-field mt-1 w-full" options={timeOptions.filter((time) => timeOptions.some((endTime) => endTime > time))} placeholder="Choose time" value={start} onChange={(value) => { onStart(value); if (end && value >= end) onEnd(""); }} /></label>
+        <label className="text-sm font-semibold text-sportNavy">End<TimeSelect ariaLabel="Counter-proposal end time" className="sport-field mt-1 w-full" disabled={!start} options={timeOptions.filter((time) => !start || time > start)} placeholder={start ? "Choose time" : "Choose start first"} value={end} onChange={onEnd} /></label>
+      </div>
+      <div className="mt-3"><label className="text-sm font-semibold text-sportNavy">Preferred venue <span className="font-normal text-slate-500">(optional)</span><input className="sport-field mt-1 w-full" maxLength={120} onChange={(event) => onVenue(event.target.value)} placeholder="Any suitable venue" value={venue} /></label></div>
+      <div className="mt-4"><ServiceAreaPicker compact id="counter-service-area" onChange={onServiceArea} value={serviceArea} /></div>
+      <p className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-sm leading-6 text-slate-700">Changing the match area creates a new proposal. The other captain must accept the updated plan before a matching booking can be attached.</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2"><DeadlineField helper="When the other captain must decide" label="Response deadline" onChange={onResponseDeadline} options={timeOptions} value={responseDeadline} /><DeadlineField helper="When a paid court must be secured" label="Court-booking deadline" onChange={onBookingDeadline} options={timeOptions} value={bookingDeadline} /></div>
+      <textarea className="sport-field mt-3 min-h-24 w-full" maxLength={500} onChange={(event) => onMessage(event.target.value)} placeholder="Optional note" value={message} />
+      <div className="mt-4 flex flex-wrap gap-2"><button className="sport-secondary-button" onClick={onCancel} type="button">Cancel</button><button className="sport-primary-button" disabled={action === "counter"} onClick={onSubmit} type="button">{action === "counter" ? "Sending..." : "Send Counter-proposal"}</button></div>
+    </section>
+  );
 }
 
 function AttachBooking({ action, bookings, onAttach, onChange, selectedBookingId }: { action: Action; bookings: EligibleGameBooking[]; onAttach: () => void; onChange: (value: number) => void; selectedBookingId: number }) {

@@ -7,7 +7,10 @@ from django.utils import timezone
 from teams.models import Team
 from venues.models import Booking
 from venues.policies import get_booking_start_at
-from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG
+from venues.reference_data import (
+    SPORTSPOT_MATCHMAKING_DEADLINE_CONFIG,
+    canonical_service_area,
+)
 
 
 ACTIVE_PARTICIPANT_STATUSES = [
@@ -146,21 +149,14 @@ class Game(models.Model):
                 raise ValidationError("Choose a proposed date and time.")
             if self.proposed_end_time <= self.proposed_start_time:
                 raise ValidationError("The proposed end time must be after the start time.")
-            if not self.preferred_area.strip():
-                raise ValidationError("Choose a preferred area.")
-            area_key = self.preferred_area.strip().casefold()
-            if self.preferred_district.strip():
-                district_areas = SPORTSPOT_AREAS_BY_DISTRICT.get(self.preferred_district.strip(), [])
-                if area_key not in {area.casefold() for area in district_areas}:
-                    raise ValidationError("Choose an area from the selected district.")
-            else:
-                supported_areas = {
-                    area.casefold()
-                    for areas in SPORTSPOT_AREAS_BY_DISTRICT.values()
-                    for area in areas
-                }
-                if area_key not in supported_areas:
-                    raise ValidationError("Choose an area from the supported SportSpot locations.")
+            service_area = canonical_service_area(
+                area=self.preferred_area,
+                district=self.preferred_district,
+            )
+            if not service_area:
+                raise ValidationError("Choose a supported SportSpot service area for the planned game.")
+            self.preferred_area = service_area["label"]
+            self.preferred_district = service_area["district"]
             proposed_start = self.start_at
             if proposed_start and proposed_start <= timezone.now():
                 raise ValidationError("Choose a future game time.")

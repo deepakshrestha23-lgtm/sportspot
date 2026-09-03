@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
+import ServiceAreaPicker, { type ServiceAreaSelection } from "@/components/location/ServiceAreaPicker";
 import TimeSelect from "@/components/TimeSelect";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
@@ -73,8 +74,6 @@ function CreateGameContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [bookings, setBookings] = useState<EligibleGameBooking[]>([]);
-  const [districts, setDistricts] = useState<ReferenceOption[]>([]);
-  const [areasByDistrict, setAreasByDistrict] = useState<DiscoveryReference["areas_by_district"]>({});
   const [planningStartTimes, setPlanningStartTimes] = useState<string[]>([]);
   const [deadlineConfig, setDeadlineConfig] = useState<DeadlineConfig>(FALLBACK_DEADLINE_CONFIG);
   const [gameType, setGameType] = useState<GameType>((searchParams.get("type") as GameType) || "PICKUP");
@@ -98,8 +97,9 @@ function CreateGameContent() {
   const [proposedDate, setProposedDate] = useState("");
   const [proposedStart, setProposedStart] = useState("");
   const [proposedDuration, setProposedDuration] = useState(120);
-  const [preferredDistrict, setPreferredDistrict] = useState(searchParams.get("district") || "");
+  const [preferredDistrict, setPreferredDistrict] = useState("");
   const [preferredArea, setPreferredArea] = useState("");
+  const [preferredAreaCode, setPreferredAreaCode] = useState("");
   const [preferredVenue, setPreferredVenue] = useState("");
   const [alternativeDetails, setAlternativeDetails] = useState("");
   const [recruitmentDeadlineDate, setRecruitmentDeadlineDate] = useState("");
@@ -144,7 +144,9 @@ function CreateGameContent() {
     () => (mode === "PLAN_FIRST" ? localDateTimeToIso(bookingDeadlineDate, bookingDeadlineTime) : ""),
     [bookingDeadlineDate, bookingDeadlineTime, mode],
   );
-  const areaOptions = preferredDistrict ? areasByDistrict[preferredDistrict] || [] : [];
+  const selectedServiceArea: ServiceAreaSelection | null = preferredAreaCode && preferredArea && preferredDistrict
+    ? { code: preferredAreaCode, area: preferredArea, district: preferredDistrict }
+    : null;
   const deadlineBufferInvalid = Boolean(
     mode === "PLAN_FIRST" &&
       recruitmentDeadlineAt &&
@@ -212,8 +214,6 @@ function CreateGameContent() {
       ]);
       setBookings(bookingResponse.data.bookings);
       const reference = referenceResponse.data.filters || referenceResponse.data;
-      setDistricts(reference.districts || []);
-      setAreasByDistrict(reference.areas_by_district || {});
       setPlanningStartTimes(reference.start_times || []);
       setDeadlineConfig(reference.matchmaking_deadline_config || FALLBACK_DEADLINE_CONFIG);
       if (!bookingId && bookingResponse.data.bookings[0]) setBookingId(bookingResponse.data.bookings[0].id);
@@ -264,7 +264,7 @@ function CreateGameContent() {
       if (mode === "BOOKING_FIRST" && !selectedBooking) return "Choose a confirmed booking, or switch to Plan First.";
       if (mode === "PLAN_FIRST") {
         if (!proposedDate || !proposedStart || !proposedEnd) return "Choose a proposed date, start time and duration.";
-        if (!preferredDistrict || !preferredArea) return "Choose the district and area where you would like to play.";
+        if (!selectedServiceArea) return "Choose the map-based service area where you would like to play.";
         if (planStartIsTooSoon) return `Choose a game time at least ${formatMinutesAsDuration(deadlineConfig.minimum_plan_lead_minutes)} from now.`;
       }
       return null;
@@ -337,8 +337,8 @@ function CreateGameContent() {
       emitToast({ message: "Choose a confirmed booking first.", type: "warning", dedupeKey: "create-game-booking" });
       return;
     }
-    if (mode === "PLAN_FIRST" && (!proposedDate || !proposedStart || !proposedEnd || !preferredDistrict || !preferredArea)) {
-      emitToast({ message: "Choose a district, area, date, start time and duration for the proposed game.", type: "warning", dedupeKey: "create-game-proposal" });
+    if (mode === "PLAN_FIRST" && (!proposedDate || !proposedStart || !proposedEnd || !selectedServiceArea)) {
+      emitToast({ message: "Choose a match area, date, start time and duration for the proposed game.", type: "warning", dedupeKey: "create-game-proposal" });
       return;
     }
     if (!title.trim()) {
@@ -424,6 +424,7 @@ function CreateGameContent() {
         proposed_end_time: mode === "PLAN_FIRST" ? proposedEnd : null,
         preferred_district: mode === "PLAN_FIRST" ? preferredDistrict : "",
         preferred_area: mode === "PLAN_FIRST" ? preferredArea : "",
+        preferred_area_code: mode === "PLAN_FIRST" ? preferredAreaCode : "",
         preferred_venue_name: mode === "PLAN_FIRST" ? preferredVenue.trim() : "",
         alternative_details: mode === "PLAN_FIRST" ? alternativeDetails.trim() : "",
         booking_deadline: mode === "PLAN_FIRST" ? bookingDeadlineAt || defaultDeadline(deadlineConfig.recommended_booking_lead_minutes / 60) : null,
@@ -529,11 +530,15 @@ function CreateGameContent() {
                       <Field label="Proposed date"><input className={inputClass} min={today()} type="date" value={proposedDate} onChange={(event) => { setProposedDate(event.target.value); setProposedStart(""); setStepMessage(""); }} /><div className="mt-2 flex flex-wrap gap-2">{quickDateOptions().map((option) => <button className={`min-h-9 rounded-full border px-3 py-1.5 text-xs font-black transition ${proposedDate === option.value ? "border-sportGreen bg-green-50 text-sportGreen" : "border-slate-200 text-slate-600 hover:border-green-200"}`} key={option.value} onClick={() => { setProposedDate(option.value); setProposedStart(""); setStepMessage(""); }} type="button">{option.label}</button>)}</div></Field>
                       <Field label="Start time"><TimeSelect ariaLabel="Game start time" className={inputClass} disabled={!proposedDate} options={planningStartTimes.filter((time) => canFitDuration(time, proposedDuration) && canStartAt(proposedDate, time, deadlineConfig.minimum_plan_lead_minutes))} placeholder="Choose a start time" value={proposedStart} onChange={(value) => { setProposedStart(value); setStepMessage(""); }} /><p className="mt-1 text-xs font-semibold text-slate-500">Start times follow SportSpot&apos;s supported 30-minute schedule.</p></Field>
                       <Field label="Duration" wide><div className="grid grid-cols-2 gap-2 sm:grid-cols-5">{DURATION_OPTIONS.map((duration) => <button className={`min-h-10 rounded-lg border px-3 text-sm font-black transition ${proposedDuration === duration ? "border-sportGreen bg-green-50 text-sportGreen" : "border-slate-200 text-slate-600 hover:border-green-200"}`} key={duration} onClick={() => { setProposedDuration(duration); if (proposedStart && !canFitDuration(proposedStart, duration)) setProposedStart(""); setStepMessage(""); }} type="button">{formatDuration(duration)}</button>)}</div><p className="mt-2 text-sm font-semibold text-slate-600">{proposedStart && proposedEnd ? `Game ends at ${formatTimeLabel(proposedEnd)}.` : "The end time is calculated from the selected duration."}</p></Field>
-                      <Field label="District"><select className={inputClass} value={preferredDistrict} onChange={(event) => { setPreferredDistrict(event.target.value); setPreferredArea(""); setStepMessage(""); }}><option value="">Choose a district</option>{districts.map((district) => <option key={district.value} value={district.value}>{district.label}</option>)}</select></Field>
-                      <Field label="Preferred area"><select className={inputClass} disabled={!preferredDistrict} value={preferredArea} onChange={(event) => { setPreferredArea(event.target.value); setStepMessage(""); }}><option value="">{preferredDistrict ? "Choose an area" : "Choose a district first"}</option>{areaOptions.map((area) => <option key={area.value} value={area.value}>{area.label}</option>)}</select><p className="mt-1 text-xs font-semibold text-slate-500">Areas are filtered by the district you choose.</p></Field>
                       <Field label="Preferred venue (optional)"><input className={inputClass} placeholder="Any suitable venue" value={preferredVenue} onChange={(event) => { setPreferredVenue(event.target.value); setStepMessage(""); }} /></Field>
                       <Field label="Alternative area or time (optional)" wide><input className={inputClass} placeholder="Example: another nearby area or evening also works" value={alternativeDetails} onChange={(event) => setAlternativeDetails(event.target.value)} /></Field>
                     </div>
+                    <ServiceAreaPicker
+                      id="game-service-area"
+                      onChange={(selection) => { setPreferredAreaCode(selection.code); setPreferredArea(selection.area); setPreferredDistrict(selection.district); setStepMessage(""); }}
+                      onClear={() => { setPreferredAreaCode(""); setPreferredArea(""); setPreferredDistrict(""); setStepMessage(""); }}
+                      value={selectedServiceArea}
+                    />
                     {planStartIsTooSoon ? <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-800">Choose a game time with at least {formatMinutesAsDuration(deadlineConfig.minimum_plan_lead_minutes)} available for recruitment and court booking.</p> : null}
                     <p className="rounded-lg bg-blue-50 px-4 py-3 text-sm font-semibold leading-6 text-blue-800">Players will see “Planning - Court Not Booked Yet” until a real confirmed SportSpot booking is attached.</p>
                   </div>

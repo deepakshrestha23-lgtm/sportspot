@@ -54,6 +54,7 @@ export type ChallengeProposal = {
   proposed_end_time: string | null;
   preferred_district: string;
   preferred_area: string;
+  preferred_area_code: string;
   preferred_venue_name: string;
   players_per_side: number;
   intensity: string;

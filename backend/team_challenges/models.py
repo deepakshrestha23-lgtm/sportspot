@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from teams.models import Team, TeamMember
 from venues.models import Booking
-from venues.reference_data import SPORTSPOT_AREAS_BY_DISTRICT, SPORTSPOT_DISTRICTS
+from venues.reference_data import canonical_service_area
 
 
 ACTIVE_CHALLENGE_STATUSES = (
@@ -221,10 +221,14 @@ class ChallengeProposal(models.Model):
         if self.court_mode == TeamChallenge.CourtMode.PLAN_FIRST:
             if not self.proposed_date or not self.proposed_start_time or not self.proposed_end_time:
                 raise ValidationError("A planned challenge needs a date and start and end times.")
-            if self.preferred_district not in SPORTSPOT_DISTRICTS:
-                raise ValidationError("Choose a supported district for the planned challenge.")
-            if self.preferred_area not in SPORTSPOT_AREAS_BY_DISTRICT.get(self.preferred_district, []):
-                raise ValidationError("Choose an area within the selected district.")
+            service_area = canonical_service_area(
+                area=self.preferred_area,
+                district=self.preferred_district,
+            )
+            if not service_area:
+                raise ValidationError("Choose a supported SportSpot service area for the planned challenge.")
+            self.preferred_area = service_area["label"]
+            self.preferred_district = service_area["district"]
         if self.response_deadline <= timezone.now():
             raise ValidationError("Choose a future response deadline.")
         if self.booking_deadline and self.response_deadline >= self.booking_deadline:
