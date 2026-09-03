@@ -248,6 +248,19 @@ export type VenueDiscoveryItem = PublicVenue & {
   important_facilities: string[];
   average_rating: string | null;
   review_count: number;
+  recommendation?: VenueRecommendation;
+};
+
+export type VenueRecommendation = {
+  fit_label: "Strong fit" | "Good fit" | "Worth a look";
+  reasons: string[];
+  distance_km: number | null;
+};
+
+export type VenueDiscoveryRecommendations = {
+  available: boolean;
+  profile_complete: boolean;
+  missing: string[];
 };
 
 export type VenueDiscoveryFilters = {
@@ -272,6 +285,7 @@ export type VenueDiscoveryResponse = {
   page_size: number;
   total_pages: number;
   filters: VenueDiscoveryFilters;
+  recommendations: VenueDiscoveryRecommendations;
   applied: {
     search: string;
     district: string;

@@ -18,7 +18,7 @@ from notifications.services import (
     notify_booking_confirmed,
     notify_owner_venue_review,
 )
-from players.models import ParticipationCommitment, ReliabilityEvent
+from players.models import ParticipationCommitment, PlayerProfile, ReliabilityEvent
 from venues.policies import build_cancellation_policy_snapshot, get_cancellation_quote
 from venues.location import search_locations
 from venues.models import Booking, BookingCheckIn, BookingSlot, Court, CourtFeedbackReport, CourtFeedbackReaction, CourtReview, CourtReviewComment, CourtSlot, Venue
@@ -2602,3 +2602,159 @@ class BookingCheckInApiTests(APITestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.data["verification_status"], "NOT_YET_OPEN")
         self.assertFalse(BookingCheckIn.objects.exists())
+
+
+class VenueDiscoveryRecommendationTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.player = user_model.objects.create_user(
+            email="court-recommendation-player@example.com",
+            password="test-password",
+            full_name="Court Recommendation Player",
+            phone="9800000911",
+            role="PLAYER",
+            email_verified=True,
+        )
+        self.profile = PlayerProfile.objects.create(
+            user=self.player,
+            preferred_sport=PlayerProfile.PreferredSport.CRICKSAL,
+            skill_level=PlayerProfile.SkillLevel.INTERMEDIATE,
+            location="Kathmandu",
+            preferred_area="Baneshwor",
+            latitude="27.691400",
+            longitude="85.342000",
+            location_source=PlayerProfile.LocationSource.MANUAL_PIN,
+            location_confirmed=True,
+            travel_radius_km=5,
+            availability_days=["SAT"],
+            availability_time_periods=["EVENING"],
+            playing_style="All-round player",
+            preferred_cricksal_role=PlayerProfile.CricksalRole.ALL_ROUNDER,
+        )
+        self.play_date = timezone.localdate() + timedelta(days=(5 - timezone.localdate().weekday()) % 7 or 7)
+        self.near_owner = self._create_owner("near")
+        self.far_owner = self._create_owner("far")
+        self.unavailable_owner = self._create_owner("unavailable")
+
+    def _create_owner(self, suffix):
+        return get_user_model().objects.create_user(
+            email=f"court-recommendation-{suffix}@example.com",
+            password="test-password",
+            full_name=f"{suffix.title()} Court Owner",
+            phone=f"9810000{len(suffix):03d}",
+            role="COURT_OWNER",
+            email_verified=True,
+        )
+
+    def _create_venue(self, *, owner, name, city, area, latitude, longitude, price=None):
+        venue = Venue.objects.create(
+            owner=owner,
+            name=name,
+            city=city,
+            area=area,
+            latitude=latitude,
+            longitude=longitude,
+            location_source=Venue.LocationSource.MANUAL_PIN,
+            location_confirmed=True,
+            status=Venue.Status.APPROVED,
+            is_active=True,
+        )
+        court = Court.objects.create(
+            venue=venue,
+            name=f"{name} Court",
+            court_type=Court.CourtType.INDOOR,
+            surface_type=Court.SurfaceType.TURF,
+            is_active=True,
+        )
+        if price is not None:
+            CourtSlot.objects.create(
+                court=court,
+                date=self.play_date,
+                start_time=datetime.strptime("18:00", "%H:%M").time(),
+                end_time=datetime.strptime("19:00", "%H:%M").time(),
+                slot_duration_minutes=60,
+                price=price,
+                status=CourtSlot.Status.AVAILABLE,
+            )
+        return venue
+
+    def test_recommended_sort_prefers_a_nearby_scheduled_court_over_a_cheaper_distant_option(self):
+        nearby = self._create_venue(
+            owner=self.near_owner,
+            name="Baneshwor Evening Court",
+            city="Kathmandu",
+            area="Baneshwor",
+            latitude="27.691500",
+            longitude="85.342100",
+            price="1500.00",
+        )
+        self._create_venue(
+            owner=self.far_owner,
+            name="Imadol Budget Court",
+            city="Lalitpur",
+            area="Imadol",
+            latitude="27.637600",
+            longitude="85.342100",
+            price="500.00",
+        )
+
+        self.client.force_authenticate(self.player)
+        response = self.client.get(
+            "/api/venues/venues/",
+            {"date": self.play_date.isoformat(), "start_time": "18:00", "sort": "recommended"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["recommendations"]["available"])
+        self.assertEqual(response.data["venues"][0]["id"], nearby.id)
+        self.assertIn("recommendation", response.data["venues"][0])
+        self.assertTrue(any("saved location" in reason for reason in response.data["venues"][0]["recommendation"]["reasons"]))
+
+    def test_available_courts_rank_ahead_of_unavailable_courts(self):
+        unavailable = self._create_venue(
+            owner=self.near_owner,
+            name="Unavailable Baneshwor Court",
+            city="Kathmandu",
+            area="Baneshwor",
+            latitude="27.691500",
+            longitude="85.342100",
+        )
+        available = self._create_venue(
+            owner=self.far_owner,
+            name="Available Imadol Court",
+            city="Lalitpur",
+            area="Imadol",
+            latitude="27.637600",
+            longitude="85.342100",
+            price="900.00",
+        )
+
+        self.client.force_authenticate(self.player)
+        response = self.client.get(
+            "/api/venues/venues/",
+            {"date": self.play_date.isoformat(), "start_time": "18:00", "sort": "recommended"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["venues"][0]["id"], available.id)
+        self.assertEqual(response.data["venues"][-1]["id"], unavailable.id)
+
+    def test_guest_recommended_sort_uses_neutral_order_without_personal_data(self):
+        self._create_venue(
+            owner=self.near_owner,
+            name="Guest Discovery Court",
+            city="Kathmandu",
+            area="Baneshwor",
+            latitude="27.691500",
+            longitude="85.342100",
+            price="900.00",
+        )
+
+        response = self.client.get(
+            "/api/venues/venues/",
+            {"date": self.play_date.isoformat(), "start_time": "18:00", "sort": "recommended"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(response.data["recommendations"]["available"])
+        self.assertNotIn("recommendation", response.data["venues"][0])

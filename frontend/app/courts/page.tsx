@@ -200,6 +200,7 @@ function CourtDiscovery() {
   const resultCount = data?.count || 0;
   const totalPages = data?.total_pages || 1;
   const currentPage = data?.page || Number(searchParams.get("page") || 1);
+  const showingPersonalizedRecommendations = (searchParams.get("sort") || "recommended") === "recommended" && Boolean(data?.recommendations.available);
 
   return (
     <main className="min-h-[calc(100vh-68px)] bg-[#f6f8f7] text-sportNavy">
@@ -265,6 +266,7 @@ function CourtDiscovery() {
               <div>
                 <p aria-live="polite" className="text-xl font-bold text-sportNavy">{isLoading && !data ? "Finding venues" : error && !data ? "Venues temporarily unavailable" : `${resultCount} venue${resultCount === 1 ? "" : "s"} found`}</p>
                 <p className="mt-1 text-sm text-slate-500">Availability for <strong className="font-bold text-slate-700">{formatDateOnly(appliedDate, { month: "short", day: "numeric", year: "numeric" })}</strong> · approved, active venues only</p>
+                {showingPersonalizedRecommendations ? <p className="mt-1 text-xs font-semibold text-sportGreen">Ranked for your location, usual playing times, and available courts.</p> : null}
               </div>
               <div className="flex items-center gap-2 lg:hidden">
                 <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-sportNavy transition focus-within:border-sportGreen focus-within:ring-2 focus-within:ring-green-100">
@@ -508,6 +510,13 @@ function VenueDiscoveryCard({ isWishlisted, onToggleWishlist, queryString, venue
           {facilityLabels.length ? <span className="text-xs font-semibold text-slate-400">{facilityLabels.join(" · ")}</span> : null}
         </div>
 
+        {venue.recommendation?.reasons[0] ? (
+          <p className="mt-3 flex min-h-5 items-center gap-2 text-xs font-semibold text-slate-600">
+            <MatchIcon />
+            <span className="line-clamp-1">{venue.recommendation.reasons[0]}</span>
+          </p>
+        ) : null}
+
         <div className="mt-4 flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
           <div>
             <p className="text-xs font-semibold text-slate-500">From</p>
@@ -530,6 +539,14 @@ function AvailabilityBadge({ available, label }: { available: boolean; label: st
       <span className={`h-2 w-2 rounded-full ${available ? "bg-sportGreen" : "bg-slate-400"}`} />
       {label}
     </span>
+  );
+}
+
+function MatchIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4 shrink-0 text-sportGreen" fill="none" viewBox="0 0 24 24">
+      <path d="m5 12 4 4L19 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" />
+    </svg>
   );
 }
 

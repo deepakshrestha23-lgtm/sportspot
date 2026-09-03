@@ -642,6 +642,7 @@ class PublicVenueSerializer(serializers.ModelSerializer):
             "area",
             "latitude",
             "longitude",
+            "location_confirmed",
             "map_location",
             "contact_phone",
             "opening_time",

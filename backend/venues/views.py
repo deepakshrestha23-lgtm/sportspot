@@ -47,6 +47,7 @@ from .reference_data import (
     SPORTSPOT_PLANNING_START_TIMES,
     canonical_service_area,
 )
+from .recommendations import recommend_venue_cards_for_player
 from .permissions import IsAdminRole, IsCourtOwner, IsPlayer
 from .serializers import AdminVenueSerializer, BookingMessageSerializer, BookingSerializer, BookingVerificationSerializer, CourtFeedbackReactionInputSerializer, CourtFeedbackReportInputSerializer, CourtReviewCommentSerializer, CourtReviewSerializer, CourtSerializer, PublicCourtDetailSerializer, PublicVenueSerializer, SlotSerializer, VenuePhotoSerializer, VenueSerializer
 from .services import get_booking_check_in_state, parse_booking_check_in_token, record_booking_check_in
@@ -2233,7 +2234,13 @@ class PublicVenueListView(APIView):
             if should_include_discovery_card(card, params):
                 venue_cards.append(card)
 
-        venue_cards = sort_discovery_cards(venue_cards, params["sort"])
+        recommendations = {"available": False, "profile_complete": False, "missing": []}
+        if params["sort"] == "recommended":
+            venue_cards, recommendations = recommend_venue_cards_for_player(request.user, venue_cards, params)
+            if not recommendations["available"]:
+                venue_cards = sort_discovery_cards(venue_cards, params["sort"])
+        else:
+            venue_cards = sort_discovery_cards(venue_cards, params["sort"])
         page = params["page"]
         page_size = params["page_size"]
         total_count = len(venue_cards)
@@ -2252,6 +2259,7 @@ class PublicVenueListView(APIView):
                 "total_pages": total_pages,
                 "filters": build_discovery_filter_options(venue_cards, params),
                 "applied": serialize_discovery_params(params),
+                "recommendations": recommendations,
             }
         )
 
