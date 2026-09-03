@@ -228,7 +228,7 @@ class PickupGameApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 400, response.data)
-        self.assertEqual(response.data["preferred_area"][0], "Choose an area from the supported SportSpot locations.")
+        self.assertEqual(response.data["preferred_area"][0], "Choose a supported SportSpot service area.")
         self.assertFalse(Game.objects.filter(title="Unsupported area game").exists())
 
     def test_captain_can_publish_fill_my_squad_with_selected_permanent_members(self):
