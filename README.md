@@ -13,6 +13,7 @@ SportSpot is currently an academic MVP/FYP project. The repository contains a wo
 - [What is implemented](#what-is-implemented)
 - [Roles and permissions](#roles-and-permissions)
 - [Main user journeys](#main-user-journeys)
+- [Recommendation algorithm](#recommendation-algorithm)
 - [Technology stack](#technology-stack)
 - [Architecture](#architecture)
 - [Repository structure](#repository-structure)
@@ -95,6 +96,50 @@ The matchmaking service-area validation regression test now matches the current 
 - Protected game rooms.
 - Game-room REST chat and authenticated real-time chat.
 - Attendance recording, bounded attendance disputes, reliability commitments, and rating eligibility.
+
+## Recommendation algorithm
+
+SportSpot's `Find Games` page uses an explainable, deterministic, content-based recommendation algorithm. It is a recommendation engine inside the matchmaking module, not an automatic player-pairing system and not a machine-learning model. The player still chooses a game and sends a join request; the host makes the final decision.
+
+### Recommendation flow
+
+1. The discovery query applies the user's selected filters and lifecycle rules.
+2. The recommendation layer removes unsafe or unsuitable candidates: the player's own games, games with an active request or participation, overlapping commitments, games requiring a higher skill level, and full games without waitlist availability.
+3. Each remaining game receives a weighted fit score from the player's profile and the game's attributes.
+4. The results are sorted by score. Earlier start time, newer publication time, and then game ID provide deterministic tie-breaking.
+5. The API returns a short explanation for each result, such as `Fits your availability`, `In your preferred playing area`, or `Court already confirmed`.
+
+### Weighted scoring model
+
+| Factor | Weight | What is compared |
+| --- | ---: | --- |
+| Availability | 30% | The game's local day and time period against the player's available days and periods |
+| Location | 30% | Confirmed-court distance or the player's and game's canonical service area |
+| Skill compatibility | 18% | The player's skill against the game's minimum skill requirement |
+| Playing role | 17% | The player's preferred Cricksal role against open role requirements |
+| Booking readiness | 5% | A confirmed court is preferred slightly over a plan-first game |
+
+The final score is calculated as:
+
+~~~text
+score = (availability_fit × 30)
+      + (location_fit × 30)
+      + (skill_fit × 18)
+      + (role_fit × 17)
+      + (booking_readiness × 5)
+~~~
+
+The individual fit values are normalized between `0` and `1`. A fully matching profile and confirmed booking can therefore reach a maximum score of `100`.
+
+### Location matching
+
+For a booking-first game, SportSpot calculates the straight-line distance between the player's confirmed private location and the venue's owner-confirmed coordinates using the Haversine formula. The player's travel-radius preference affects how that distance is scored.
+
+For a plan-first game, the host selects a point using the map, a place search, or device location. The backend resolves that point to one supported Kathmandu Valley service-area code and stores the existing district/area values for compatibility. The exact planning pin is not stored or published. Matching distinguishes the exact service area, a nearby service area, the same district, and a wider fallback; two areas in the same district are not treated as identical.
+
+### Why this algorithm is used
+
+The current rule-based approach is appropriate for the SportSpot academic MVP because it is transparent, testable, privacy-conscious, and works without a large history of player interactions. It is also a sound foundation for future machine-learning reranking. If sufficient events are collected later, an ML model can be added after the hard eligibility stage and used as an optional reranker, with this deterministic algorithm retained as the fallback.
 
 ### Team Challenges
 
