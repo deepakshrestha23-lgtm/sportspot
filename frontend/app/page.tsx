@@ -148,11 +148,11 @@ export default function Home() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(22,163,74,0.13),transparent_28%),radial-gradient(circle_at_88%_14%,rgba(14,165,233,0.09),transparent_25%),linear-gradient(180deg,#fbfffc_0%,#f6f9f6_70%,#ffffff_100%)]" />
         <div className="relative mx-auto grid min-h-[calc(100vh-73px)] max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.02fr_0.98fr] lg:px-8">
           <div className="sportspot-reveal">
-            <div className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-white/85 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-sportGreen shadow-sm backdrop-blur">
-              <span className="h-2 w-2 rounded-full bg-sportGreen" />
-              Built for Nepal's Cricksal community
-            </div>
-            <h1 className="mt-6 max-w-4xl text-5xl font-black leading-[0.95] tracking-tight text-sportNavy sm:text-6xl lg:text-7xl">
+            <p className="flex items-center gap-3 text-sm font-semibold text-sportGreen">
+              <span aria-hidden="true" className="h-px w-8 bg-sportGreen" />
+              Cricksal in Nepal
+            </p>
+            <h1 className="mt-5 max-w-4xl text-5xl font-black leading-[0.95] text-sportNavy sm:text-6xl lg:text-7xl">
               Book courts, build teams, and play with confidence.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
