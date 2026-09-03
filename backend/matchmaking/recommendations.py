@@ -6,6 +6,7 @@ results when a player explicitly chooses the recommended sort.
 """
 
 from collections import Counter
+from math import asin, cos, radians, sin, sqrt
 
 from django.utils import timezone
 
@@ -42,7 +43,7 @@ PERIOD_BOUNDS = {
 ACTIVE_REQUEST_STATUSES = {"PENDING", "WAITLISTED", "INVITED", "ACCEPTED"}
 
 MISSING_PROFILE_LABELS = {
-    "location": "home district",
+    "location": "preferred playing area",
     "availability_days": "available days",
     "availability_time_periods": "preferred time",
     "skill_level": "skill level",
@@ -76,9 +77,10 @@ def recommend_games_for_player(player, games):
         if not _is_skill_compatible(profile, game):
             continue
 
+        distance_km = _distance_to_game(profile, game)
         factors = {
             "availability": _availability_fit(profile, game),
-            "location": _location_fit(profile, game),
+            "location": _location_fit(profile, game, distance_km),
             "skill": _skill_fit(profile, game),
             "role": _role_fit(profile, game),
             "game_preference": 0.5,
@@ -88,7 +90,7 @@ def recommend_games_for_player(player, games):
             {
                 "game": game,
                 "score": score,
-                "recommendation": _recommendation_summary(profile, game, factors),
+                "recommendation": _recommendation_summary(profile, game, factors, distance_km),
             }
         )
 
@@ -168,9 +170,24 @@ def _availability_fit(profile, game):
     return 0.15
 
 
-def _location_fit(profile, game):
-    player_location = _normalise_text(profile.location)
-    if not player_location:
+def _location_fit(profile, game, distance_km=None):
+    if distance_km is not None:
+        radius = max(float(profile.travel_radius_km or 10), 1.0)
+        if distance_km <= min(2.0, radius):
+            return 1.0
+        if distance_km <= radius:
+            inner_span = max(radius - 2.0, 1.0)
+            return 1.0 - (0.35 * ((distance_km - 2.0) / inner_span))
+        if distance_km <= radius * 2:
+            return 0.65 - (0.30 * ((distance_km - radius) / radius))
+        return 0.15
+
+    player_locations = {
+        _normalise_text(value)
+        for value in (profile.location, profile.preferred_area)
+        if value
+    }
+    if not player_locations:
         return 0.5
 
     targets = {
@@ -185,11 +202,32 @@ def _location_fit(profile, game):
     }
     if not targets:
         return 0.5
-    if player_location in targets:
+    if player_locations & targets:
         return 1.0
-    if any(player_location in target or target in player_location for target in targets):
+    if any(player_location in target or target in player_location for player_location in player_locations for target in targets):
         return 0.8
     return 0.2
+
+
+def _distance_to_game(profile, game):
+    if not profile.location_confirmed or profile.latitude is None or profile.longitude is None:
+        return None
+    if not game.booking_id:
+        return None
+
+    venue = game.booking.venue
+    if not venue.location_confirmed or venue.latitude is None or venue.longitude is None:
+        return None
+    return _haversine_km(profile.latitude, profile.longitude, venue.latitude, venue.longitude)
+
+
+def _haversine_km(latitude_one, longitude_one, latitude_two, longitude_two):
+    lat_one = radians(float(latitude_one))
+    lat_two = radians(float(latitude_two))
+    latitude_delta = lat_two - lat_one
+    longitude_delta = radians(float(longitude_two) - float(longitude_one))
+    haversine = sin(latitude_delta / 2) ** 2 + cos(lat_one) * cos(lat_two) * sin(longitude_delta / 2) ** 2
+    return 6371.0088 * 2 * asin(sqrt(min(1.0, haversine)))
 
 
 def _skill_fit(profile, game):
@@ -239,14 +277,16 @@ def _role_fit(profile, game):
     return 0.45
 
 
-def _recommendation_summary(profile, game, factors):
+def _recommendation_summary(profile, game, factors, distance_km=None):
     reasons = []
     if factors["availability"] >= 0.99:
         reasons.append("Fits your availability")
     elif factors["availability"] >= 0.6:
         reasons.append("Works with part of your availability")
 
-    if factors["location"] >= 0.8:
+    if distance_km is not None:
+        reasons.append(f"{distance_km:.1f} km from your preferred area")
+    elif factors["location"] >= 0.8:
         reasons.append("In your preferred district")
 
     if factors["role"] >= 0.95 and profile.preferred_cricksal_role != PlayerProfile.CricksalRole.NONE:
@@ -279,7 +319,11 @@ def _recommendation_summary(profile, game, factors):
         fit_label = "Good fit"
     else:
         fit_label = "Worth a look"
-    return {"fit_label": fit_label, "reasons": reasons}
+    return {
+        "fit_label": fit_label,
+        "reasons": reasons,
+        "distance_km": round(distance_km, 1) if distance_km is not None else None,
+    }
 
 
 def _missing_profile_fields(profile):

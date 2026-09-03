@@ -1,7 +1,10 @@
 import json
 
 from django.db.models import Count, Max, Sum
+from django.utils import timezone
 from rest_framework import serializers
+
+from venues.location import LocationProviderError, validate_coordinates
 
 from .models import PlayerProfile
 
@@ -14,6 +17,7 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
     reliability_label = serializers.CharField(read_only=True)
     cricket_summary = serializers.SerializerMethodField(read_only=True)
     remove_profile_photo = serializers.BooleanField(write_only=True, required=False, default=False)
+    remove_precise_location = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = PlayerProfile
@@ -27,6 +31,13 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
             "preferred_sport",
             "skill_level",
             "location",
+            "preferred_area",
+            "latitude",
+            "longitude",
+            "location_source",
+            "location_confirmed",
+            "location_updated_at",
+            "travel_radius_km",
             "weekly_availability",
             "availability_days",
             "availability_time_periods",
@@ -44,6 +55,7 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
             "reliability_label",
             "cricket_summary",
             "remove_profile_photo",
+            "remove_precise_location",
             "created_at",
             "updated_at",
         )
@@ -62,6 +74,7 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
             "is_profile_complete",
             "reliability_label",
             "cricket_summary",
+            "location_updated_at",
             "created_at",
             "updated_at",
         )
@@ -137,14 +150,49 @@ class PlayerProfileSerializer(serializers.ModelSerializer):
             current_periods = attrs.get("availability_time_periods", getattr(self.instance, "availability_time_periods", []))
             attrs["weekly_availability"] = format_weekly_availability(current_days, current_periods)
 
+        remove_precise_location = attrs.get("remove_precise_location", False)
+        if remove_precise_location:
+            attrs.update(
+                latitude=None,
+                longitude=None,
+                location_confirmed=False,
+                location_source=PlayerProfile.LocationSource.LEGACY_DISTRICT,
+                location_updated_at=None,
+            )
+        else:
+            latitude = attrs.get("latitude", getattr(self.instance, "latitude", None))
+            longitude = attrs.get("longitude", getattr(self.instance, "longitude", None))
+            confirmed = attrs.get("location_confirmed", getattr(self.instance, "location_confirmed", False))
+            if (latitude is None) != (longitude is None):
+                raise serializers.ValidationError({"latitude": "Latitude and longitude must be provided together."})
+            if latitude is not None:
+                try:
+                    validate_coordinates(latitude, longitude)
+                except LocationProviderError as exc:
+                    raise serializers.ValidationError({"latitude": str(exc).replace("venue location", "preferred playing location")}) from exc
+            if confirmed and latitude is None:
+                raise serializers.ValidationError({"location_confirmed": "Confirm a map location before enabling distance-based recommendations."})
+
+            coordinates_changed = (
+                self.instance is None
+                or latitude != getattr(self.instance, "latitude", None)
+                or longitude != getattr(self.instance, "longitude", None)
+            )
+            if coordinates_changed and latitude is not None:
+                attrs["location_updated_at"] = timezone.now()
+                if "location_confirmed" not in attrs:
+                    attrs["location_confirmed"] = False
+
         return attrs
 
     def create(self, validated_data):
         validated_data.pop("remove_profile_photo", None)
+        validated_data.pop("remove_precise_location", None)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         remove_photo = validated_data.pop("remove_profile_photo", False)
+        validated_data.pop("remove_precise_location", None)
         if remove_photo and instance.profile_photo:
             instance.profile_photo.delete(save=False)
             instance.profile_photo = ""

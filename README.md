@@ -2,11 +2,11 @@
 
 SportSpot is a Nepal-focused sports web application for Cricksal players, teams, court owners, and administrators.
 
-Current development status: active local development. The repository contains the core SportSpot venue, booking, matchmaking, team challenge, chat, notification, trust, and cricket-scoring workflows. Implemented areas include email verification and password recovery, role-based player and venue-owner workspaces, court discovery and filtering, venue onboarding and admin review, owner location pin/reverse lookup/public maps, multi-slot Khalti booking and refunds, QR/code check-in, Pickup Game and Fill My Squad recruitment, team management, Team Challenge proposals and fixtures, protected real-time chat with message notifications and five-minute edit/delete controls, attendance and reliability finality rules, peer-rating eligibility, a dedicated Cricket Scorer, completed scorecard viewing, player cricket performance, and team cricket records.
+Current development status: active development with a deployed AWS evaluation environment. The repository contains the core SportSpot venue, booking, matchmaking, team challenge, chat, notification, trust, and cricket-scoring workflows. Implemented areas include email verification and password recovery, role-based player and venue-owner workspaces, court discovery and filtering, venue onboarding and admin review, owner location pin/reverse lookup/public maps, map-backed private player location preferences, explainable Find Games recommendation ranking, multi-slot Khalti booking and refunds, QR/code check-in, Pickup Game and Fill My Squad recruitment, team management, Team Challenge proposals and fixtures, protected real-time chat with message notifications and five-minute edit/delete controls, attendance and reliability finality rules, peer-rating eligibility, a dedicated Cricket Scorer, completed scorecard viewing, player cricket performance, and team cricket records.
 
-The project remains an academic/local-development MVP. Production deployment, Redis-backed multi-worker real-time delivery, owner offline booking, extensive concurrency testing, automated payment refunds, and deeper staff audit history are not complete.
+The project remains an academic MVP. The AWS deployment is suitable for evaluation, but Redis-backed multi-worker real-time delivery, owner offline booking, extensive concurrency testing, automated payment refunds, and deeper staff audit history are not complete.
 
-Last repository verification: 2026-09-01. The latest checked branch is `main`.
+Last repository verification: 2026-09-03. The latest checked branch is `main`.
 
 Current sport scope: Cricksal only.
 
@@ -33,7 +33,7 @@ Outside current scope:
 - Multi-sport UI.
 - Real automatic refund transfer.
 - Split payment.
-- Smart player/team matchmaking and recommendation ranking.
+- Automatic player placement, team matchmaking, and self-learning recommendation models.
 - General abuse moderation and a full staff case-management console. Attendance disputes have a bounded player review flow and protected staff resolution endpoint.
 - Automated payment-gateway refunds and owner offline bookings.
 - Production-grade shared real-time infrastructure and operational monitoring.
@@ -193,6 +193,7 @@ Status categories used here: Completed, Completed (MVP), Partially completed, In
 | Feature | Status | Evidence | Remaining work |
 | --- | --- | --- | --- |
 | Find Game page | Partially completed | `frontend/app/find-game/page.tsx`, `backend/matchmaking/` | Expand discovery coverage, pagination, and end-to-end browser tests |
+| Explainable game recommendations | Completed (MVP) | `backend/matchmaking/recommendations.py`, player preferred-location map | Add outcome analytics before considering learned ranking |
 | Pickup Game creation | Partially completed | `Game`, `GameListCreateView`, `/dashboard/player/games/create` | Broaden UX coverage and high-concurrency verification |
 | Fill My Squad creation | Partially completed | `Game.game_type`, team captain validation, booking-first/plan-first flow | Continue operational polish and deeper end-to-end coverage |
 | Join requests and host decisions | Partially completed | `GameJoinRequest`, request decision/withdraw APIs, waitlist and request history | Broaden concurrency, notification, and browser-flow tests |
@@ -534,6 +535,9 @@ Challenge proposals carry the complete agreed plan: match date, start and end ti
 14. If the verified booking differs materially from the original proposal, each registered participant who was already in the roster must confirm or decline the new schedule without a reliability penalty. Offline guests cannot respond through an account, so they enter `Host Confirmation Required` and the host must confirm that each guest was told the final venue and time. Participants added after the booking is attached are confirmed against the final booking immediately.
 15. Host and active participants can access the structured Planning Room/Game Room/Squad Room; pending, rejected, and waitlisted users cannot access private room details.
 16. Cancelling the public game listing does not automatically cancel the court booking; booking cancellation and refunds stay in the existing My Bookings flow.
+17. Recommended sorting applies the same public filters and lifecycle rules, then excludes only unsafe candidates such as the player's own listing, existing participation/request, schedule conflicts, or an incompatible minimum skill level.
+18. Remaining candidates are ranked deterministically by availability, location, skill, and role. A confirmed player point and confirmed venue pin use straight-line distance; plan-first and legacy records fall back to area/district matching.
+19. Travel radius is a ranking preference rather than a hidden filter, so players can still discover farther games and always decide which game to request.
 
 ### Cricket scoring
 
@@ -862,7 +866,7 @@ Local URLs:
 
 ## 17. Database and Migrations
 
-Database engine: PostgreSQL. Migration `0016` adds canonical venue latitude/longitude coordinates, the location source, confirmation state, and update timestamp. Coordinates are optional for backward compatibility, must be a pair inside Nepal, and public serializers expose them only after the owner confirms the pin. Existing `map_location` URLs remain a backward-compatible directions fallback for older venues.
+Database engine: PostgreSQL. Venue migration `0016` adds canonical venue latitude/longitude coordinates, the location source, confirmation state, and update timestamp. Player migration `0010` adds a private preferred playing point, derived area, confirmation/source metadata, and a 1-50 km travel-radius preference. Coordinates are optional for backward compatibility and must be a pair inside Nepal. Venue coordinates are public only after owner confirmation; player coordinates remain inside the authenticated profile and recommendation service. Existing `map_location` URLs and district-only player profiles remain backward-compatible fallbacks.
 
 Main domain tables include accounts, email OTPs, password reset tokens, player profiles, reliability events, participation commitments, attendance audit events, player ratings and eligibilities, teams, team members, venues, venue photos, courts, court slots, bookings, booking slots, booking messages, booking check-ins, Pickup Games, matchmaking participants, request history and chat messages, Team Challenges, challenge proposals, open challenge responses, challenge events, team fixtures, fixture chat messages, cricket scoring matches, innings, deliveries, frozen match squads, player performances, notifications, email deliveries, and wishlist items. Migration `0008` adds the shared participation-commitment ledger used by verified attendance and reliability; migration `0009` adds the neutral attendance status and immutable audit trail; migration `0006` in `team_challenges` projects that neutral status into fixture rosters. Migration `0010` in `matchmaking` adds game chat; migration `0005` in `team_challenges` adds fixture chat; migration `0020` in `venues` adds the venue-scoped booking check-in record used by QR/code verification; migration `0021` updates venue location-source choices; migration `0011` in `notifications` adds the current notification type; and scoring migrations `0001`/`0002` add the durable cricket scorer, performance, and instant-match-request domain. Court slots also store block metadata (`block_type`, `block_reason`, `block_note`, `blocked_at`, `blocked_by`) for owner calendar maintenance/closure periods.
 
@@ -915,6 +919,13 @@ Each lifecycle transition is state-guarded and performed under record locks, so 
 - Public venue details, owner venue views, player booking directions, and matchmaking booking summaries use confirmed coordinates when present.
 - Older venues continue to work through their saved secure Google Maps link until an owner confirms a canonical pin.
 - The default OpenStreetMap tile/geocoding configuration is suitable for local development and light evaluation traffic only. A production deployment must select a provider with an appropriate usage policy, attribution, rate limits, monitoring, and a service agreement.
+
+### Player location and recommendation behavior
+
+- Players choose a preferred playing point from search, their device location, or a draggable map pin in My Profile. The geocoder derives the area and district from Nepal map data rather than a three-district frontend list.
+- Exact player coordinates are private recommendation input. Other users receive only the public area/district already supported by profile privacy controls.
+- Distance is calculated only when both the player point and booked venue pin are confirmed. Otherwise the recommendation engine keeps the existing area/district fallback, so old profiles, plan-first games, and venues without coordinates continue to work.
+- The preferred travel radius changes ranking strength but never removes a public game. The engine stays deterministic and returns plain-language reasons such as availability fit, role fit, confirmed court, or distance.
 
 ### Windows automatic local scheduling
 
@@ -1089,7 +1100,7 @@ Existing backend tests:
 - `backend/team_challenges/tests.py`
 - `backend/scoring/tests.py`
 
-The latest recorded full backend run on 2026-08-28 passed 151 tests across the explicit app suite, including matchmaking, Team Challenge fixture lifecycle, captain continuity, booking reuse, reconfirmation, venue location coverage, and authenticated WebSocket notification delivery. The latest targeted scorer run on 2026-09-01 passed 14 tests, including finalized scorecard performance, team records, correction behavior, permissions, and team logo URL serialization. The suite uses the local PostgreSQL test configuration.
+The latest recorded full backend run on 2026-09-03 passed 249 tests across the explicit app suite, including player preferred-location privacy, distance-aware recommendation ordering, matchmaking, Team Challenge fixture lifecycle, captain continuity, booking reuse, reconfirmation, venue location coverage, authenticated WebSocket notification delivery, and cricket scoring. The suite uses the local PostgreSQL test configuration.
 
 Run tests:
 
@@ -1135,7 +1146,7 @@ Recommended next tests: true concurrent reservations and challenge decisions, Kh
 - The current workspace has valid PostgreSQL test credentials and the full `matchmaking`, `venues`, `teams`, and `team_challenges` regression suite passes. A clean-machine setup still requires matching local database credentials in the ignored `backend/.env` (and `TEST_DB_PASSWORD` when using separate test credentials).
 - Several placeholder pages still exist for future modules.
 - Future-compatible Futsal fields remain in `PlayerProfile`, but current UI must stay Cricksal-only.
-- No production deployment files, Docker config, CI/CD, or monitoring.
+- The AWS evaluation deployment is packaged manually; repository-managed deployment automation, CI/CD, and production monitoring are not yet complete.
 - Frontend browser coverage is currently focused on Cricket Scorer and does not yet cover every booking, owner, matchmaking, challenge, or notification state.
 - Cricket Scorer is a complete MVP workflow, but it is not a full professional cricket scoring product yet: advanced rules, scorer-role delegation, match exports, and staff correction tooling remain future work.
 - Team and player cricket records are derived from finalized scorecards only; reopening a scorecard removes its derived record until the match is finalized again.

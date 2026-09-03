@@ -213,6 +213,7 @@ export type GameCreatePayload = {
 export type GameRecommendation = {
   fit_label: "Strong fit" | "Good fit" | "Worth a look";
   reasons: string[];
+  distance_km: number | null;
 };
 
 export type GameRecommendationMeta = {

@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from notifications.models import Notification
 from teams.models import TeamMember
 from venues.models import Booking
+from venues.location import LocationProviderError, reverse_location, search_locations
 from venues.policies import get_booking_start_at
 
 from .models import MIN_RELIABILITY_HISTORY, ParticipationCommitment, PlayerProfile, ReliabilityEvent
@@ -112,6 +113,43 @@ class PlayerProfileView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class PlayerLocationSearchView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def get(self, request):
+        query = " ".join(str(request.query_params.get("q") or "").split())
+        if len(query) < 3:
+            return Response({"results": []})
+        try:
+            return Response({"results": [_serialize_location_result(item) for item in search_locations(query)]})
+        except LocationProviderError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+class PlayerLocationReverseView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPlayer]
+
+    def get(self, request):
+        try:
+            result = reverse_location(request.query_params.get("lat"), request.query_params.get("lng"))
+        except LocationProviderError as exc:
+            message = str(exc)
+            response_status = status.HTTP_400_BAD_REQUEST if "valid" in message or "within Nepal" in message else status.HTTP_503_SERVICE_UNAVAILABLE
+            return Response({"detail": message}, status=response_status)
+        return Response(_serialize_location_result(result))
+
+
+def _serialize_location_result(result):
+    return {
+        "latitude": result.get("latitude"),
+        "longitude": result.get("longitude"),
+        "display_name": str(result.get("display_name") or "Playing location").strip(),
+        "place_type": str(result.get("place_type") or "place").strip(),
+        "district": str(result.get("district") or "").strip(),
+        "area": str(result.get("area") or "").strip(),
+    }
 
 
 class PlayerDashboardOverviewView(APIView):

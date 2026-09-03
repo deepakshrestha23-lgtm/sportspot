@@ -663,6 +663,87 @@ class PickupGameApiTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertNotIn("recommendation", response.data)
 
+    def test_recommended_discovery_uses_confirmed_venue_distance_when_available(self):
+        profile = self.player_one.player_profile
+        profile.latitude = Decimal("27.691500")
+        profile.longitude = Decimal("85.342000")
+        profile.preferred_area = "Baneshwor"
+        profile.location_confirmed = True
+        profile.travel_radius_km = 15
+        profile.save()
+
+        self.venue.latitude = Decimal("27.692000")
+        self.venue.longitude = Decimal("85.343000")
+        self.venue.location_confirmed = True
+        self.venue.save()
+        near_game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            creation_mode=Game.CreationMode.BOOKING_FIRST,
+            title="Nearby confirmed game",
+            min_skill_level=Game.SkillLevel.INTERMEDIATE,
+            total_capacity=6,
+            minimum_players_to_proceed=4,
+        )
+
+        user_model = get_user_model()
+        far_owner = user_model.objects.create_user(
+            email="far-owner@example.com",
+            password="test-password",
+            full_name="Far Owner",
+            phone="9800001100",
+            role="COURT_OWNER",
+        )
+        far_venue = Venue.objects.create(
+            owner=far_owner,
+            name="Pokhara Arena",
+            city="Kaski",
+            area="Pokhara",
+            status=Venue.Status.APPROVED,
+            latitude=Decimal("28.209600"),
+            longitude=Decimal("83.985600"),
+            location_confirmed=True,
+        )
+        far_court = Court.objects.create(venue=far_venue, name="Court 1", court_type=Court.CourtType.INDOOR, surface_type=Court.SurfaceType.TURF)
+        far_slot = CourtSlot.objects.create(
+            court=far_court,
+            date=self.slot.date,
+            start_time=self.slot.start_time,
+            end_time=self.slot.end_time,
+            price=Decimal("1500"),
+            status=CourtSlot.Status.BOOKED,
+        )
+        far_booking = Booking.objects.create(
+            player=self.player_two,
+            venue=far_venue,
+            court=far_court,
+            slot=far_slot,
+            amount=Decimal("1500"),
+            status=Booking.BookingStatus.CONFIRMED,
+            payment_status=Booking.PaymentStatus.PAID,
+            confirmed_at=timezone.now(),
+            reserved_until=timezone.now() + timedelta(minutes=10),
+        )
+        far_game = Game.objects.create(
+            host=self.player_two,
+            booking=far_booking,
+            creation_mode=Game.CreationMode.BOOKING_FIRST,
+            title="Distant confirmed game",
+            min_skill_level=Game.SkillLevel.INTERMEDIATE,
+            total_capacity=6,
+            minimum_players_to_proceed=4,
+        )
+
+        self.client.force_authenticate(self.player_one)
+        response = self.client.get(reverse("matchmaking-games"), {"sort": "recommended"})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        ids = [item["id"] for item in response.data["games"]]
+        self.assertLess(ids.index(near_game.id), ids.index(far_game.id))
+        near_item = next(item for item in response.data["games"] if item["id"] == near_game.id)
+        self.assertLess(near_item["recommendation"]["distance_km"], 1)
+        self.assertTrue(any("km from your preferred area" in reason for reason in near_item["recommendation"]["reasons"]))
+
     def test_my_games_synchronizes_expired_requests_inside_a_transaction(self):
         game = Game.objects.create(
             host=self.host,

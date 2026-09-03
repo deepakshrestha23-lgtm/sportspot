@@ -80,6 +80,22 @@ def _normalize_result(item):
             district = supported_district
             area = matched_area
             break
+    if not district:
+        district = _first_address_value(address, "state_district", "county", "city_district")
+        district = re.sub(r"\s+district$", "", district, flags=re.IGNORECASE).strip()
+    if not area:
+        area = _first_address_value(
+            address,
+            "neighbourhood",
+            "suburb",
+            "quarter",
+            "village",
+            "town",
+            "municipality",
+            "city",
+        )
+        if area.casefold() == district.casefold():
+            area = ""
     return {
         "latitude": latitude,
         "longitude": longitude,
@@ -88,6 +104,14 @@ def _normalize_result(item):
         "district": district,
         "area": area,
     }
+
+
+def _first_address_value(address, *keys):
+    for key in keys:
+        value = " ".join(str(address.get(key) or "").split()).strip(" ,")
+        if value:
+            return value[:120]
+    return ""
 
 
 def _search_variants(query):

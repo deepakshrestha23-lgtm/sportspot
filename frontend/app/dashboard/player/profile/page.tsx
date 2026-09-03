@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
+import PlayerPreferredLocationPicker from "@/components/player-dashboard/PlayerPreferredLocationPicker";
 import MediaImage from "@/components/MediaImage";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/apiErrors";
@@ -15,7 +16,6 @@ import { emitToast } from "@/lib/toast";
 import type { User } from "@/types/auth";
 import type { AvailabilityDay, AvailabilityTimePeriod, CricksalRole, PlayerProfile, PlayerProfilePayload, PlayerProfileResponse, SkillLevel } from "@/types/playerProfile";
 
-const locations = ["Kathmandu", "Lalitpur", "Bhaktapur"];
 const skills: Array<{ label: string; value: SkillLevel; helper: string }> = [
   { label: "Beginner", value: "BEGINNER", helper: "Building match confidence" },
   { label: "Intermediate", value: "INTERMEDIATE", helper: "Regular competitive player" },
@@ -42,6 +42,12 @@ const emptyForm: PlayerProfilePayload = {
   preferred_sport: "CRICKSAL",
   skill_level: "BEGINNER",
   location: "",
+  preferred_area: "",
+  latitude: null,
+  longitude: null,
+  location_source: "",
+  location_confirmed: false,
+  travel_radius_km: 10,
   weekly_availability: "",
   availability_days: [],
   availability_time_periods: [],
@@ -129,6 +135,15 @@ export default function PlayerProfilePage() {
     payload.append("preferred_sport", "CRICKSAL");
     payload.append("skill_level", form.skill_level);
     payload.append("location", form.location.trim());
+    payload.append("preferred_area", form.preferred_area.trim());
+    if (form.latitude !== null && form.longitude !== null) {
+      payload.append("latitude", form.latitude.toFixed(6));
+      payload.append("longitude", form.longitude.toFixed(6));
+    }
+    payload.append("location_source", form.location_source || "LEGACY_DISTRICT");
+    payload.append("location_confirmed", String(form.location_confirmed));
+    payload.append("travel_radius_km", String(form.travel_radius_km));
+    if (form.remove_precise_location) payload.append("remove_precise_location", "true");
     payload.append("availability_days", JSON.stringify(form.availability_days));
     payload.append("availability_time_periods", JSON.stringify(form.availability_time_periods));
     payload.append("playing_style", form.playing_style.trim());
@@ -225,7 +240,7 @@ export default function PlayerProfilePage() {
               <Spec label="Preferred role" title={formatRole(form.preferred_cricksal_role)} description={role.helper} tone="green" />
               <Spec label="Skill level" title={formatSkill(form.skill_level)} description={skill.helper} tone="slate" />
               <Spec label="Playing style" title={form.playing_style || "Not added"} description={form.playing_style ? "How you like to contribute" : "Add your style so teams understand your approach."} tone="green" />
-              <Spec label="Location" title={form.location || "Not set"} description="Public district shown to nearby players" tone="slate" />
+              <Spec label="Playing area" title={[form.preferred_area, form.location].filter(Boolean).join(", ") || "Not set"} description={form.location_confirmed ? `Distance matching within ${form.travel_radius_km} km preferred` : "District matching active"} tone="slate" />
             </div>
             <div className="mt-6">
               <div className="flex items-center justify-between gap-3"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Availability</p><button className="text-sm font-black text-sportGreen hover:text-green-700" onClick={openEditor} type="button">Edit Availability</button></div>
@@ -244,18 +259,38 @@ export default function PlayerProfilePage() {
       {isEditorOpen ? (
         <div aria-modal="true" className="fixed inset-0 z-50" role="dialog">
           <button aria-label="Close profile editor" className="absolute inset-0 bg-sportNavy/45" onClick={closeEditor} type="button" />
-          <form className="absolute right-0 top-0 flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl sm:rounded-l-3xl" onSubmit={handleSubmit}>
+          <form className="absolute right-0 top-0 flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl sm:rounded-l-3xl" onSubmit={handleSubmit}>
             <div className="border-b border-slate-200 p-5 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-sportGreen">Edit public profile</p><h2 className="mt-1 text-2xl font-black text-sportNavy">Sports identity</h2><p className="mt-2 text-sm leading-6 text-slate-600">Update the details other players use when they view your Cricksal profile.</p></div><button aria-label="Close editor" className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-xl leading-none text-slate-600 hover:bg-slate-50" disabled={isSaving} onClick={closeEditor} type="button">x</button></div></div>
             <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6"><div className="space-y-7">
               <section><h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500">Profile photo</h3><div className="mt-3 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center"><div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sportNavy text-xl font-black text-white"><MediaImage alt="Profile photo preview" className="absolute inset-0 h-full w-full object-cover" fallback={<span>SP</span>} source={removePhoto ? "" : photoSrc} /></div><div className="min-w-0 flex-1"><label className="inline-flex min-h-10 cursor-pointer items-center rounded-xl bg-sportGreen px-4 text-sm font-black text-white hover:bg-green-700">{photoPreview ? "Replace Photo" : "Upload Photo"}<input accept=".jpg,.jpeg,.png,image/jpeg,image/png" className="sr-only" onChange={(event) => handlePhotoChange(event.target.files?.[0] || null)} type="file" /></label><button className="ml-2 inline-flex min-h-10 items-center rounded-xl border border-slate-300 px-4 text-sm font-black text-slate-700 hover:bg-white" onClick={handleRemovePhoto} type="button">Remove</button><p className="mt-2 text-xs font-semibold text-slate-500">JPG, JPEG, or PNG. Maximum size 5MB.</p>{errors.profile_photo ? <FieldError message={errors.profile_photo} /> : null}</div></div></section>
               <section><h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500">Player information</h3><div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <Field label="Sport"><div className="mt-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-black text-sportNavy">Cricksal</div></Field>
-                <Field error={errors.location} label="Location" required><select className={inputClassName} onChange={(event) => updateForm({ location: event.target.value })} ref={firstFieldRef} value={form.location}><option value="">Select district</option>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</select></Field>
-                <Field label="Skill level" required><select className={inputClassName} onChange={(event) => updateForm({ skill_level: event.target.value as SkillLevel })} value={form.skill_level}>{skills.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
+                <Field label="Skill level" required><select className={inputClassName} onChange={(event) => updateForm({ skill_level: event.target.value as SkillLevel })} ref={firstFieldRef} value={form.skill_level}>{skills.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
                 <Field label="Preferred role" required><select className={inputClassName} onChange={(event) => updateForm({ preferred_cricksal_role: event.target.value as CricksalRole })} value={form.preferred_cricksal_role}>{roles.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
                 <Field className="sm:col-span-2" error={errors.playing_style} label="Playing style" required><textarea className={`${inputClassName} min-h-24 py-3`} maxLength={180} onChange={(event) => updateForm({ playing_style: event.target.value })} placeholder="Example: Calm organiser, aggressive batsman, dependable bowler" value={form.playing_style} /></Field>
                 <Field className="sm:col-span-2" error={errors.bio} label="Short player bio"><textarea className={`${inputClassName} min-h-28 py-3`} maxLength={500} onChange={(event) => updateForm({ bio: event.target.value })} placeholder="Tell teams what kind of teammate you are and what games you are looking for." value={form.bio} /><p className="mt-2 text-xs font-semibold text-slate-500">{form.bio.length}/500 characters</p></Field>
               </div></section>
+              <PlayerPreferredLocationPicker
+                confirmed={form.location_confirmed}
+                district={form.location}
+                latitude={form.latitude}
+                longitude={form.longitude}
+                onChange={(next) => updateForm({
+                  location: next.district,
+                  preferred_area: next.area,
+                  latitude: next.latitude,
+                  longitude: next.longitude,
+                  location_source: next.source,
+                  location_confirmed: false,
+                  remove_precise_location: false,
+                })}
+                onClear={() => updateForm({ latitude: null, longitude: null, location_confirmed: false, location_source: "LEGACY_DISTRICT", remove_precise_location: true })}
+                onConfirm={() => updateForm({ location_confirmed: true, remove_precise_location: false })}
+                onRadiusChange={(travel_radius_km) => updateForm({ travel_radius_km })}
+                preferredArea={form.preferred_area}
+                travelRadiusKm={form.travel_radius_km}
+              />
+              {errors.location ? <FieldError message={errors.location} /> : null}
               <section><h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500">Availability</h3><div className="mt-3 rounded-2xl border border-slate-200 p-4">
                 <Field error={errors.availability_days} label="Available days" required><div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-7">{days.map((day) => <Toggle key={day.value} label={day.label} selected={form.availability_days.includes(day.value)} onClick={() => toggleDay(day.value)} />)}</div></Field>
                 <div className="mt-4"><Field error={errors.availability_time_periods} label="Preferred time" required><div className="mt-2 grid gap-2 sm:grid-cols-2">{periods.map((period) => <button className={`rounded-xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-green-200 ${form.availability_time_periods.includes(period.value) ? "border-green-300 bg-green-50 text-green-950" : "border-slate-200 bg-white text-slate-700 hover:border-green-200"}`} key={period.value} onClick={() => togglePeriod(period.value)} type="button"><span className="block text-sm font-black">{period.label}</span><span className="mt-1 block text-xs font-semibold text-slate-500">{period.helper}</span></button>)}</div></Field></div>
@@ -285,8 +320,8 @@ function Pill({ label, tone }: { label: string; tone: "green" | "slate" }) { ret
 function Metric({ label, value }: { label: string; value: string | number }) { return <div className="rounded-2xl border border-slate-200 bg-white p-3 text-center"><p className="text-[0.68rem] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p><p className="mt-2 text-lg font-black text-sportNavy">{value}</p></div>; }
 function TrustRow({ label, value }: { label: string; value: string | number }) { return <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3"><span className="text-sm font-semibold text-slate-600">{label}</span><span className="text-sm font-black text-sportNavy">{value}</span></div>; }
 function ProfileSkeleton() { return <div className="space-y-5"><div className="h-32 animate-pulse rounded-lg bg-white shadow-sm" /><div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]"><div className="space-y-5"><div className="h-[410px] animate-pulse rounded-[1.35rem] bg-white shadow-sm" /><div className="h-60 animate-pulse rounded-[1.35rem] bg-white shadow-sm" /></div><div className="space-y-5"><div className="h-[560px] animate-pulse rounded-[1.35rem] bg-white shadow-sm" /><div className="grid gap-5 lg:grid-cols-2"><div className="h-40 animate-pulse rounded-[1.35rem] bg-white shadow-sm" /><div className="h-40 animate-pulse rounded-[1.35rem] bg-white shadow-sm" /></div></div></div></div>; }
-function toForm(profile: PlayerProfile): PlayerProfilePayload { return { preferred_sport: "CRICKSAL", skill_level: profile.skill_level || "BEGINNER", location: profile.location || "", weekly_availability: profile.weekly_availability || "", availability_days: profile.availability_days || [], availability_time_periods: profile.availability_time_periods || [], playing_style: profile.playing_style || "", bio: profile.bio || "", preferred_cricksal_role: profile.preferred_cricksal_role || "NONE" }; }
-function validateForm(form: PlayerProfilePayload) { const next: FormErrors = {}; if (!form.location.trim()) next.location = "Choose your district."; if (!form.availability_days.length) next.availability_days = "Choose at least one available day."; if (!form.availability_time_periods.length) next.availability_time_periods = "Choose at least one preferred time."; if (!form.playing_style.trim()) next.playing_style = "Add your playing style."; if (form.playing_style.trim().length > 180) next.playing_style = "Playing style must be 180 characters or fewer."; if (form.bio.trim().length > 500) next.bio = "Bio must be 500 characters or fewer."; return next; }
+function toForm(profile: PlayerProfile): PlayerProfilePayload { return { preferred_sport: "CRICKSAL", skill_level: profile.skill_level || "BEGINNER", location: profile.location || "", preferred_area: profile.preferred_area || "", latitude: profile.latitude === null ? null : Number(profile.latitude), longitude: profile.longitude === null ? null : Number(profile.longitude), location_source: profile.location_source || (profile.location ? "LEGACY_DISTRICT" : ""), location_confirmed: Boolean(profile.location_confirmed), travel_radius_km: profile.travel_radius_km || 10, weekly_availability: profile.weekly_availability || "", availability_days: profile.availability_days || [], availability_time_periods: profile.availability_time_periods || [], playing_style: profile.playing_style || "", bio: profile.bio || "", preferred_cricksal_role: profile.preferred_cricksal_role || "NONE", remove_precise_location: false }; }
+function validateForm(form: PlayerProfilePayload) { const next: FormErrors = {}; if (!form.location.trim()) next.location = "Choose a location that SportSpot can identify by district."; if ((form.latitude !== null || form.longitude !== null) && !form.location_confirmed) next.location = "Confirm the selected map location before saving."; if (!form.availability_days.length) next.availability_days = "Choose at least one available day."; if (!form.availability_time_periods.length) next.availability_time_periods = "Choose at least one preferred time."; if (!form.playing_style.trim()) next.playing_style = "Add your playing style."; if (form.playing_style.trim().length > 180) next.playing_style = "Playing style must be 180 characters or fewer."; if (form.bio.trim().length > 500) next.bio = "Bio must be 500 characters or fewer."; return next; }
 function initials(name: string) { return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("") || "SP"; }
 function formatSkill(value?: SkillLevel) { return skills.find((item) => item.value === value)?.label || "Not set"; }
 function formatRole(value?: CricksalRole) { return roles.find((item) => item.value === value)?.label || "Not set"; }

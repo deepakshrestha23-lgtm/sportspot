@@ -221,6 +221,19 @@ class VenueLocationApiTests(APITestCase):
 
     def test_location_lookup_tries_a_nepal_scoped_query_when_needed(self):
         search_locations.cache_clear()
+        provider_result = {
+            "lat": "27.574000",
+            "lon": "84.493000",
+            "display_name": "Sauraha, Ratnanagar, Chitwan, Nepal",
+            "type": "village",
+            "address": {"village": "Sauraha", "state_district": "Chitwan District"},
+        }
+        with patch("venues.location._request_json", return_value=[provider_result]):
+            results = search_locations("Sauraha")
+
+        self.assertEqual(results[0]["district"], "Chitwan")
+        self.assertEqual(results[0]["area"], "Sauraha")
+        search_locations.cache_clear()
 
     def test_location_lookup_falls_back_to_a_recognised_area_for_a_specific_poi(self):
         search_locations.cache_clear()

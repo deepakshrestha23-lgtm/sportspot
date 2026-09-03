@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
@@ -9,6 +11,12 @@ MIN_RELIABILITY_HISTORY = 5
 
 
 class PlayerProfile(models.Model):
+    class LocationSource(models.TextChoices):
+        GEOCODED = "GEOCODED", "Place search"
+        MANUAL_PIN = "MANUAL_PIN", "Map pin"
+        DEVICE_LOCATION = "DEVICE_LOCATION", "Device location"
+        LEGACY_DISTRICT = "LEGACY_DISTRICT", "District only"
+
     class PreferredSport(models.TextChoices):
         CRICKSAL = "CRICKSAL", "Cricksal"
         FUTSAL = "FUTSAL", "Futsal"
@@ -47,6 +55,28 @@ class PlayerProfile(models.Model):
     )
     skill_level = models.CharField(max_length=20, choices=SkillLevel.choices)
     location = models.CharField(max_length=120)
+    preferred_area = models.CharField(max_length=120, blank=True)
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(Decimal("-90")), MaxValueValidator(Decimal("90"))],
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(Decimal("-180")), MaxValueValidator(Decimal("180"))],
+    )
+    location_source = models.CharField(max_length=20, choices=LocationSource.choices, blank=True)
+    location_confirmed = models.BooleanField(default=False)
+    location_updated_at = models.DateTimeField(blank=True, null=True)
+    travel_radius_km = models.PositiveSmallIntegerField(
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(50)],
+    )
     weekly_availability = models.TextField(blank=True)
     availability_days = models.JSONField(default=list, blank=True)
     availability_time_periods = models.JSONField(default=list, blank=True)
@@ -76,10 +106,24 @@ class PlayerProfile(models.Model):
     def clean(self):
         if self.user_id and self.user.role != "PLAYER":
             raise ValidationError("Only users with the PLAYER role can have a PlayerProfile.")
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValidationError("Latitude and longitude must be provided together.")
+        if self.latitude is not None:
+            latitude = Decimal(str(self.latitude))
+            longitude = Decimal(str(self.longitude))
+            if not (Decimal("26.3") <= latitude <= Decimal("30.5") and Decimal("80.0") <= longitude <= Decimal("88.3")):
+                raise ValidationError("Preferred playing location must be within Nepal.")
+        if self.location_confirmed and (self.latitude is None or self.longitude is None):
+            raise ValidationError("Confirm a map location before enabling distance-based recommendations.")
 
     def save(self, *args, **kwargs):
         if not self.sportspot_id:
             self.sportspot_id = self.generate_sportspot_id()
+        if self.latitude is not None and self.longitude is not None and self.location_updated_at is None:
+            self.location_updated_at = timezone.now()
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "location_updated_at" not in update_fields:
+                kwargs["update_fields"] = [*update_fields, "location_updated_at"]
         self.clean()
         super().save(*args, **kwargs)
 

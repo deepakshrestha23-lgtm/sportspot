@@ -3,6 +3,7 @@ export type SkillLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
 export type CricksalRole = "BATSMAN" | "BOWLER" | "ALL_ROUNDER" | "WICKETKEEPER" | "NONE";
 export type AvailabilityDay = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
 export type AvailabilityTimePeriod = "MORNING" | "AFTERNOON" | "EVENING" | "FLEXIBLE";
+export type PlayerLocationSource = "GEOCODED" | "MANUAL_PIN" | "DEVICE_LOCATION" | "LEGACY_DISTRICT" | "";
 
 export interface CricketSummary {
   matches: number;
@@ -21,6 +22,13 @@ export interface PlayerProfile {
   preferred_sport: PreferredSport;
   skill_level: SkillLevel;
   location: string;
+  preferred_area: string;
+  latitude: string | null;
+  longitude: string | null;
+  location_source: PlayerLocationSource;
+  location_confirmed: boolean;
+  location_updated_at: string | null;
+  travel_radius_km: number;
   weekly_availability: string;
   availability_days: AvailabilityDay[];
   availability_time_periods: AvailabilityTimePeriod[];
@@ -51,6 +59,12 @@ export interface PlayerProfilePayload {
   preferred_sport: PreferredSport;
   skill_level: SkillLevel;
   location: string;
+  preferred_area: string;
+  latitude: number | null;
+  longitude: number | null;
+  location_source: PlayerLocationSource;
+  location_confirmed: boolean;
+  travel_radius_km: number;
   weekly_availability: string;
   availability_days: AvailabilityDay[];
   availability_time_periods: AvailabilityTimePeriod[];
@@ -58,4 +72,5 @@ export interface PlayerProfilePayload {
   bio: string;
   preferred_cricksal_role: CricksalRole;
   remove_profile_photo?: boolean;
+  remove_precise_location?: boolean;
 }

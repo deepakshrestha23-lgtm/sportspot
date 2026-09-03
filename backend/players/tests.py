@@ -1,6 +1,6 @@
 from datetime import time, timedelta
 from decimal import Decimal
-from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -23,6 +23,114 @@ from players.services import (
 )
 from teams.models import Team, TeamMember
 from venues.models import Booking, BookingSlot, Court, CourtSlot, Venue
+
+
+class PlayerPreferredLocationTests(APITestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.player = user_model.objects.create_user(
+            email="location-player@example.com",
+            password="test-password",
+            full_name="Location Player",
+            phone="9800000201",
+            role="PLAYER",
+            email_verified=True,
+        )
+        self.profile = PlayerProfile.objects.create(
+            user=self.player,
+            skill_level=PlayerProfile.SkillLevel.INTERMEDIATE,
+            location="Kathmandu",
+            playing_style="All-round player",
+            preferred_cricksal_role=PlayerProfile.CricksalRole.ALL_ROUNDER,
+        )
+        self.client.force_authenticate(self.player)
+
+    def test_profile_can_store_a_private_confirmed_playing_location(self):
+        response = self.client.patch(
+            reverse("player-profile"),
+            {
+                "location": "Kathmandu",
+                "preferred_area": "Baneshwor",
+                "latitude": "27.691500",
+                "longitude": "85.342000",
+                "location_source": PlayerProfile.LocationSource.GEOCODED,
+                "location_confirmed": True,
+                "travel_radius_km": 15,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.location_confirmed)
+        self.assertEqual(self.profile.preferred_area, "Baneshwor")
+        self.assertEqual(self.profile.travel_radius_km, 15)
+        self.assertIsNotNone(self.profile.location_updated_at)
+
+    def test_profile_rejects_a_confirmed_location_outside_nepal(self):
+        response = self.client.patch(
+            reverse("player-profile"),
+            {
+                "latitude": "51.507400",
+                "longitude": "-0.127800",
+                "location_confirmed": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("latitude", response.data)
+
+    @patch("players.views.search_locations")
+    def test_player_location_search_returns_structured_nepal_result(self, search_mock):
+        search_mock.return_value = [{
+            "latitude": 27.6915,
+            "longitude": 85.342,
+            "display_name": "Baneshwor, Kathmandu, Nepal",
+            "place_type": "suburb",
+            "district": "Kathmandu",
+            "area": "Baneshwor",
+        }]
+
+        response = self.client.get(reverse("player-location-search"), {"q": "Baneshwor"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"][0]["district"], "Kathmandu")
+        self.assertEqual(response.data["results"][0]["area"], "Baneshwor")
+
+    def test_precise_location_can_be_removed_without_losing_district_fallback(self):
+        self.profile.latitude = Decimal("27.691500")
+        self.profile.longitude = Decimal("85.342000")
+        self.profile.location_confirmed = True
+        self.profile.save()
+
+        response = self.client.patch(
+            reverse("player-profile"),
+            {"remove_precise_location": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.location, "Kathmandu")
+        self.assertIsNone(self.profile.latitude)
+        self.assertFalse(self.profile.location_confirmed)
+
+    def test_changing_coordinates_without_confirmation_disables_distance_matching(self):
+        self.profile.latitude = Decimal("27.691500")
+        self.profile.longitude = Decimal("85.342000")
+        self.profile.location_confirmed = True
+        self.profile.save()
+
+        response = self.client.patch(
+            reverse("player-profile"),
+            {"latitude": "27.700000", "longitude": "85.350000"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.profile.refresh_from_db()
+        self.assertFalse(self.profile.location_confirmed)
 
 
 class PlayerDashboardOverviewTests(APITestCase):
