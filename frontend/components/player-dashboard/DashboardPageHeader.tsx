@@ -19,7 +19,7 @@ export function DashboardPageHeader({
 }) {
   return (
     <header className="sport-page-header">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         {backHref ? <BackButton href={backHref} label={backLabel} /> : null}
         {eyebrow ? <p className="sport-eyebrow">{eyebrow}</p> : null}
         <h1 className="sport-page-title">{title}</h1>

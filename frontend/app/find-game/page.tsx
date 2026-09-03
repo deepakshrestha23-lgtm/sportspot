@@ -215,23 +215,23 @@ function FindGameContent() {
               <SearchIcon />
               <input className={`${inputClass} pl-10`} onChange={(event) => setSearch(event.target.value)} placeholder="Search games, hosts, venues or areas" value={search} />
             </label>
-            <div className="flex flex-wrap items-center gap-2">
-              <button aria-controls="advanced-game-filters" aria-expanded={isFilterOpen} className="sport-secondary-button" onClick={() => setIsFilterOpen((current) => !current)} type="button"><FilterIcon /> More filters{advancedFilterCount ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-sportGreen">{advancedFilterCount}</span> : null}</button>
-              <label className="flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><span className="hidden sm:inline">Sort</span><span className="sr-only sm:hidden">Sort results</span><select aria-label="Sort results" className="bg-transparent font-bold text-sportNavy outline-none" onChange={(event) => setSort(event.target.value)} value={sort}><option value="recommended">Recommended for you</option><option value="soonest">Soonest</option><option value="newest">Newest</option><option value="spots">Most spots</option></select></label>
+            <div className="grid w-full gap-2 sm:flex sm:flex-wrap lg:w-auto">
+              <button aria-controls="advanced-game-filters" aria-expanded={isFilterOpen} className="sport-secondary-button w-full sm:w-auto" onClick={() => setIsFilterOpen((current) => !current)} type="button"><FilterIcon /> More filters{advancedFilterCount ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-sportGreen">{advancedFilterCount}</span> : null}</button>
+              <label className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 sm:w-auto"><span className="hidden sm:inline">Sort</span><span className="sr-only sm:hidden">Sort results</span><select aria-label="Sort results" className="min-w-0 max-w-full bg-transparent font-bold text-sportNavy outline-none" onChange={(event) => setSort(event.target.value)} value={sort}><option value="recommended">Recommended for you</option><option value="soonest">Soonest</option><option value="newest">Newest</option><option value="spots">Most spots</option></select></label>
             </div>
           </div>
 
-          <div className="mt-3 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <fieldset className="flex min-w-0 items-center gap-2 overflow-x-auto">
+          <div className="mt-3 grid gap-3 border-t border-slate-100 pt-3 lg:flex lg:items-center lg:justify-between">
+            <fieldset className="grid min-w-0 w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2 lg:flex lg:w-auto lg:flex-1">
               <legend className="sr-only">Game type</legend>
               <span className="shrink-0 text-xs font-black uppercase tracking-wide text-slate-500">Show</span>
-              <div className="inline-flex min-w-max rounded-lg border border-slate-200 bg-slate-50 p-1">
-                {gameTypes.map((option) => <button aria-pressed={gameType === option.value} className={`min-h-9 rounded-md px-3 text-sm font-bold transition ${gameType === option.value ? "bg-white text-sportGreen shadow-sm" : "text-slate-600 hover:text-sportNavy"}`} key={option.value || "all"} onClick={() => setGameType(option.value)} type="button">{option.label === "All game types" ? "All games" : option.label}</button>)}
+              <div className="grid min-w-0 grid-cols-3 rounded-lg border border-slate-200 bg-slate-50 p-1 sm:inline-flex sm:w-max sm:min-w-max">
+                {gameTypes.map((option) => <button aria-pressed={gameType === option.value} className={`min-h-10 min-w-0 rounded-md px-2 text-center text-[11px] font-bold leading-tight transition sm:min-h-9 sm:px-3 sm:text-sm ${gameType === option.value ? "bg-white text-sportGreen shadow-sm" : "text-slate-600 hover:text-sportNavy"}`} key={option.value || "all"} onClick={() => setGameType(option.value)} type="button">{option.label === "All game types" ? "All games" : option.label}</button>)}
               </div>
             </fieldset>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><CalendarIcon /><span className="sr-only">Game date</span><input aria-label="Game date" className="min-w-32 bg-transparent font-bold text-sportNavy outline-none" min={today()} onChange={(event) => setDate(event.target.value)} type="date" value={date} /></label>
-              <label className="flex min-h-11 min-w-36 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><MapPinIcon /><span className="sr-only">Area</span><input aria-label="Area" className="min-w-0 w-full bg-transparent font-bold text-sportNavy outline-none placeholder:font-semibold placeholder:text-slate-400" onChange={(event) => setArea(event.target.value)} placeholder="Any area" value={area} /></label>
+            <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-auto lg:flex-none">
+              <label className="flex min-h-11 min-w-0 w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><CalendarIcon /><span className="sr-only">Game date</span><input aria-label="Game date" className="min-w-0 w-full bg-transparent font-bold text-sportNavy outline-none" min={today()} onChange={(event) => setDate(event.target.value)} type="date" value={date} /></label>
+              <label className="flex min-h-11 min-w-0 w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600"><MapPinIcon /><span className="sr-only">Area</span><input aria-label="Area" className="min-w-0 w-full bg-transparent font-bold text-sportNavy outline-none placeholder:font-semibold placeholder:text-slate-400" onChange={(event) => setArea(event.target.value)} placeholder="Any area" value={area} /></label>
             </div>
           </div>
 
