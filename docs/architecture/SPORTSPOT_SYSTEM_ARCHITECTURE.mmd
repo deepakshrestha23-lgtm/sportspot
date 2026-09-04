@@ -1,0 +1,89 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'Arial, Helvetica, sans-serif', 'primaryColor': '#ffffff', 'primaryTextColor': '#17233a', 'primaryBorderColor': '#b8c8bf', 'lineColor': '#718096', 'secondaryColor': '#f5f8f6', 'tertiaryColor': '#edf5f0', 'clusterBkg': '#fbfcfb', 'clusterBorder': '#cddbd2', 'edgeLabelBackground': '#ffffff' }, 'flowchart': { 'curve': 'linear', 'htmlLabels': true, 'nodeSpacing': 35, 'rankSpacing': 42 }}}%%
+flowchart TB
+    classDef actor fill:#ffffff,stroke:#718096,stroke-width:1px,color:#17233a,font-size:14px;
+    classDef edge fill:#f5f8f6,stroke:#7b9b88,stroke-width:1.3px,color:#17233a,font-size:14px;
+    classDef service fill:#ffffff,stroke:#087a3e,stroke-width:1.4px,color:#17233a,font-size:14px;
+    classDef data fill:#ffffff,stroke:#45698f,stroke-width:1.4px,color:#17233a,font-size:14px;
+    classDef partner fill:#ffffff,stroke:#9a7b45,stroke-width:1.2px,color:#17233a,font-size:13px;
+    classDef delivery fill:#ffffff,stroke:#6b7280,stroke-width:1px,stroke-dasharray: 4 3,color:#17233a,font-size:13px;
+
+    subgraph CLIENT["Client layer"]
+        direction LR
+        USERS["Players, venue owners,<br/>and administrators"]
+        BROWSER["Web browser<br/>Next.js client"]
+        USERS --> BROWSER
+    end
+
+    subgraph INGRESS["Public application edge"]
+        direction LR
+        WEB_ALB["Web Application Load Balancer<br/>sportspot.deepak-shrestha.com.np"]
+        API_ALB["API Application Load Balancer<br/>api.sportspot.deepak-shrestha.com.np"]
+    end
+
+    subgraph AWS["AWS production environment - us-east-1"]
+        direction LR
+        subgraph WEB_ENV["Elastic Beanstalk: sportspot-web-https"]
+            direction TB
+            WEB["Next.js 15 + React 19<br/>Node.js standalone runtime<br/>Pages, client state, and static assets"]
+        end
+
+        subgraph API_ENV["Elastic Beanstalk: sportspot-api-https"]
+            direction TB
+            API["Django 5 + Django REST Framework<br/>Daphne ASGI server<br/>REST API and domain workflows"]
+            REALTIME["Django Channels<br/>Notifications and room chat<br/>In-memory layer on one API instance"]
+            API --- REALTIME
+        end
+
+        subgraph DATA["Managed data and media"]
+            direction TB
+            RDS[("Amazon RDS PostgreSQL<br/>Transactional system of record")]
+            S3[("Amazon S3<br/>Court media and private documents")]
+        end
+    end
+
+    subgraph EXTERNAL["External integrations"]
+        direction LR
+        KHALTI["Khalti<br/>Payment initiation and verification"]
+        SMTP["SMTP provider<br/>OTP and transactional email"]
+        MAPS["OpenStreetMap / Nominatim<br/>Place search and geocoding"]
+    end
+
+    subgraph RELEASE["Source and release path"]
+        direction LR
+        GITHUB["GitHub repository<br/>main branch"]
+        RELEASE_PROCESS["Validated release process<br/>Build checks and EB version deployment"]
+        GITHUB -.-> RELEASE_PROCESS
+    end
+
+    BROWSER -->|"HTTPS"| WEB_ALB
+    WEB_ALB --> WEB
+    BROWSER -->|"HTTPS REST + JWT"| API_ALB
+    BROWSER -->|"WSS"| API_ALB
+    WEB -->|"API requests"| API_ALB
+    API_ALB --> API
+
+    API -->|"ORM transactions"| RDS
+    API -->|"Media upload and retrieval"| S3
+    API -->|"Payment API"| KHALTI
+    BROWSER -->|"Hosted payment handoff"| KHALTI
+    API -->|"Outbound mail"| SMTP
+    API -->|"Geocoding requests"| MAPS
+
+    RELEASE_PROCESS -.-> WEB_ENV
+    RELEASE_PROCESS -.-> API_ENV
+
+    class USERS,BROWSER actor
+    class WEB_ALB,API_ALB edge
+    class WEB,API,REALTIME service
+    class RDS,S3 data
+    class KHALTI,SMTP,MAPS partner
+    class GITHUB,RELEASE_PROCESS delivery
+
+    style CLIENT fill:#fbfcfb,stroke:#cddbd2,stroke-width:1px
+    style INGRESS fill:#f8fbf9,stroke:#cddbd2,stroke-width:1px
+    style AWS fill:#f7faf8,stroke:#9eb4a6,stroke-width:1.2px
+    style WEB_ENV fill:#ffffff,stroke:#cddbd2,stroke-width:1px
+    style API_ENV fill:#ffffff,stroke:#cddbd2,stroke-width:1px
+    style DATA fill:#ffffff,stroke:#cddbd2,stroke-width:1px
+    style EXTERNAL fill:#fbfcfb,stroke:#d8d3c6,stroke-width:1px
+    style RELEASE fill:#fbfcfb,stroke:#d6dbe0,stroke-width:1px

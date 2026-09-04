@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" role="img" aria-labelledby="title description">
+  <title id="title">SportSpot production system architecture</title>
+  <desc id="description">A deployment architecture diagram for SportSpot, showing clients, web and API entry points, Elastic Beanstalk runtimes, PostgreSQL, S3, external services, and the release path.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 Z" fill="#718096"/>
+    </marker>
+    <style>
+      .canvas { fill: #ffffff; }
+      .title { fill: #17233a; font: 700 30px Arial, Helvetica, sans-serif; }
+      .subtitle { fill: #5f7087; font: 400 15px Arial, Helvetica, sans-serif; }
+      .meta { fill: #087a3e; font: 700 12px Arial, Helvetica, sans-serif; letter-spacing: 1.6px; }
+      .group { fill: #fbfcfb; stroke: #cddbd2; stroke-width: 1.2; }
+      .aws-group { fill: #f7faf8; stroke: #9eb4a6; stroke-width: 1.4; }
+      .inner { fill: #ffffff; stroke: #d6e0da; stroke-width: 1; }
+      .node { fill: #ffffff; stroke: #b8c8bf; stroke-width: 1.2; }
+      .service { fill: #ffffff; stroke: #087a3e; stroke-width: 1.4; }
+      .data { fill: #ffffff; stroke: #45698f; stroke-width: 1.4; }
+      .partner { fill: #ffffff; stroke: #a88955; stroke-width: 1.2; }
+      .release { fill: #ffffff; stroke: #6b7280; stroke-width: 1.1; stroke-dasharray: 5 4; }
+      .group-label { fill: #087a3e; font: 700 12px Arial, Helvetica, sans-serif; letter-spacing: 1.5px; }
+      .inner-label { fill: #52667d; font: 700 11px Arial, Helvetica, sans-serif; letter-spacing: 1.1px; }
+      .node-title { fill: #17233a; font: 700 15px Arial, Helvetica, sans-serif; }
+      .node-copy { fill: #52667d; font: 400 12px Arial, Helvetica, sans-serif; }
+      .label { fill: #52667d; font: 600 11px Arial, Helvetica, sans-serif; }
+      .line { fill: none; stroke: #718096; stroke-width: 1.25; marker-end: url(#arrow); }
+      .soft-line { fill: none; stroke: #718096; stroke-width: 1.1; stroke-dasharray: 5 4; marker-end: url(#arrow); }
+      .divider { stroke: #dce5df; stroke-width: 1; }
+      .note { fill: #6b7a8e; font: 400 11px Arial, Helvetica, sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="canvas" width="1600" height="1040"/>
+
+  <text x="60" y="56" class="title">SportSpot System Architecture</text>
+  <text x="60" y="82" class="subtitle">Current production deployment - verified application topology</text>
+  <text x="1325" y="56" class="meta">PRODUCTION</text>
+  <text x="1325" y="79" class="subtitle">AWS us-east-1</text>
+  <line x1="60" y1="103" x2="1540" y2="103" class="divider"/>
+
+  <rect x="60" y="128" width="1480" height="108" rx="6" class="group"/>
+  <text x="84" y="153" class="group-label">CLIENT LAYER</text>
+  <rect x="95" y="169" width="265" height="47" rx="5" class="node"/>
+  <text x="112" y="190" class="node-title">SportSpot users</text>
+  <text x="112" y="207" class="node-copy">Players, venue owners, administrators</text>
+  <rect x="435" y="169" width="300" height="47" rx="5" class="node"/>
+  <text x="452" y="190" class="node-title">Web browser</text>
+  <text x="452" y="207" class="node-copy">Next.js application client</text>
+  <path d="M360 192.5 H435" class="line"/>
+
+  <rect x="60" y="260" width="1480" height="110" rx="6" class="group"/>
+  <text x="84" y="285" class="group-label">PUBLIC APPLICATION EDGE</text>
+  <rect x="115" y="303" width="370" height="47" rx="5" class="node"/>
+  <text x="133" y="324" class="node-title">Web Application Load Balancer</text>
+  <text x="133" y="341" class="node-copy">sportspot.deepak-shrestha.com.np</text>
+  <rect x="685" y="303" width="370" height="47" rx="5" class="node"/>
+  <text x="703" y="324" class="node-title">API Application Load Balancer</text>
+  <text x="703" y="341" class="node-copy">api.sportspot.deepak-shrestha.com.np</text>
+
+  <path d="M520 216 V276 H300 V303" class="line"/>
+  <text x="403" y="267" class="label">HTTPS</text>
+  <path d="M650 216 V276 H870 V303" class="line"/>
+  <text x="739" y="267" class="label">HTTPS REST + Bearer JWT and WSS</text>
+
+  <rect x="60" y="405" width="1480" height="340" rx="6" class="aws-group"/>
+  <text x="84" y="431" class="group-label">AWS PRODUCTION ENVIRONMENT</text>
+
+  <rect x="90" y="454" width="390" height="257" rx="5" class="inner"/>
+  <text x="112" y="478" class="inner-label">ELASTIC BEANSTALK: SPORTSPOT-WEB-HTTPS</text>
+  <rect x="120" y="522" width="330" height="90" rx="5" class="service"/>
+  <text x="140" y="549" class="node-title">Next.js 15 + React 19</text>
+  <text x="140" y="571" class="node-copy">Node.js standalone runtime</text>
+  <text x="140" y="590" class="node-copy">Pages, client state, and static assets</text>
+
+  <rect x="520" y="454" width="520" height="257" rx="5" class="inner"/>
+  <text x="542" y="478" class="inner-label">ELASTIC BEANSTALK: SPORTSPOT-API-HTTPS</text>
+  <rect x="555" y="510" width="450" height="88" rx="5" class="service"/>
+  <text x="575" y="537" class="node-title">Django 5 + Django REST Framework</text>
+  <text x="575" y="559" class="node-copy">Daphne ASGI server - REST API and domain workflows</text>
+  <text x="575" y="579" class="node-copy">Accounts, venues, bookings, teams, games, scoring, and admin</text>
+  <rect x="750" y="624" width="255" height="62" rx="5" class="service"/>
+  <text x="770" y="650" class="node-title">Django Channels</text>
+  <text x="770" y="671" class="node-copy">Chat and notifications - in-memory, single instance</text>
+  <path d="M877 598 V624" class="line"/>
+
+  <rect x="1080" y="454" width="425" height="257" rx="5" class="inner"/>
+  <text x="1102" y="478" class="inner-label">MANAGED DATA AND MEDIA</text>
+  <rect x="1120" y="510" width="345" height="72" rx="5" class="data"/>
+  <text x="1140" y="537" class="node-title">Amazon RDS PostgreSQL</text>
+  <text x="1140" y="559" class="node-copy">Transactional system of record</text>
+  <rect x="1120" y="610" width="345" height="72" rx="5" class="data"/>
+  <text x="1140" y="637" class="node-title">Amazon S3</text>
+  <text x="1140" y="659" class="node-copy">Court media and private verification documents</text>
+
+  <path d="M300 350 V522" class="line"/>
+  <text x="319" y="436" class="label">HTTPS</text>
+  <path d="M870 350 V510" class="line"/>
+  <text x="891" y="436" class="label">HTTPS and WSS</text>
+  <path d="M450 567 H555" class="line"/>
+  <text x="463" y="552" class="label">API requests</text>
+  <path d="M1005 554 H1120" class="line"/>
+  <text x="1024" y="540" class="label">ORM transactions</text>
+  <path d="M1005 654 H1120" class="line"/>
+  <text x="1024" y="640" class="label">media</text>
+
+  <rect x="60" y="780" width="1050" height="117" rx="6" class="group"/>
+  <text x="84" y="806" class="group-label">EXTERNAL INTEGRATIONS</text>
+  <rect x="90" y="829" width="285" height="48" rx="5" class="partner"/>
+  <text x="108" y="850" class="node-title">Khalti</text>
+  <text x="108" y="867" class="node-copy">Payment initiation and verification</text>
+  <rect x="442" y="829" width="285" height="48" rx="5" class="partner"/>
+  <text x="460" y="850" class="node-title">SMTP provider</text>
+  <text x="460" y="867" class="node-copy">OTP and transactional email</text>
+  <rect x="794" y="829" width="285" height="48" rx="5" class="partner"/>
+  <text x="812" y="850" class="node-title">OpenStreetMap / Nominatim</text>
+  <text x="812" y="867" class="node-copy">Place search and geocoding</text>
+  <path d="M600 598 V755 H232 V829" class="line"/>
+  <path d="M675 598 V755 H584 V829" class="line"/>
+  <path d="M1005 554 H1020 V755 H936 V829" class="line"/>
+  <text x="242" y="744" class="label">Payment API</text>
+  <text x="494" y="744" class="label">Outbound mail</text>
+  <text x="854" y="744" class="label">Geocoding requests</text>
+
+  <rect x="1140" y="780" width="400" height="117" rx="6" class="group"/>
+  <text x="1164" y="806" class="group-label">SOURCE AND RELEASE PATH</text>
+  <rect x="1165" y="829" width="116" height="48" rx="5" class="release"/>
+  <text x="1183" y="850" class="node-title">GitHub</text>
+  <text x="1183" y="867" class="node-copy">main</text>
+  <rect x="1310" y="829" width="200" height="48" rx="5" class="release"/>
+  <text x="1328" y="850" class="node-title">Release validation</text>
+  <text x="1328" y="867" class="node-copy">Build checks and EB version</text>
+  <path d="M1281 853 H1310" class="soft-line"/>
+
+  <line x1="60" y1="930" x2="1540" y2="930" class="divider"/>
+  <text x="60" y="958" class="note">Trust boundaries: browser-to-edge traffic uses HTTPS/WSS; the API owns database, media, payment, email, and geocoding integration calls.</text>
+  <text x="60" y="980" class="note">Current scaling note: real-time messaging uses the API instance's in-memory channel layer; Redis is not configured in the deployed environment.</text>
+</svg>
