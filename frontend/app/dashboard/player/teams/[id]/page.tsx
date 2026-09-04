@@ -11,6 +11,7 @@ import { formatDateOnly, formatDateTimeInNepal, localDateTimeToIso } from "@/lib
 import { getImageUploadError } from "@/lib/imageUpload";
 import { getMediaSrc } from "@/lib/media";
 import MediaImage from "@/components/MediaImage";
+import ServiceAreaPicker, { type ServiceAreaSelection } from "@/components/location/ServiceAreaPicker";
 import { emitToast } from "@/lib/toast";
 import type { CricksalRole, GuestMemberPayload, PlayerLookup, PlayerLookupResponse, Team, TeamCricketRecord, TeamMember, TeamPayload, TeamResponse, TeamSkillLevel } from "@/types/team";
 import type { TeamChallenge, TeamChallengeListResponse } from "@/types/teamChallenge";
@@ -20,7 +21,6 @@ type MemberTab = "registered" | "guests" | "invitations";
 type RecruitTab = "registered" | "guest";
 type ConfirmAction = { title: string; message: string; confirmLabel: string; tone: "danger" | "normal"; onConfirm: () => Promise<void> | void } | null;
 
-const locations = ["Kathmandu", "Lalitpur", "Bhaktapur"];
 const playingTimes = ["Weekday evenings", "Saturday morning", "Saturday afternoon", "Saturday evening", "Sunday morning", "Sunday afternoon", "Sunday evening", "Flexible"];
 const skills: Array<{ label: string; value: TeamSkillLevel }> = [
   { label: "Beginner", value: "BEGINNER" },
@@ -58,6 +58,7 @@ export default function TeamDetailPage() {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [teamPhotoFile, setTeamPhotoFile] = useState<File | null>(null);
   const [teamPhotoPreview, setTeamPhotoPreview] = useState("");
+  const [serviceArea, setServiceArea] = useState<ServiceAreaSelection | null>(null);
 
   useEffect(() => { loadTeam(); }, [teamId]);
   useEffect(() => () => { if (teamPhotoPreview) URL.revokeObjectURL(teamPhotoPreview); }, [teamPhotoPreview]);
@@ -69,6 +70,11 @@ export default function TeamDetailPage() {
       const response = await api.get<TeamResponse>(`/api/teams/${teamId}/`);
       setTeam(response.data.team);
       setEditForm(toTeamPayload(response.data.team));
+      setServiceArea(response.data.team.preferred_playing_area && response.data.team.location ? {
+        code: "",
+        area: response.data.team.preferred_playing_area,
+        district: response.data.team.location,
+      } : null);
     } catch (error) {
       setPageError(getApiErrorMessage(error, "We could not load this team right now. Please try again."));
     } finally {
@@ -81,9 +87,17 @@ export default function TeamDetailPage() {
     if (!editForm) return;
     setActionInProgress(true);
     try {
-      const response = await api.patch<TeamResponse>(`/api/teams/${teamId}/`, cleanTeamPayload(editForm));
+      const response = await api.patch<TeamResponse>(`/api/teams/${teamId}/`, {
+        ...cleanTeamPayload(editForm),
+        preferred_playing_area_code: serviceArea?.code || "",
+      });
       setTeam(response.data.team);
       setEditForm(toTeamPayload(response.data.team));
+      setServiceArea(response.data.team.preferred_playing_area && response.data.team.location ? {
+        code: "",
+        area: response.data.team.preferred_playing_area,
+        district: response.data.team.location,
+      } : null);
       emitToast({ message: "Team details have been updated.", type: "success", dedupeKey: `team-updated-${teamId}` });
     } catch (error) {
       getApiErrorMessage(error, "We could not update this team. Please try again.");
@@ -276,7 +290,7 @@ export default function TeamDetailPage() {
       {activeTab === "members" ? <MembersTab activeTab={memberTab} canManage={team.is_captain} guests={guestMembers} invitations={pendingInvitations} onAddGuest={() => { setRecruitTab("guest"); setIsRecruiting(true); }} onCancelInvitation={(member) => setConfirmAction({ title: "Cancel invitation?", message: `Cancel the invitation sent to ${member.display_name}?`, confirmLabel: "Cancel Invitation", tone: "danger", onConfirm: () => removeMember(member) })} onOpenProfile={setSelectedMember} onRemove={(member) => setConfirmAction({ title: "Remove member?", message: `${member.display_name} will lose access to this team's private details.`, confirmLabel: "Remove Member", tone: "danger", onConfirm: () => removeMember(member) })} onTabChange={setMemberTab} registered={registeredMembers} /> : null}
       {activeTab === "games" ? <GamesTab /> : null}
       {activeTab === "challenges" ? <ChallengesTab isCaptain={team.is_captain} teamId={team.id} /> : null}
-      {activeTab === "settings" && team.is_captain ? <SettingsTab actionInProgress={actionInProgress} editForm={editForm} onDelete={() => setConfirmAction({ title: "Delete team?", message: "This action permanently removes the team. Only continue if this team was created by mistake and has no required history.", confirmLabel: "Delete Team", tone: "danger", onConfirm: deleteTeam })} onPhotoChange={handleTeamPhotoChange} onSavePhoto={saveTeamPhoto} onSubmit={updateTeam} photoPreview={teamPhotoSrc} setEditForm={setEditForm} /> : null}
+      {activeTab === "settings" && team.is_captain ? <SettingsTab actionInProgress={actionInProgress} editForm={editForm} onDelete={() => setConfirmAction({ title: "Delete team?", message: "This action permanently removes the team. Only continue if this team was created by mistake and has no required history.", confirmLabel: "Delete Team", tone: "danger", onConfirm: deleteTeam })} onPhotoChange={handleTeamPhotoChange} onSavePhoto={saveTeamPhoto} onServiceAreaChange={(selection) => { setServiceArea(selection); setEditForm((current) => current ? { ...current, location: selection.district, preferred_playing_area: selection.area } : current); }} onServiceAreaClear={() => { setServiceArea(null); setEditForm((current) => current ? { ...current, location: "", preferred_playing_area: "" } : current); }} onSubmit={updateTeam} photoPreview={teamPhotoSrc} serviceArea={serviceArea} setEditForm={setEditForm} /> : null}
 
       {isRecruiting ? <RecruitModal actionInProgress={actionInProgress} guestForm={guestForm} inviteRole={inviteRole} lookupError={lookupError} lookupPlayer={lookupPlayer} onAddGuest={addGuest} onClose={() => setIsRecruiting(false)} onGuestChange={setGuestForm} onInviteRoleChange={setInviteRole} onLookup={lookupRegisteredPlayer} onSendInvitation={sendInvitation} onSportspotIdChange={setSportspotId} onTabChange={setRecruitTab} sportspotId={sportspotId} tab={recruitTab} /> : null}
       {selectedMember ? <PlayerProfileModal member={selectedMember} onClose={() => setSelectedMember(null)} /> : null}
@@ -510,7 +524,7 @@ function relativeDeadline(value: string) {
   return `in ${Math.max(1, Math.floor(delta / 60000))}m`;
 }
 
-function SettingsTab({ actionInProgress, editForm, onDelete, onPhotoChange, onSavePhoto, onSubmit, photoPreview, setEditForm }: { actionInProgress: boolean; editForm: TeamPayload; onDelete: () => void; onPhotoChange: (file: File | null) => void; onSavePhoto: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; photoPreview: string; setEditForm: (form: TeamPayload) => void }) {
+function SettingsTab({ actionInProgress, editForm, onDelete, onPhotoChange, onSavePhoto, onServiceAreaChange, onServiceAreaClear, onSubmit, photoPreview, serviceArea, setEditForm }: { actionInProgress: boolean; editForm: TeamPayload; onDelete: () => void; onPhotoChange: (file: File | null) => void; onSavePhoto: () => void; onServiceAreaChange: (selection: ServiceAreaSelection) => void; onServiceAreaClear: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; photoPreview: string; serviceArea: ServiceAreaSelection | null; setEditForm: (form: TeamPayload) => void }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
       <form className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" onSubmit={onSubmit}>
@@ -519,8 +533,7 @@ function SettingsTab({ actionInProgress, editForm, onDelete, onPhotoChange, onSa
           <Field label="Team Name"><input className={inputClassName} maxLength={100} required value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} /></Field>
           <Field label="Sport"><div className="mt-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-black text-sportNavy">Cricksal</div></Field>
           <Field className="sm:col-span-2" label="Description"><textarea className={`${inputClassName} min-h-28 py-3`} value={editForm.description} onChange={(event) => setEditForm({ ...editForm, description: event.target.value })} /></Field>
-          <Field label="Home Location"><select className={inputClassName} required value={editForm.location} onChange={(event) => setEditForm({ ...editForm, location: event.target.value })}>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</select></Field>
-          <Field label="Preferred Playing Areas"><input className={inputClassName} required value={editForm.preferred_playing_area} onChange={(event) => setEditForm({ ...editForm, preferred_playing_area: event.target.value })} /></Field>
+          <div className="sm:col-span-2"><ServiceAreaPicker description="Search a landmark, use your current location, or place a pin. SportSpot saves the resulting area and district for team discovery; the exact pin is never stored." emptySelectionLabel="Choose your team's primary playing area" heading="Primary playing area" id="team-settings-preferred-area" onChange={onServiceAreaChange} onClear={onServiceAreaClear} searchLabel="Search your team's primary playing area" value={serviceArea} /></div>
           <Field label="Preferred Play Schedule"><select className={inputClassName} required value={editForm.preferred_playing_time} onChange={(event) => setEditForm({ ...editForm, preferred_playing_time: event.target.value })}>{playingTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select></Field>
           <Field label="Skill Level"><select className={inputClassName} value={editForm.skill_level} onChange={(event) => setEditForm({ ...editForm, skill_level: event.target.value as TeamSkillLevel })}>{skills.map((skill) => <option key={skill.value} value={skill.value}>{skill.label}</option>)}</select></Field>
         </div>

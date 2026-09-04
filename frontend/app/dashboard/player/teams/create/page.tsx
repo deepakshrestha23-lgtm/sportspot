@@ -6,13 +6,13 @@ import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { DashboardPageHeader } from "@/components/player-dashboard/DashboardPageHeader";
+import ServiceAreaPicker, { type ServiceAreaSelection } from "@/components/location/ServiceAreaPicker";
 import { api } from "@/lib/api";
 import { getApiErrorField, getApiErrorMessage } from "@/lib/apiErrors";
 import { getImageUploadError } from "@/lib/imageUpload";
 import { emitToast } from "@/lib/toast";
 import type { TeamPayload, TeamResponse, TeamSkillLevel } from "@/types/team";
 
-const locations = ["Kathmandu", "Lalitpur", "Bhaktapur"];
 const skillOptions: Array<{ label: string; value: TeamSkillLevel; helper: string }> = [
   { label: "Beginner", value: "BEGINNER", helper: "New or casual team" },
   { label: "Intermediate", value: "INTERMEDIATE", helper: "Regular match rhythm" },
@@ -46,6 +46,7 @@ export default function CreateTeamPage() {
   const [form, setForm] = useState<TeamPayload>(emptyForm);
   const [teamPhotoFile, setTeamPhotoFile] = useState<File | null>(null);
   const [teamPhotoPreview, setTeamPhotoPreview] = useState("");
+  const [serviceArea, setServiceArea] = useState<ServiceAreaSelection | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -106,6 +107,7 @@ export default function CreateTeamPage() {
       payload.append("description", form.description.trim());
       payload.append("location", form.location);
       payload.append("preferred_playing_area", form.preferred_playing_area.trim());
+      payload.append("preferred_playing_area_code", serviceArea?.code || "");
       payload.append("preferred_playing_time", form.preferred_playing_time);
       payload.append("skill_level", form.skill_level);
 
@@ -167,20 +169,28 @@ export default function CreateTeamPage() {
             </div>
           </FormCard>
 
-          <FormCard title="Playing Preferences" description="Set where and when your team usually plays.">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field error={errors.location} label="Home District" required>
-                <select className={inputClassName(errors.location)} onChange={(event) => updateForm({ location: event.target.value })} value={form.location}>
-                  <option value="">Select district</option>
-                  {locations.map((location) => (
-                    <option key={location} value={location}>{location}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field error={errors.preferred_playing_area} label="Preferred Playing Area" required>
-                <input className={inputClassName(errors.preferred_playing_area)} onChange={(event) => updateForm({ preferred_playing_area: event.target.value })} placeholder="e.g. Baneshwor, Chabahil" value={form.preferred_playing_area} />
-              </Field>
-              <Field className="md:col-span-2" error={errors.preferred_playing_time} label="Preferred Playing Time" required>
+          <FormCard title="Playing Preferences" description="Choose the primary area where your team usually plays. SportSpot stores the area and district, never the exact map pin.">
+            <div className="space-y-5">
+              <div>
+                <ServiceAreaPicker
+                  description="Search a landmark, use your current location, or place a pin. SportSpot saves the resulting area and district for team discovery; the exact pin is never stored."
+                  emptySelectionLabel="Choose your team's primary playing area"
+                  heading="Primary playing area"
+                  id="team-preferred-area"
+                  onChange={(selection) => {
+                    setServiceArea(selection);
+                    updateForm({ location: selection.district, preferred_playing_area: selection.area });
+                  }}
+                  onClear={() => {
+                    setServiceArea(null);
+                    updateForm({ location: "", preferred_playing_area: "" });
+                  }}
+                  searchLabel="Search your team's primary playing area"
+                  value={serviceArea}
+                />
+                {errors.preferred_playing_area || errors.location ? <p className="mt-2 text-xs font-semibold text-red-600">{errors.preferred_playing_area || errors.location}</p> : null}
+              </div>
+              <Field error={errors.preferred_playing_time} label="Preferred Playing Time" required>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {playingTimes.map((time) => {
                     const active = form.preferred_playing_time === time;
@@ -249,8 +259,7 @@ export default function CreateTeamPage() {
 function validateForm(form: TeamPayload) {
   const nextErrors: FormErrors = {};
   if (!form.name.trim()) nextErrors.name = "Enter a team name.";
-  if (!form.location) nextErrors.location = "Select your home district.";
-  if (!form.preferred_playing_area.trim()) nextErrors.preferred_playing_area = "Enter your preferred playing area.";
+  if (!form.location || !form.preferred_playing_area.trim()) nextErrors.preferred_playing_area = "Choose your team's primary playing area from the map.";
   if (!form.preferred_playing_time) nextErrors.preferred_playing_time = "Choose your preferred playing time.";
   return nextErrors;
 }

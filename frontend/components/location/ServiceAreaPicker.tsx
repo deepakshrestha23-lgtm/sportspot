@@ -39,12 +39,20 @@ export default function ServiceAreaPicker({
   onClear,
   id = "service-area",
   compact = false,
+  heading = "Match area",
+  description = "Search a landmark, use your current location, or place a pin. SportSpot stores the resulting service area for this plan, not the exact pin.",
+  searchLabel = "Search a place for this match",
+  emptySelectionLabel = "Choose an area on the map",
 }: {
   value: ServiceAreaSelection | null;
   onChange: (selection: ServiceAreaSelection) => void;
   onClear?: () => void;
   id?: string;
   compact?: boolean;
+  heading?: string;
+  description?: string;
+  searchLabel?: string;
+  emptySelectionLabel?: string;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<LocationResult[]>([]);
@@ -148,14 +156,14 @@ export default function ServiceAreaPicker({
   }
 
   const showResults = query.trim().length >= 3 && (isSearching || results.length > 0 || Boolean(message));
-  const selectionText = value ? `${value.area}, ${value.district}` : "Choose an area on the map";
+  const selectionText = value ? `${value.area}, ${value.district}` : emptySelectionLabel;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 sm:p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-sm font-black text-sportNavy">Match area</p>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Search a landmark, use your current location, or place a pin. SportSpot stores the resulting service area for this plan, not the exact pin.</p>
+          <p className="text-sm font-black text-sportNavy">{heading}</p>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
         </div>
         <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-black ${value ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
           {value ? "Area selected" : "Area required"}
@@ -163,7 +171,7 @@ export default function ServiceAreaPicker({
       </div>
 
       <div className="relative z-30 mt-4">
-        <label className="sr-only" htmlFor={`${id}-search`}>Search a place for this match</label>
+        <label className="sr-only" htmlFor={`${id}-search`}>{searchLabel}</label>
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
           <input aria-autocomplete="list" aria-expanded={showResults} className="sport-field min-w-0" id={`${id}-search`} onChange={(event) => setQuery(event.target.value)} placeholder="Search area, landmark, or address" type="search" value={query} />
           <button className="sport-secondary-button min-h-11 px-4 text-sm" disabled={isLocating || isResolving} onClick={useCurrentLocation} type="button">

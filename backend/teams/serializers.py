@@ -3,6 +3,7 @@ from rest_framework import serializers
 from players.models import PlayerProfile
 from players.services import get_player_reliability_snapshot
 from team_challenges.services import get_team_reliability_snapshot
+from venues.reference_data import canonical_service_area
 
 from .records import get_team_cricket_record
 from .models import Team, TeamMember
@@ -131,6 +132,7 @@ class TeamSerializer(serializers.ModelSerializer):
     is_captain = serializers.SerializerMethodField()
     team_reliability_score = serializers.SerializerMethodField()
     team_reliability_label = serializers.SerializerMethodField()
+    preferred_playing_area_code = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=64)
 
     class Meta:
         model = Team
@@ -141,6 +143,7 @@ class TeamSerializer(serializers.ModelSerializer):
             "description",
             "location",
             "preferred_playing_area",
+            "preferred_playing_area_code",
             "preferred_playing_time",
             "skill_level",
             "accepts_team_challenges",
@@ -202,11 +205,35 @@ class TeamSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        preferred_area_code = str(attrs.pop("preferred_playing_area_code", "") or "").strip()
+
         for field in ("location", "preferred_playing_area", "preferred_playing_time"):
             if field in attrs:
                 attrs[field] = str(attrs[field]).strip()
                 if not attrs[field]:
                     raise serializers.ValidationError({field: "This field is required."})
+
+        submitted_area = str(attrs.get("preferred_playing_area", "") or "").strip()
+        submitted_district = str(attrs.get("location", "") or "").strip()
+        if preferred_area_code or submitted_area:
+            service_area = canonical_service_area(
+                code=preferred_area_code,
+                area=submitted_area,
+                # The map-resolved code is the source of truth. A stale
+                # district from a previous selection must not invalidate it.
+                district="" if preferred_area_code else submitted_district,
+            )
+            if service_area:
+                # A service area has one canonical district. Never allow a
+                # manually selected district to conflict with the map result.
+                attrs["preferred_playing_area"] = service_area["label"]
+                attrs["location"] = service_area["district"]
+            elif not (
+                self.instance
+                and submitted_area == self.instance.preferred_playing_area
+                and submitted_district == self.instance.location
+            ):
+                raise serializers.ValidationError({"preferred_playing_area": "Choose a supported SportSpot playing area from the map."})
         return attrs
 
 
