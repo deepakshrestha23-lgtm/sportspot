@@ -634,6 +634,7 @@ class PublicGameParticipantSerializer(serializers.ModelSerializer):
     """Roster-safe participant data for public discovery and game details."""
 
     full_name = serializers.CharField(source="display_name", read_only=True)
+    profile_photo = serializers.SerializerMethodField()
     role_label = serializers.CharField(source="get_role_display", read_only=True)
     participant_type_label = serializers.CharField(source="get_participant_type_display", read_only=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
@@ -644,6 +645,7 @@ class PublicGameParticipantSerializer(serializers.ModelSerializer):
             "id",
             "full_name",
             "guest_name",
+            "profile_photo",
             "participant_type",
             "participant_type_label",
             "role",
@@ -652,6 +654,12 @@ class PublicGameParticipantSerializer(serializers.ModelSerializer):
             "status_label",
             "joined_at",
         )
+
+    def get_profile_photo(self, participant):
+        if not participant.user_id:
+            return ""
+        profile = getattr(participant.user, "player_profile", None)
+        return profile.profile_photo.url if profile and profile.profile_photo else ""
 
 
 class PublicGameSerializer(GameSerializer):

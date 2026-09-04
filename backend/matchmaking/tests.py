@@ -6,6 +6,7 @@ from sportspot_api.maintenance import run_platform_maintenance
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -582,6 +583,28 @@ class PickupGameApiTests(APITestCase):
         self.assertNotIn("sportspot_id", participant)
         self.assertNotIn("reliability_label", participant)
         self.assertNotIn("average_rating", participant)
+
+    def test_public_game_details_include_registered_profile_photo(self):
+        self.host.player_profile.profile_photo.save(
+            "pickup-host.png",
+            SimpleUploadedFile("pickup-host.png", b"profile-photo", content_type="image/png"),
+            save=True,
+        )
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Public profile photo guard",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        GameRoleRequirement.objects.create(game=game, role="ANY", required_count=3)
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+
+        response = self.client.get(reverse("matchmaking-game-detail", args=[game.id]))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        participant = response.data["game"]["participants"][0]
+        self.assertTrue(participant["profile_photo"].endswith("pickup-host.png"))
 
     def test_public_discovery_excludes_games_after_recruitment_deadline(self):
         game = Game.objects.create(
