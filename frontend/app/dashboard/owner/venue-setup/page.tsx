@@ -683,7 +683,13 @@ export default function VenueSetupPage() {
                   <Input label="Court Name" value={courtForm.name} onChange={(value) => setCourtForm({ ...courtForm, name: value })} />
                   <Select label="Court Type" value={courtForm.court_type} onChange={(value) => setCourtForm({ ...courtForm, court_type: value })} options={["INDOOR", "OUTDOOR", "COVERED"]} />
                   <Select label="Surface Type" value={courtForm.surface_type} onChange={(value) => setCourtForm({ ...courtForm, surface_type: value })} options={["TURF", "MAT", "CEMENT", "ARTIFICIAL_TURF"]} />
-                  <FileInput label="Court Photo Optional (JPG, JPEG or PNG, up to 5 MB)" onChange={updateCourtPhoto} />
+                  <FileInput
+                    file={courtForm.court_photo}
+                    helper={courtForm.court_photo ? "Attached to this court. It uploads when you add the court." : "Optional. Use a clear image of the actual play area."}
+                    label="Court Photo Optional (JPG, JPEG or PNG, up to 5 MB)"
+                    onChange={updateCourtPhoto}
+                    onClear={() => setCourtForm((current) => ({ ...current, court_photo: null }))}
+                  />
                 </div>
                 <Textarea label="Court Description" value={courtForm.description} onChange={(value) => setCourtForm({ ...courtForm, description: value })} />
                 <label className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700">
@@ -904,7 +910,14 @@ export default function VenueSetupPage() {
                     options={documentTypes.map((item) => item.value)}
                     labels={Object.fromEntries(documentTypes.map((item) => [item.value, item.label]))}
                   />
-                  <FileInput label="Upload Selected Document" accept=".jpg,.jpeg,.png,.pdf" onChange={(event) => updateFile(event, "verification_document")} />
+                  <FileInput
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    file={files.verification_document}
+                    helper={files.verification_document ? "Selected. It uploads when you save or submit this venue." : "JPG, JPEG, PNG, or PDF. Maximum 5 MB."}
+                    label="Upload Selected Document"
+                    onChange={(event) => updateFile(event, "verification_document")}
+                    onClear={() => setFiles((current) => ({ ...current, verification_document: null }))}
+                  />
                 </div>
               </div>
 
@@ -1339,12 +1352,20 @@ function Select({
   );
 }
 
-function FileInput({ label, accept = ".jpg,.jpeg,.png", onChange }: { label: string; accept?: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void }) {
+function FileInput({ accept = ".jpg,.jpeg,.png", file, helper, label, onChange, onClear }: { accept?: string; file: File | null; helper: string; label: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void; onClear: () => void }) {
   return (
-    <label className="block rounded-md border border-dashed border-slate-300 bg-slate-50 p-4">
-      <span className="text-sm font-black text-sportNavy">{label}</span>
-      <input accept={accept} className="mt-3 block w-full text-sm text-slate-600" onChange={onChange} type="file" />
-    </label>
+    <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4">
+      <p className="text-sm font-black text-sportNavy">{label}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-sportNavy transition hover:border-green-300 hover:text-sportGreen">
+          {file ? "Replace file" : "Choose file"}
+          <input accept={accept} className="sr-only" onChange={onChange} type="file" />
+        </label>
+        {file ? <span className="max-w-full truncate text-sm font-semibold text-sportNavy" title={file.name}>{file.name}</span> : <span className="text-sm text-slate-500">No file selected</span>}
+        {file ? <button className="text-sm font-semibold text-slate-500 transition hover:text-red-600" onClick={onClear} type="button">Remove</button> : null}
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{helper}</p>
+    </div>
   );
 }
 
