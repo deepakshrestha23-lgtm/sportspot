@@ -17,7 +17,7 @@ type FeedbackSort = "newest" | "oldest" | "highest" | "lowest";
 type ReportReason = "SPAM" | "INAPPROPRIATE" | "MISLEADING" | "OTHER";
 
 const feedbackTypes: Array<{ label: string; value: FeedbackType }> = [
-  { label: "All feedback", value: "all" },
+  { label: "All", value: "all" },
   { label: "Ratings", value: "reviews" },
   { label: "Comments", value: "comments" },
 ];
@@ -121,7 +121,7 @@ export default function OwnerReviewsPage() {
             <Link className="owner-primary-button" href="/dashboard/owner/reports">View reports</Link>
           </div>
         }
-        description="Monitor verified player feedback across your courts and send genuine policy concerns to SportSpot moderation."
+        description="Review verified player ratings, compare court feedback, and report genuine policy concerns when needed."
         eyebrow="Venue Manager"
         title="Reviews & Feedback"
       />
@@ -151,20 +151,20 @@ export default function OwnerReviewsPage() {
       {feedback?.venue ? (
         <>
           <section aria-label="Feedback summary" className="owner-feedback-summary">
-            <SummaryMetric label="Average rating" value={feedback.summary.average_rating || "No rating"} detail={feedback.summary.rating_count ? `${feedback.summary.rating_count} player rating${feedback.summary.rating_count === 1 ? "" : "s"}` : "No ratings yet"} tone="rating" stars={averageRating} />
-            <SummaryMetric label="Player ratings" value={String(feedback.summary.rating_count)} detail={`${feedback.summary.positive_rating_count} positive rating${feedback.summary.positive_rating_count === 1 ? "" : "s"}`} />
-            <SummaryMetric label="Written comments" value={String(feedback.summary.comment_count)} detail="Player observations" />
-            <SummaryMetric label="Total feedback" value={String(feedback.summary.total_feedback)} detail={feedback.summary.latest_feedback_at ? `Latest ${formatDateTimeInNepal(feedback.summary.latest_feedback_at, { month: "short", day: "numeric" })}` : "No feedback yet"} />
+            <SummaryMetric label="Average rating" value={feedback.summary.average_rating || "No rating"} detail={feedback.summary.rating_count ? `${feedback.summary.rating_count} verified rating${feedback.summary.rating_count === 1 ? "" : "s"}` : "No ratings yet"} tone="rating" stars={averageRating} />
+            <SummaryMetric label="Ratings" value={String(feedback.summary.rating_count)} detail={`${feedback.summary.positive_rating_count} positive`} />
+            <SummaryMetric label="Comments" value={String(feedback.summary.comment_count)} detail="Written feedback" />
+            <SummaryMetric label="All feedback" value={String(feedback.summary.total_feedback)} detail={feedback.summary.latest_feedback_at ? `Updated ${formatDateTimeInNepal(feedback.summary.latest_feedback_at, { month: "short", day: "numeric" })}` : "No feedback yet"} />
           </section>
 
           <section aria-labelledby="feedback-insights-heading" className="owner-feedback-insights">
             <div className="owner-feedback-panel owner-feedback-rating-panel">
               <div className="owner-feedback-panel-heading">
                 <div>
-                  <p className="owner-section-kicker">Rating health</p>
-                  <h2 id="feedback-insights-heading">How players rate the venue</h2>
+                  <p className="owner-section-kicker">Rating distribution</p>
+                  <h2 id="feedback-insights-heading">Venue rating breakdown</h2>
                 </div>
-                <span className="owner-feedback-panel-note">Verified bookings only</span>
+                <span className="owner-feedback-panel-note">Verified bookings</span>
               </div>
               <div className="owner-feedback-distribution">
                 {feedback.distribution.map((item) => {
@@ -184,7 +184,7 @@ export default function OwnerReviewsPage() {
               <div className="owner-feedback-panel-heading">
                 <div>
                   <p className="owner-section-kicker">Court comparison</p>
-                  <h2>Feedback by court</h2>
+                  <h2>Ratings by court</h2>
                 </div>
                 <Link className="owner-feedback-panel-link" href="/dashboard/owner/courts">Manage courts <span aria-hidden="true">-&gt;</span></Link>
               </div>
@@ -192,8 +192,9 @@ export default function OwnerReviewsPage() {
                 <div className="owner-feedback-court-list">
                   {feedback.courts.map((court) => (
                     <button className={`owner-feedback-court-row${String(court.id) === courtId ? " is-selected" : ""}`} key={court.id} onClick={() => setCourtId(String(court.id))} type="button">
-                      <span className="owner-feedback-court-main"><strong>{court.name}</strong><small>{court.is_active ? "Active court" : "Inactive court"}</small></span>
-                      <span className="owner-feedback-court-rating">{court.average_rating ? <><strong>{court.average_rating}</strong><StarIcon /></> : <span>No rating</span>}<small>{court.rating_count} rating{court.rating_count === 1 ? "" : "s"} · {court.comment_count} comment{court.comment_count === 1 ? "" : "s"}</small></span>
+                      <span className="owner-feedback-court-main"><strong>{court.name}</strong><small className={court.is_active ? "is-active" : "is-inactive"}>{court.is_active ? "Active" : "Inactive"}</small></span>
+                      <span className="owner-feedback-court-rating">{court.average_rating ? <span className="owner-feedback-court-score"><strong>{court.average_rating}</strong><StarIcon /></span> : <span>No rating</span>}<small>{court.rating_count} rating{court.rating_count === 1 ? "" : "s"} · {court.comment_count} comment{court.comment_count === 1 ? "" : "s"}</small></span>
+                      <span aria-hidden="true" className="owner-feedback-court-arrow">›</span>
                     </button>
                   ))}
                 </div>
@@ -204,11 +205,11 @@ export default function OwnerReviewsPage() {
           <section aria-labelledby="feedback-stream-heading" className="owner-feedback-stream">
             <div className="owner-feedback-stream-heading">
               <div>
-                <p className="owner-section-kicker">Player voice</p>
-                <h2 id="feedback-stream-heading">Feedback inbox</h2>
+                <p className="owner-section-kicker">Feedback</p>
+                <h2 id="feedback-stream-heading">Recent feedback</h2>
                 <p>{selectedCourtLabel ? `${selectedCourtLabel} · ` : ""}{visibleCount} matching item{visibleCount === 1 ? "" : "s"}</p>
               </div>
-              <span className="owner-feedback-protection-note"><ShieldIcon /> Owners can view and report feedback. Player content cannot be edited or deleted here.</span>
+              <span className="owner-feedback-protection-note"><ShieldIcon /> Feedback comes from completed paid bookings.</span>
             </div>
 
             <div aria-label="Feedback filters" className="owner-feedback-filters">
