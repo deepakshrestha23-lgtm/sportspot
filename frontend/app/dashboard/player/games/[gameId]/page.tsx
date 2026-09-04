@@ -372,37 +372,46 @@ function PlanFirstBookingPanel({ actionInProgress, attachBooking, eligibleBookin
   const neededPlayers = Math.max(game.minimum_players_to_proceed - game.occupied_spots_count, 0);
   const canUseGuidedBooking = neededPlayers === 0 && !["CANCELLED", "IN_PROGRESS", "COMPLETED"].includes(game.status);
   const bookingHref = buildGuidedBookingHref(game);
+  const bookingMessage = canUseGuidedBooking
+    ? "The minimum group size is ready. Choose an available court and pay securely with Khalti to confirm this game."
+    : neededPlayers > 0
+      ? `Recruit ${neededPlayers} more player spot${neededPlayers === 1 ? "" : "s"} before booking a SportSpot court for this game.`
+      : "Court booking is unavailable for this game right now.";
 
   return (
-    <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Planning - Court Not Booked Yet</p>
-          <h2 className="mt-1 text-xl font-black text-blue-950">Book a court for this game</h2>
-          <p className="mt-1 text-sm font-semibold leading-6 text-blue-800">
-            {canUseGuidedBooking
-              ? "Your minimum player threshold is ready. Choose an available SportSpot court, pay with Khalti, and the game will update automatically after payment succeeds."
-              : `You need ${neededPlayers} more player spot${neededPlayers === 1 ? "" : "s"} before the guided booking handoff opens.`}
-          </p>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="planning-booking-title">
+      <header className="border-b border-slate-200 bg-slate-50/70 px-5 py-5 sm:px-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-sportGreen">Court booking</p>
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-blue-500" />Planning</span>
+            </div>
+            <h2 className="mt-1 text-xl font-black tracking-tight text-sportNavy" id="planning-booking-title">Reserve the court after recruitment</h2>
+            <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-600">{bookingMessage}</p>
+          </div>
+          {canUseGuidedBooking ? (
+            <Link className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-sportGreen px-5 text-sm font-black text-white shadow-sm transition-colors hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-300 focus-visible:ring-offset-2" href={bookingHref}>Book court</Link>
+          ) : (
+            <span className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600">{neededPlayers > 0 ? "Recruit players first" : "Booking unavailable"}</span>
+          )}
         </div>
-        {canUseGuidedBooking ? (
-          <Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sportGreen px-5 text-sm font-black text-white hover:bg-green-700" href={bookingHref}>Book Court for Game</Link>
-        ) : (
-          <span className="inline-flex min-h-11 items-center justify-center rounded-xl border border-blue-200 bg-white px-5 text-sm font-black text-blue-700">Recruit players first</span>
-        )}
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      </header>
+
+      <div className="px-5 py-5 sm:px-6">
+        <div className="grid gap-5 sm:grid-cols-3">
         <MiniInfo label="Minimum needed" value={`${game.occupied_spots_count}/${game.minimum_players_to_proceed}`} />
-      <MiniInfo label="Proposed area" value={[game.preferred_area, game.preferred_district].filter(Boolean).join(", ") || "Not set"} />
+          <MiniInfo label="Proposed area" value={[game.preferred_area, game.preferred_district].filter(Boolean).join(", ") || "Not set"} />
         <MiniInfo label="Proposed time" value={game.booking_display_time || "Not set"} />
+        </div>
+        {eligibleBookings.length ? <div className="mt-5 border-t border-slate-200 pt-5"><div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"><div><p className="text-sm font-black text-sportNavy">Have a confirmed booking already?</p><p className="mt-1 text-sm font-semibold leading-5 text-slate-500">Link it here to keep this game&apos;s schedule and roster in sync.</p></div><span className="text-xs font-bold text-slate-400">Optional</span></div><div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"><select aria-label="Choose a confirmed booking to attach" className="h-11 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-sportNavy focus:border-sportGreen focus:outline-none focus:ring-2 focus:ring-green-100" value={selectedBooking} onChange={(event) => setSelectedBooking(event.target.value)}>{eligibleBookings.map((booking) => <option key={booking.id} value={booking.id}>{booking.venue_name} - {booking.court_name} - {booking.booking_display_time}</option>)}</select><button className="min-h-11 rounded-md border border-sportGreen bg-white px-5 text-sm font-black text-sportGreen transition-colors hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60" disabled={actionInProgress} onClick={attachBooking} type="button">Link booking</button></div></div> : null}
       </div>
-      {eligibleBookings.length ? <div className="mt-4 rounded-xl border border-blue-100 bg-white/80 p-4"><p className="text-sm font-black text-blue-950">Already booked outside this flow?</p><div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"><select className="h-12 rounded-xl border border-blue-200 bg-white px-3 text-sm font-bold" value={selectedBooking} onChange={(event) => setSelectedBooking(event.target.value)}>{eligibleBookings.map((booking) => <option key={booking.id} value={booking.id}>{booking.venue_name} - {booking.court_name} - {booking.booking_display_time}</option>)}</select><button className="min-h-12 rounded-xl bg-blue-700 px-5 text-sm font-black text-white disabled:opacity-60" disabled={actionInProgress} onClick={attachBooking} type="button">Attach Booking</button></div></div> : null}
     </section>
   );
 }
 
 function MiniInfo({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-xl bg-white/80 px-4 py-3"><p className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-600">{label}</p><p className="mt-1 text-sm font-black text-blue-950">{value}</p></div>;
+  return <div className="min-w-0 border-l-2 border-slate-200 pl-3"><p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p><p className="mt-1 truncate text-sm font-black text-sportNavy" title={value}>{value}</p></div>;
 }
 
 function RosterCard({ actionInProgress, game, onConfirmGuest, onEdit, onInviteToTeam, onRemove }: { actionInProgress: boolean; game: MatchmakingGame; onConfirmGuest: (participant: RosterParticipant) => void; onEdit: (participant: RosterParticipant) => void; onInviteToTeam: (participant: RosterParticipant) => void; onRemove: (participant: RosterParticipant) => void }) {
