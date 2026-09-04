@@ -1,7 +1,11 @@
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+import { getApiBaseUrl } from "@/lib/media";
+
+function getRealtimeBaseUrl() {
+  return getApiBaseUrl();
+}
 
 export function getNotificationWebSocketUrl() {
-  const url = new URL(apiBaseUrl);
+  const url = new URL(getRealtimeBaseUrl());
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/ws/notifications/`;
   url.search = "";
@@ -9,7 +13,7 @@ export function getNotificationWebSocketUrl() {
 }
 
 export function getGameChatWebSocketUrl(gameId: number) {
-  const url = new URL(apiBaseUrl);
+  const url = new URL(getRealtimeBaseUrl());
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/ws/games/${gameId}/chat/`;
   url.search = "";
@@ -17,7 +21,7 @@ export function getGameChatWebSocketUrl(gameId: number) {
 }
 
 export function getTeamFixtureChatWebSocketUrl(fixtureId: number) {
-  const url = new URL(apiBaseUrl);
+  const url = new URL(getRealtimeBaseUrl());
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/ws/team-fixtures/${fixtureId}/chat/`;
   url.search = "";
