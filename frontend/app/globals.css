@@ -5713,6 +5713,245 @@ a {
   background: #ffffff;
 }
 
+/* Venue policy editor: neutral configuration controls with a player-facing summary. */
+.venue-policy-editor {
+  border-top: 1px solid #dce6e0;
+  padding-top: 1.5rem;
+}
+
+.venue-policy-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.venue-policy-editor-header h3 {
+  color: #17233a;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.venue-policy-editor-header > div > p {
+  margin-top: 0.35rem;
+  max-width: 45rem;
+  color: #607084;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.venue-policy-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.45rem;
+  color: #526477;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.venue-policy-status > span {
+  height: 0.45rem;
+  width: 0.45rem;
+  border-radius: 999px;
+  background: #087a3e;
+}
+
+.venue-policy-windows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.35rem;
+}
+
+.venue-policy-window {
+  display: flex;
+  min-width: 0;
+  min-height: 12.5rem;
+  flex-direction: column;
+  border: 1px solid #dce6e0;
+  border-radius: 0.65rem;
+  background: #ffffff;
+  padding: 1rem;
+}
+
+.venue-policy-window-title {
+  color: #17233a;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.venue-policy-window-description {
+  margin-top: 0.3rem;
+  color: #607084;
+  font-size: 0.77rem;
+  line-height: 1.45;
+}
+
+.venue-policy-window-control {
+  margin-top: auto;
+  padding-top: 1rem;
+}
+
+.venue-policy-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid #edf1ee;
+  padding-top: 0.85rem;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.venue-policy-toggle input {
+  height: 1rem;
+  width: 1rem;
+  accent-color: #087a3e;
+}
+
+.venue-policy-number-field {
+  display: block;
+}
+
+.venue-policy-number-field > span,
+.venue-policy-readonly > p {
+  color: #63758a;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.venue-policy-number-field > div {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+}
+
+.venue-policy-number-field input {
+  height: 2.35rem;
+  border: 1px solid #cfdad3;
+  border-radius: 0.45rem;
+  background: #ffffff;
+  padding: 0 0.65rem;
+  color: #17233a;
+  font-size: 0.84rem;
+  font-weight: 700;
+  outline: none;
+}
+
+.venue-policy-number-field input:focus {
+  border-color: #087a3e;
+  box-shadow: 0 0 0 3px rgba(8, 122, 62, 0.12);
+}
+
+.venue-policy-number-field > div > span {
+  color: #63758a;
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.venue-policy-readonly {
+  border-top: 1px solid #edf1ee;
+  padding-top: 0.85rem;
+}
+
+.venue-policy-readonly strong {
+  display: block;
+  margin-top: 0.45rem;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.venue-policy-error {
+  margin-top: 0.85rem;
+  border-left: 3px solid #c2413b;
+  padding: 0.55rem 0 0.55rem 0.8rem;
+  color: #9f2d26;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.venue-policy-support {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 0.82fr);
+  gap: 1.25rem;
+  margin-top: 1.35rem;
+}
+
+.venue-policy-preview {
+  border-left: 1px solid #dce6e0;
+  padding: 0.15rem 0 0.15rem 1.25rem;
+}
+
+.venue-policy-preview > p:first-child {
+  color: #17233a;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.venue-policy-preview ul {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+  padding-left: 1rem;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.45;
+  list-style: disc;
+}
+
+.venue-policy-preview-note {
+  margin-top: 0.85rem;
+  border-top: 1px solid #e7eee9;
+  padding-top: 0.75rem;
+  color: #607084;
+  font-size: 0.73rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+@media (max-width: 1023px) {
+  .venue-policy-windows {
+    grid-template-columns: 1fr;
+  }
+
+  .venue-policy-window {
+    min-height: 0;
+  }
+
+  .venue-policy-window-control {
+    margin-top: 1rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .venue-policy-editor-header,
+  .venue-policy-support {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .venue-policy-status {
+    white-space: normal;
+  }
+
+  .venue-policy-preview {
+    border-top: 1px solid #dce6e0;
+    border-left: 0;
+    padding: 1rem 0 0;
+  }
+}
+
 /* Owner refunds: one operational workspace with compact, decision-ready rows. */
 .owner-dashboard-theme .owner-refunds-page {
   --owner-refund-muted: #68756d;

@@ -1040,27 +1040,24 @@ function CancellationPolicyEditor({ form, setForm }: { form: VenueForm; setForm:
   );
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-slate-50 p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className="venue-policy-editor">
+      <div className="venue-policy-editor-header">
         <div>
-          <h3 className="text-lg font-black text-sportNavy">Cancellation and Refund Policy</h3>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+          <h3>Cancellation and refund policy</h3>
+          <p>
             Configure the rules SportSpot will enforce automatically. Policy edits apply only to future bookings; confirmed bookings keep the terms captured when they were reserved.
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-green-100 px-3 py-1 text-xs font-black text-green-800">
-          Executable Policy
-        </span>
+        <span className="venue-policy-status"><span aria-hidden="true" />Applied to future bookings</span>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+      <div className="venue-policy-windows">
         <PolicyTierCard
           description="Player receives the entire paid amount."
           label="Full Refund"
-          tone="green"
         >
           <NumberField
-            label="Cancel at least"
+            label="Cancellation cutoff"
             max={168}
             min={2}
             onChange={(value) => setForm({ ...form, cancellation_full_refund_hours: value })}
@@ -1072,9 +1069,8 @@ function CancellationPolicyEditor({ form, setForm }: { form: VenueForm; setForm:
         <PolicyTierCard
           description="Optional fair middle window for late changes."
           label="Partial Refund"
-          tone="amber"
         >
-          <label className="flex items-center justify-between gap-3 rounded-md bg-white p-3 text-sm font-bold text-slate-700">
+          <label className="venue-policy-toggle">
             <span>Enable partial refunds</span>
             <input
               checked={form.cancellation_partial_refund_enabled}
@@ -1083,7 +1079,7 @@ function CancellationPolicyEditor({ form, setForm }: { form: VenueForm; setForm:
             />
           </label>
           {form.cancellation_partial_refund_enabled ? (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <NumberField
                 label="Starts at"
                 max={167}
@@ -1107,43 +1103,39 @@ function CancellationPolicyEditor({ form, setForm }: { form: VenueForm; setForm:
         <PolicyTierCard
           description="Slots are released, but payment is not refunded."
           label="Late Cancellation"
-          tone="red"
         >
-          <div className="rounded-md bg-white p-3">
-            <p className="text-xs font-black uppercase text-slate-500">No-refund window</p>
-            <p className="mt-1 text-sm font-black text-sportNavy">
+          <div className="venue-policy-readonly">
+            <p>No-refund window</p>
+            <strong>
               Less than {form.cancellation_partial_refund_enabled ? form.cancellation_partial_refund_hours : form.cancellation_full_refund_hours} hours before
-            </p>
+            </strong>
           </div>
         </PolicyTierCard>
       </div>
 
       {!hasValidOrder ? (
-        <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+        <p className="venue-policy-error">
           Partial-refund hours must be lower than full-refund hours.
         </p>
       ) : null}
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+      <div className="venue-policy-support">
         <Textarea
           label="Additional Policy Notes Optional"
           onChange={(value) => setForm({ ...form, cancellation_policy: value.slice(0, 500) })}
           value={form.cancellation_policy}
         />
-        <div className="rounded-md border border-green-200 bg-green-50 p-4">
-          <p className="text-xs font-black uppercase tracking-wide text-green-800">Player Preview</p>
-          <ul className="mt-3 space-y-2 text-sm font-semibold leading-5 text-green-950">
+        <aside className="venue-policy-preview">
+          <p>Player-facing summary</p>
+          <ul>
             {getCancellationPolicySummary(form).map((item) => (
-              <li className="flex gap-2" key={item}>
-                <span aria-hidden="true">•</span>
-                <span>{item}</span>
-              </li>
+              <li key={item}>{item}</li>
             ))}
           </ul>
-          <p className="mt-3 border-t border-green-200 pt-3 text-xs font-semibold text-green-800">
+          <p className="venue-policy-preview-note">
             Venue-caused cancellations always require a 100% refund and cannot be overridden.
           </p>
-        </div>
+        </aside>
       </div>
     </section>
   );
@@ -1152,24 +1144,19 @@ function CancellationPolicyEditor({ form, setForm }: { form: VenueForm; setForm:
 function PolicyTierCard({
   label,
   description,
-  tone,
   children,
 }: {
   label: string;
   description: string;
-  tone: "green" | "amber" | "red";
   children: ReactNode;
 }) {
-  const toneClasses = tone === "green"
-    ? "border-green-200 bg-green-50"
-    : tone === "amber"
-      ? "border-amber-200 bg-amber-50"
-      : "border-red-200 bg-red-50";
   return (
-    <div className={`rounded-lg border p-4 ${toneClasses}`}>
-      <p className="font-black text-sportNavy">{label}</p>
-      <p className="mt-1 min-h-10 text-xs leading-5 text-slate-600">{description}</p>
-      <div className="mt-3">{children}</div>
+    <div className="venue-policy-window">
+      <div>
+        <p className="venue-policy-window-title">{label}</p>
+        <p className="venue-policy-window-description">{description}</p>
+      </div>
+      <div className="venue-policy-window-control">{children}</div>
     </div>
   );
 }
@@ -1190,11 +1177,11 @@ function NumberField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block rounded-md bg-white p-3">
-      <span className="text-xs font-black uppercase text-slate-500">{label}</span>
-      <div className="mt-1 flex items-center gap-2">
+    <label className="venue-policy-number-field">
+      <span>{label}</span>
+      <div>
         <input
-          className="w-20 rounded-md border border-slate-300 px-2 py-2 text-sm font-black text-sportNavy outline-none focus:border-sportGreen"
+          className="w-20"
           max={max}
           min={min}
           onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))}
