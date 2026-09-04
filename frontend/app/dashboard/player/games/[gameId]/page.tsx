@@ -251,11 +251,12 @@ export default function GameManagePage() {
   }
 
   async function inviteParticipantToTeam(participant: MatchmakingGame["participants"][number]) {
-    if (!window.confirm(`Send ${participant.full_name} an invitation to join your permanent team? This is separate from their temporary place in this game.`)) return;
+    if (!window.confirm(`Send ${participant.full_name} a separate invitation to join your permanent team? They will remain a temporary player in this game until they accept.`)) return;
     setActionInProgress(true);
     try {
       await api.post(`/api/matchmaking/games/${params.gameId}/participants/${participant.id}/invite-to-team/`);
-      emitToast({ message: "The permanent team invitation has been sent.", type: "success", dedupeKey: `permanent-team-invite-${participant.id}` });
+      emitToast({ message: "The separate team invitation has been sent.", type: "success", dedupeKey: `permanent-team-invite-${participant.id}` });
+      await loadGame(true);
     } catch (requestError) {
       emitToast({ message: getApiErrorMessage(requestError, "We could not send the permanent team invitation."), type: "error", dedupeKey: `permanent-team-invite-error-${participant.id}` });
     } finally {
@@ -441,12 +442,16 @@ function RosterCard({ actionInProgress, game, onConfirmGuest, onEdit, onInviteTo
         {game.participants.map((participant) => {
           const canEdit = isHost && participant.participant_type !== "HOST" && ["RECRUITING", "FULL", "CLOSED"].includes(game.status);
           const needsGuestConfirmation = isHost && participant.status === "GUEST_CONFIRMATION_REQUIRED";
+          const teamInvitationStatus = participant.team_invitation_status || "NONE";
           const canInviteToPermanentTeam = isHost
             && game.game_type === "FILL_SQUAD"
-            && game.status === "COMPLETED"
+            && !["DRAFT", "CANCELLED"].includes(game.status)
             && participant.participant_type === "TEMPORARY"
-            && participant.status === "CONFIRMED"
-            && Boolean(participant.sportspot_id);
+            && ["CONFIRMED", "PROVISIONAL", "RECONFIRM_REQUIRED", "GUEST_CONFIRMATION_REQUIRED"].includes(participant.status)
+            && Boolean(participant.user)
+            && teamInvitationStatus === "NONE";
+          const teamInvitationSent = isHost && participant.participant_type === "TEMPORARY" && teamInvitationStatus === "INVITED";
+          const alreadyOnPermanentTeam = isHost && participant.participant_type === "TEMPORARY" && teamInvitationStatus === "ACTIVE";
 
           return (
             <article className={`rounded-xl border bg-white p-3.5 transition-colors ${needsGuestConfirmation ? "border-amber-200 bg-amber-50/30" : "border-slate-200 hover:border-slate-300"}`} key={participant.id}>
@@ -467,9 +472,11 @@ function RosterCard({ actionInProgress, game, onConfirmGuest, onEdit, onInviteTo
                 </div>
               </div>
 
-              {needsGuestConfirmation || canEdit || canInviteToPermanentTeam ? <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
+              {needsGuestConfirmation || canEdit || canInviteToPermanentTeam || teamInvitationSent || alreadyOnPermanentTeam ? <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
                 {needsGuestConfirmation ? <button aria-label={`Confirm ${participant.full_name}'s schedule`} className="sport-primary-button min-h-9 px-3 py-2 text-xs" disabled={actionInProgress} onClick={() => onConfirmGuest(participant)} title="Confirm guest schedule" type="button">Confirm schedule</button> : null}
-                {canInviteToPermanentTeam ? <button aria-label={`Invite ${participant.full_name} to the permanent team`} className="sport-secondary-button min-h-9 px-3 py-2 text-xs" disabled={actionInProgress} onClick={() => onInviteToTeam(participant)} type="button">Invite to permanent team</button> : null}
+                {canInviteToPermanentTeam ? <button aria-label={`Invite ${participant.full_name} to the permanent team`} className="sport-secondary-button min-h-9 px-3 py-2 text-xs" disabled={actionInProgress} onClick={() => onInviteToTeam(participant)} title="Send a separate permanent-team invitation" type="button">Invite to team</button> : null}
+                {teamInvitationSent ? <span className="rounded-md bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Team invitation sent</span> : null}
+                {alreadyOnPermanentTeam ? <span className="rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">Already on team</span> : null}
                 {canEdit ? <button aria-label={`Edit ${participant.full_name}`} className="sport-secondary-button min-h-9 px-3 py-2 text-xs" onClick={() => onEdit(participant)} type="button">Edit</button> : null}
                 {canEdit ? <button aria-label={`Remove ${participant.full_name}`} className="inline-flex min-h-9 items-center justify-center rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2" onClick={() => onRemove(participant)} type="button">Remove</button> : null}
               </div> : null}

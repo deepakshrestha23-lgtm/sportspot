@@ -41,6 +41,7 @@ export type GameParticipant = {
   status_label: string;
   reconfirmation_required: boolean;
   reconfirmation_kind: "PLAYER_RESPONSE" | "HOST_ACKNOWLEDGEMENT" | "NONE";
+  team_invitation_status?: "NONE" | "INVITED" | "ACTIVE";
   attendance?: {
     id?: number;
     status: ParticipationAttendanceStatus;

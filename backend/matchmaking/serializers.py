@@ -182,6 +182,7 @@ class GameParticipantSerializer(serializers.ModelSerializer):
     reconfirmation_required = serializers.SerializerMethodField()
     reconfirmation_kind = serializers.SerializerMethodField()
     attendance = serializers.SerializerMethodField()
+    team_invitation_status = serializers.SerializerMethodField()
 
     class Meta:
         model = GameParticipant
@@ -204,6 +205,7 @@ class GameParticipantSerializer(serializers.ModelSerializer):
             "reconfirmation_required",
             "reconfirmation_kind",
             "attendance",
+            "team_invitation_status",
             "joined_at",
         )
 
@@ -215,6 +217,16 @@ class GameParticipantSerializer(serializers.ModelSerializer):
             return "PLAYER_RESPONSE"
         if participant.status == GameParticipant.Status.GUEST_CONFIRMATION_REQUIRED:
             return "HOST_ACKNOWLEDGEMENT"
+        return "NONE"
+
+    def get_team_invitation_status(self, participant):
+        """Expose team-offer state only to the private game host roster."""
+        statuses_by_user = self.context.get("team_invitation_statuses_by_user", {})
+        status = statuses_by_user.get(participant.user_id)
+        if status == TeamMember.MemberStatus.ACTIVE:
+            return "ACTIVE"
+        if status == TeamMember.MemberStatus.INVITED:
+            return "INVITED"
         return "NONE"
 
     def get_sportspot_id(self, participant):
@@ -526,16 +538,35 @@ class GameSerializer(serializers.ModelSerializer):
         }
 
     def get_participants(self, game):
-        participants = game.participants.filter(status__in=ACTIVE_PARTICIPANT_STATUSES)
+        participants = list(game.participants.filter(status__in=ACTIVE_PARTICIPANT_STATUSES))
+        request = self.context.get("request")
+        viewer = getattr(request, "user", None)
+        is_private_host = bool(viewer and viewer.is_authenticated and viewer.id == game.host_id)
         room_access = self.context.get("room_access")
         if room_access is None:
-            request = self.context.get("request")
-            user = getattr(request, "user", None)
-            if user and user.is_authenticated:
-                room_access = game_room_access_level(game, user)
-        if room_access in ["PLANNING", "RECONFIRMATION"]:
+            if viewer and viewer.is_authenticated:
+                room_access = game_room_access_level(game, viewer)
+        if room_access in ["PLANNING", "RECONFIRMATION"] and not is_private_host:
             return PublicGameParticipantSerializer(participants, many=True, context=self.context).data
-        return GameParticipantSerializer(participants, many=True, context=self.context).data
+        participant_context = self.context
+        if (
+            is_private_host
+            and game.team_id
+        ):
+            user_ids = [participant.user_id for participant in participants if participant.user_id]
+            statuses_by_user = dict(
+                TeamMember.objects.filter(
+                    team_id=game.team_id,
+                    user_id__in=user_ids,
+                    member_type=TeamMember.MemberType.REGISTERED,
+                    status__in=[TeamMember.MemberStatus.ACTIVE, TeamMember.MemberStatus.INVITED],
+                ).values_list("user_id", "status")
+            )
+            participant_context = {
+                **self.context,
+                "team_invitation_statuses_by_user": statuses_by_user,
+            }
+        return GameParticipantSerializer(participants, many=True, context=participant_context).data
 
     def get_venue_name(self, game):
         return game.booking.venue.name if game.booking_id else (game.preferred_venue_name or "Court to be booked")

@@ -25,6 +25,7 @@ from .services import (
     player_has_overlapping_confirmed_game,
     record_game_attendance,
     synchronize_game_lifecycle,
+    invite_temporary_participant_to_team,
 )
 
 
@@ -302,6 +303,106 @@ class PickupGameApiTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertTrue(GameParticipant.objects.filter(game=game, user=self.player_two, participant_type=GameParticipant.ParticipantType.TEMPORARY).exists())
         self.assertFalse(TeamMember.objects.filter(team=self.team, user=self.player_two, status=TeamMember.MemberStatus.ACTIVE).exists())
+
+    def test_captain_can_invite_active_temporary_player_before_game_completion(self):
+        game = Game.objects.create(
+            game_type=Game.GameType.FILL_SQUAD,
+            team=self.team,
+            host=self.host,
+            booking=self.booking,
+            title="Live squad recruitment",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            status=Game.Status.RECRUITING,
+        )
+        participant = GameParticipant.objects.create(
+            game=game,
+            user=self.player_two,
+            participant_type=GameParticipant.ParticipantType.TEMPORARY,
+            role=GameRoleRequirement.CricksalRole.BOWLER,
+            status=GameParticipant.Status.CONFIRMED,
+        )
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(
+            reverse("matchmaking-game-invite-to-team", args=[game.id, participant.id]),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        invitation = TeamMember.objects.get(team=self.team, user=self.player_two)
+        self.assertEqual(invitation.status, TeamMember.MemberStatus.INVITED)
+        self.assertEqual(invitation.cricksal_role, TeamMember.CricksalRole.BOWLER)
+        self.assertEqual(response.data["detail"], "The permanent team invitation has been sent.")
+        self.assertEqual(GameParticipant.objects.get(pk=participant.id).participant_type, GameParticipant.ParticipantType.TEMPORARY)
+
+        game_detail = self.client.get(reverse("matchmaking-game-manage", args=[game.id]))
+        self.assertEqual(game_detail.status_code, 200, game_detail.data)
+        serialized_participant = next(item for item in game_detail.data["game"]["participants"] if item["id"] == participant.id)
+        self.assertEqual(serialized_participant["team_invitation_status"], "INVITED")
+
+    def test_permanent_team_invitation_is_blocked_for_cancelled_game(self):
+        game = Game.objects.create(
+            game_type=Game.GameType.FILL_SQUAD,
+            team=self.team,
+            host=self.host,
+            booking=self.booking,
+            title="Cancelled squad recruitment",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            status=Game.Status.CANCELLED,
+        )
+        participant = GameParticipant.objects.create(
+            game=game,
+            user=self.player_two,
+            participant_type=GameParticipant.ParticipantType.TEMPORARY,
+            role=GameRoleRequirement.CricksalRole.ANY,
+            status=GameParticipant.Status.CONFIRMED,
+        )
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(reverse("matchmaking-game-invite-to-team", args=[game.id, participant.id]), format="json")
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertFalse(TeamMember.objects.filter(team=self.team, user=self.player_two).exists())
+
+    def test_captain_can_invite_provisional_player_in_plan_first_game(self):
+        game = Game.objects.create(
+            game_type=Game.GameType.FILL_SQUAD,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            team=self.team,
+            host=self.host,
+            title="Plan first squad recruitment",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            proposed_date=timezone.localdate() + timedelta(days=5),
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(19, 0),
+            preferred_district="Kathmandu",
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=2),
+            status=Game.Status.RECRUITING,
+        )
+        participant = GameParticipant.objects.create(
+            game=game,
+            user=self.player_two,
+            participant_type=GameParticipant.ParticipantType.TEMPORARY,
+            role=GameRoleRequirement.CricksalRole.ANY,
+            status=GameParticipant.Status.PROVISIONAL,
+        )
+
+        self.client.force_authenticate(self.host)
+        response = self.client.post(reverse("matchmaking-game-invite-to-team", args=[game.id, participant.id]), format="json")
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(
+            TeamMember.objects.get(team=self.team, user=self.player_two).status,
+            TeamMember.MemberStatus.INVITED,
+        )
+        game_detail = self.client.get(reverse("matchmaking-game-manage", args=[game.id]))
+        self.assertEqual(game_detail.status_code, 200, game_detail.data)
+        serialized_participant = next(item for item in game_detail.data["game"]["participants"] if item["id"] == participant.id)
+        self.assertEqual(serialized_participant["team_invitation_status"], "INVITED")
 
     def test_strict_role_cannot_be_overfilled(self):
         game = Game.objects.create(host=self.host, booking=self.booking, title="Role capped pickup", total_capacity=3, minimum_players_to_proceed=2)

@@ -34,6 +34,19 @@ ACTIVE_GAME_STATUSES = [
     Game.Status.COMPLETED,
 ]
 
+# A temporary player can be evaluated for the permanent team as soon as they
+# are accepted into the squad. The invitation is independent of the match
+# lifecycle, but a cancelled or unpublished draft game must not create new
+# permanent-team offers.
+PERMANENT_TEAM_INVITATION_GAME_STATUSES = [
+    Game.Status.RECRUITING,
+    Game.Status.FULL,
+    Game.Status.CLOSED,
+    Game.Status.BOOKING_PENDING,
+    Game.Status.IN_PROGRESS,
+    Game.Status.COMPLETED,
+]
+
 EXPIRABLE_JOIN_REQUEST_STATUSES = [
     JoinRequest.Status.PENDING,
     JoinRequest.Status.WAITLISTED,
@@ -47,6 +60,21 @@ REQUEST_EXPIRING_GAME_STATUSES = [
     Game.Status.IN_PROGRESS,
     Game.Status.COMPLETED,
 ]
+
+
+def _active_registered_captain(team):
+    """Return the team's current captain only when their membership is valid."""
+    captain = getattr(team, "captain", None)
+    if not captain or not captain.is_active or captain.role != "PLAYER":
+        return None
+    if not TeamMember.objects.filter(
+        team_id=team.id,
+        user_id=captain.id,
+        member_type=TeamMember.MemberType.REGISTERED,
+        status=TeamMember.MemberStatus.ACTIVE,
+    ).exists():
+        return None
+    return captain
 
 
 def record_join_request_event(join_request, event_type, *, actor=None, previous_status="", metadata=None):
@@ -1501,33 +1529,36 @@ def invite_player_to_game(game_id, actor, sportspot_id, requested_role, message=
 
 @transaction.atomic
 def invite_temporary_participant_to_team(game_id, participant_id, actor):
-    """Offer permanent membership only after a completed Fill My Squad game.
+    """Offer permanent membership to an active temporary squad player.
 
-    The participant's temporary game role is a convenient default, but the
-    existing Team invitation workflow remains the source of truth for joining
-    the permanent team.
+    The offer can be made while the game is being recruited, coordinated, or
+    after it is completed. The participant remains temporary until they accept
+    the separate Team invitation.
     """
     game = (
         Game.objects.select_for_update(of=("self",))
-        .select_related("team", "host")
+        .select_related("team", "team__captain", "host")
         .get(id=game_id)
     )
     if game.game_type != Game.GameType.FILL_SQUAD or not game.team_id:
         raise ValidationError("Permanent team invitations are available only for Fill My Squad games.")
+
+    # Keep a direct action correct even if the lifecycle worker is delayed.
+    synchronize_game_lifecycle(game, expire_requests=True)
     current_captain = _active_registered_captain(game.team)
     if not current_captain or current_captain.id != actor.id:
         raise ValidationError("Only the current team captain can send a permanent team invitation.")
-    if game.status != Game.Status.COMPLETED:
-        raise ValidationError("A permanent team invitation can be sent after the game is completed.")
+    if game.status not in PERMANENT_TEAM_INVITATION_GAME_STATUSES:
+        raise ValidationError("Permanent team invitations are available while the game is active or after it is completed.")
     participant = GameParticipant.objects.select_for_update().select_related("user").filter(
         id=participant_id,
         game=game,
         participant_type=GameParticipant.ParticipantType.TEMPORARY,
         user__isnull=False,
-        status=GameParticipant.Status.CONFIRMED,
+        status__in=ACTIVE_PARTICIPANT_STATUSES,
     ).first()
     if not participant:
-        raise ValidationError("Choose a confirmed temporary player from this completed game.")
+        raise ValidationError("Choose an active registered temporary player from this game.")
     from teams.models import TeamMember
     from teams.services import invite_registered_player_to_team
 
