@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -256,7 +257,7 @@ export default function PaymentPage() {
                   Continue to Khalti to complete payment. SportSpot will confirm your booking after the payment is verified.
                 </p>
               </div>
-              <StatusBadge label="Secure checkout" tone="success" />
+              <span className="inline-flex h-10 items-center rounded-md border border-slate-200 bg-white px-3 shadow-[0_2px_6px_rgba(15,23,42,0.04)]"><KhaltiLogo /></span>
             </div>
 
             {isExpired ? (
@@ -265,7 +266,9 @@ export default function PaymentPage() {
               </div>
             ) : null}
 
-            <button className="sport-primary-button mt-6 w-full" disabled={!canPay || isStartingKhalti} onClick={payWithKhalti} type="button">{isStartingKhalti ? "Opening Khalti..." : `Pay ${formatNpr(booking.amount)} with Khalti`}</button>
+            <button className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-md border border-[#e60023] bg-white px-5 text-sm font-bold text-sportNavy transition hover:bg-[#fff5f6] disabled:cursor-not-allowed disabled:opacity-60" disabled={!canPay || isStartingKhalti} onClick={payWithKhalti} type="button">
+              {isStartingKhalti ? "Opening Khalti..." : <><span>Continue to</span><KhaltiLogo /></>}
+            </button>
 
             {booking.status === "RESERVED" ? (
               <div className="mt-4 border-t border-slate-200 pt-4">
@@ -393,6 +396,10 @@ function SummaryRow({ label, value, strong = false }: { label: string; value: st
       <span className={strong ? "text-lg font-bold text-sportNavy" : "font-bold text-sportNavy"}>{value}</span>
     </div>
   );
+}
+
+function KhaltiLogo() {
+  return <Image alt="Khalti" className="h-6 w-auto" height={30} priority src="/images/khalti-logo.png" width={68} />;
 }
 
 function StatusBadge({ label, tone }: { label: string; tone: "success" | "warning" | "danger" | "neutral" }) {
