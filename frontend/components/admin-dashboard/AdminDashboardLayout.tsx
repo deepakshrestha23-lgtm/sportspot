@@ -25,7 +25,7 @@ export default function AdminDashboardLayout({ children }: { children: ReactNode
         <div className="border-b border-slate-200/80 bg-white px-4 py-3 lg:hidden">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-sportGreen">SportSpot Admin</p>
+              <p className="text-xs font-black uppercase tracking-wide text-sportGreen">Admin Dashboard</p>
               <div className="mt-1 flex min-w-0 items-center gap-2 text-sm font-black text-sportNavy">
                 <span className="shrink-0 text-sportGreen"><AdminIcon name={activeItem.icon} /></span>
                 <span className="truncate">{activeItem.label}</span>
@@ -51,9 +51,8 @@ function AdminSidebar({ pathname }: { pathname: string }) {
     <aside className="hidden w-[248px] shrink-0 border-r border-slate-200/80 bg-white lg:block">
       <div className="sticky top-[64px] flex h-[calc(100vh-64px)] flex-col px-3 py-5">
         <div className="border-b border-slate-100 px-3 pb-5">
-          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-sportGreen">SportSpot</p>
-          <p className="mt-1 text-sm font-black text-sportNavy">Admin control center</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">Trust, safety, and marketplace operations.</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sportGreen">SportSpot</p>
+          <p className="mt-1 text-sm font-semibold text-slate-600">Admin Dashboard</p>
         </div>
         <nav aria-label="Admin dashboard" className="mt-5 space-y-1.5">
           {adminDashboardNavItems.map((item) => <AdminSidebarItem isActive={isAdminDashboardItemActive(pathname, item)} item={item} key={item.href} />)}
@@ -72,13 +71,13 @@ function AdminSidebarItem({ isActive, item, onNavigate }: { isActive: boolean; i
   return (
     <Link
       aria-current={isActive ? "page" : undefined}
-      className={`group relative flex min-h-12 items-center gap-3 rounded-lg px-3 py-2.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${isActive ? "bg-green-50 text-green-800" : "text-slate-600 hover:bg-slate-50 hover:text-sportNavy"}`}
+      className={`group relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sportGreen focus-visible:ring-offset-2 ${isActive ? "bg-green-50 text-green-800" : "text-slate-600 hover:bg-slate-50 hover:text-sportNavy"}`}
       href={item.href}
       onClick={onNavigate}
     >
       {isActive ? <span aria-hidden="true" className="absolute left-0 top-3 h-6 w-1 rounded-r-full bg-sportGreen" /> : null}
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${isActive ? "bg-white text-sportGreen" : "bg-slate-50 text-slate-400 group-hover:text-sportGreen"}`}><AdminIcon name={item.icon} /></span>
-      <span className="min-w-0"><span className="block truncate text-sm font-black">{item.label}</span><span className={`mt-0.5 block truncate text-[11px] ${isActive ? "text-green-700" : "text-slate-400"}`}>{item.description}</span></span>
+      <span className={`flex h-6 w-6 shrink-0 items-center justify-center ${isActive ? "text-sportGreen" : "text-slate-400 group-hover:text-sportGreen"}`}><AdminIcon name={item.icon} /></span>
+      <span className="min-w-0 truncate">{item.label}</span>
     </Link>
   );
 }
