@@ -162,7 +162,7 @@ export default function Navbar() {
 
           <div className="hidden items-center gap-7 text-[13px] font-semibold text-slate-600 lg:flex">
             {getNavLinks(user, ownerVenueStatus).map((link) => {
-              const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+              const isActive = link.isActive ? link.isActive(pathname) : pathname === link.href || pathname.startsWith(`${link.href}/`);
               return (
               <Link aria-current={isActive ? "page" : undefined} className={`relative py-2 transition-colors hover:text-sportGreen ${isActive ? "text-sportGreen after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-sportGreen" : ""}`} href={link.href} key={link.href}>
                 {link.label}
@@ -430,13 +430,7 @@ function getNavLinks(user: User | null, ownerVenueStatus: VenueStatus | "NONE") 
     ];
   }
 
-  return [
-    { label: "Admin Dashboard", href: "/dashboard/admin" },
-    { label: "Venue Approvals", href: "/dashboard/admin/venues" },
-    { label: "Bookings", href: "/dashboard/admin/bookings" },
-    { label: "Users", href: "/dashboard/admin/users" },
-    { label: "Reports", href: "/dashboard/admin/reports" },
-  ];
+  return getAdminTopNavigationLinks();
 }
 
 function getProfileLinks(user: User) {
@@ -458,13 +452,25 @@ function getProfileLinks(user: User) {
   }
 
   return [
-    { label: "Admin Dashboard", href: "/dashboard/admin" },
-    { label: "Venue Approvals", href: "/dashboard/admin/venues" },
-    { label: "Bookings & payments", href: "/dashboard/admin/bookings" },
-    { label: "Users", href: "/dashboard/admin/users" },
-    { label: "Reports & moderation", href: "/dashboard/admin/reports" },
     { label: "Admin Settings", href: "/dashboard/admin/settings" },
+    { label: "Help & Support", href: "/support" },
   ];
+}
+
+function getAdminTopNavigationLinks(): NavigationLink[] {
+  const items = [
+    { item: adminDashboardNavItems[0], label: "Overview" },
+    { item: adminDashboardNavItems[1], label: "Venue reviews" },
+    { item: adminDashboardNavItems[3], label: "Bookings" },
+    { item: adminDashboardNavItems[2], label: "Users" },
+    { item: adminDashboardNavItems[4], label: "Reports" },
+  ];
+
+  return items.map(({ item, label }) => ({
+    label,
+    href: item.href,
+    isActive: (pathname: string) => isAdminDashboardItemActive(pathname, item),
+  }));
 }
 
 function getMobileNavigationSections(user: User | null, ownerVenueStatus: VenueStatus | "NONE"): MobileNavigationSection[] {
