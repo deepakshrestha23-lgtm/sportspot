@@ -107,18 +107,29 @@ export default function VenueOwnerTopBar() {
             </span>
           </div>
 
-          <button
-            aria-expanded={isWorkspaceOpen}
-            className="hidden min-w-0 max-w-md flex-1 items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-2.5 text-left transition-colors hover:border-green-200 hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-200 md:flex lg:max-w-lg"
-            onClick={() => setIsWorkspaceOpen((current) => !current)}
-            type="button"
-          >
-            <VenueIdentity isLoading={isVenueLoading} venue={venue} state={venueState} />
-            <ChevronDownIcon />
-          </button>
+          {isVenueLoading || venue ? (
+            <button
+              aria-expanded={isWorkspaceOpen}
+              className="hidden min-w-0 max-w-sm flex-1 items-center gap-3 rounded-md border border-transparent px-3 py-2 text-left transition-colors hover:border-slate-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-green-200 md:flex"
+              onClick={() => setIsWorkspaceOpen((current) => !current)}
+              type="button"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-100 bg-white text-sportGreen shadow-[0_2px_6px_rgba(15,23,42,0.04)]"><BuildingIcon /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold text-sportNavy">{isVenueLoading ? "Loading venue..." : venue?.name}</span>
+                {!isVenueLoading ? <span className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-slate-500"><VenueStatusDot state={venueState} />{venueState.label}</span> : null}
+              </span>
+              <ChevronDownIcon />
+            </button>
+          ) : (
+            <Link className="hidden min-h-10 max-w-sm flex-1 items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-sportNavy transition-colors hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 md:flex" href="/dashboard/owner/venue-setup">
+              <span className="flex min-w-0 items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-green-50 text-sportGreen"><BuildingIcon /></span><span className="truncate">Set up your venue</span></span>
+              <ArrowRightIcon />
+            </Link>
+          )}
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            {contextAction ? <VenueContextAction action={contextAction} /> : null}
+            {contextAction && venue ? <VenueContextAction action={contextAction} /> : null}
             <button
               aria-label="Venue workspace"
               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-sportNavy transition hover:border-green-200 hover:bg-green-50 hover:text-sportGreen focus:outline-none focus:ring-2 focus:ring-green-200 md:hidden"
@@ -208,7 +219,7 @@ export default function VenueOwnerTopBar() {
 function VenueIdentity({ expanded = false, isLoading, state, venue }: { expanded?: boolean; isLoading: boolean; state: VenueState; venue: Venue | null }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Current venue</p>
+      <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">{venue ? "Venue workspace" : "Venue setup"}</p>
       <div className={`mt-1 flex min-w-0 ${expanded ? "flex-col items-start gap-2" : "items-center gap-3"}`}>
         <p className="min-w-0 truncate text-sm font-black text-sportNavy sm:text-base">
           {isLoading ? "Loading venue..." : venue?.name || "No venue set up yet"}
@@ -228,6 +239,17 @@ function VenueStatusBadge({ state }: { state: VenueState }) {
   }[state.tone];
 
   return <span className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-xs font-black ${toneClass}`}>{state.label}</span>;
+}
+
+function VenueStatusDot({ state }: { state: VenueState }) {
+  const color = {
+    neutral: "bg-slate-400",
+    warning: "bg-amber-500",
+    success: "bg-sportGreen",
+    danger: "bg-red-500",
+  }[state.tone];
+
+  return <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${color}`} />;
 }
 
 function VenueContextAction({ action }: { action: NonNullable<ContextAction> }) {
@@ -275,7 +297,7 @@ function getVenueState(venue: Venue | null): VenueState {
 }
 
 function getContextAction(venue: Venue | null): ContextAction {
-  if (!venue) return null;
+  if (!venue) return { label: "Set Up Venue", href: "/dashboard/owner/venue-setup", variant: "primary" };
 
   if (venue.status === "APPROVED" && venue.is_active) {
     return { label: "View Public Venue", href: `/courts/${venue.id}`, variant: "primary" };
@@ -324,6 +346,14 @@ function ChevronDownIcon() {
   return (
     <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
       <path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
+      <path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
     </svg>
   );
 }
