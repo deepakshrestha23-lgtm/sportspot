@@ -7,6 +7,8 @@ export default function AuthShell({
   contentClassName = "max-w-[520px]",
   contentPlacement = "center",
   eyebrow,
+  heroDescription,
+  heroEyebrow,
   hideHeader = false,
   subtitle,
   title,
@@ -15,11 +17,15 @@ export default function AuthShell({
   contentClassName?: string;
   contentPlacement?: "center" | "start";
   eyebrow: string;
+  heroDescription?: string | null;
+  heroEyebrow?: string | null;
   hideHeader?: boolean;
   subtitle: string;
   title: string;
 }) {
   const placementClassName = contentPlacement === "start" ? "items-start" : "items-center";
+  const visualEyebrow = heroEyebrow === undefined ? eyebrow : heroEyebrow;
+  const visualDescription = heroDescription === undefined ? subtitle : heroDescription;
 
   return (
     <main className="min-h-screen bg-[var(--sport-canvas)] lg:h-screen lg:overflow-hidden">
@@ -37,13 +43,13 @@ export default function AuthShell({
             <Logo variant="light" />
 
             <div className="max-w-xl pb-3">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-green-300">{eyebrow}</p>
-              <h1 className="mt-4 text-4xl font-black leading-[1.02] tracking-tight xl:text-5xl">
+              {visualEyebrow ? <p className="text-xs font-black uppercase tracking-[0.2em] text-green-300">{visualEyebrow}</p> : null}
+              <h1 className={`${visualEyebrow ? "mt-4" : ""} text-4xl font-black leading-[1.02] tracking-tight xl:text-5xl`}>
                 The future of Nepali <span className="text-green-300">Cricksal.</span>
               </h1>
-              <p className="mt-5 max-w-lg text-base leading-7 text-slate-200">{subtitle}</p>
+              {visualDescription ? <p className="mt-5 max-w-lg text-base leading-7 text-slate-200">{visualDescription}</p> : null}
 
-              <div className="mt-7 grid grid-cols-2 gap-3">
+              <div className={`${visualDescription ? "mt-7" : "mt-8"} grid grid-cols-2 gap-3`}>
                 <AuthFeature label="Find open games" />
                 <AuthFeature label="Build teams" />
                 <AuthFeature label="Book verified courts" />

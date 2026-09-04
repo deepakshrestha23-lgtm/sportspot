@@ -142,6 +142,8 @@ export default function VerifyEmailPage() {
   return (
     <AuthShell
       eyebrow="Account security"
+      heroDescription={null}
+      heroEyebrow={null}
       title="Verify your email"
       subtitle={`Enter the six-digit code sent to ${maskedEmail || "your email"}. Delivery can take a moment.`}
     >
@@ -191,7 +193,7 @@ export default function VerifyEmailPage() {
             disabled={!email || isSubmitting}
             type="submit"
           >
-            {isSubmitting ? "Verifying..." : "Verify Email ->"}
+            {isSubmitting ? "Verifying..." : "Verify email"}
           </button>
         </form>
 
