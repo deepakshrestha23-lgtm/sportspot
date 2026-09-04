@@ -31,9 +31,9 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid #dce6e0;
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   background: #ffffff;
-  box-shadow: 0 8px 24px rgba(12, 37, 24, 0.04);
+  box-shadow: 0 1px 2px rgba(12, 37, 24, 0.035);
 }
 
 .admin-dashboard-theme .admin-list-header {
@@ -45,30 +45,23 @@
 }
 
 .admin-dashboard-theme .admin-count-badge {
-  display: inline-flex;
-  min-height: 1.8rem;
-  align-items: center;
-  border: 1px solid #dce6e0;
-  border-radius: 999px;
-  background: #ffffff;
-  padding: 0.25rem 0.7rem;
-  color: #526477;
-  font-size: 0.73rem;
-  font-weight: 800;
+  color: #63758a;
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .admin-dashboard-theme .admin-refresh-button {
   display: inline-flex;
-  min-height: 2.6rem;
+  min-height: 2.35rem;
   align-items: center;
   gap: 0.45rem;
   border: 1px solid #dce6e0;
-  border-radius: 0.65rem;
+  border-radius: 0.5rem;
   background: #ffffff;
-  padding: 0.55rem 0.85rem;
+  padding: 0.45rem 0.7rem;
   color: #0b1220;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 700;
   transition: border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -84,13 +77,13 @@
   justify-content: space-between;
   gap: 1rem;
   border-bottom: 1px solid #e7eee9;
-  padding: 1.25rem 1.35rem;
+  padding: 1rem 1.1rem;
 }
 
 .admin-dashboard-theme .admin-panel-heading h2 {
   color: #07152b;
   font-size: 1.1rem;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1.25;
 }
 
@@ -103,14 +96,14 @@
 
 .admin-dashboard-theme .admin-status-pill {
   display: inline-flex;
-  min-height: 1.75rem;
+  min-height: 1.55rem;
   align-items: center;
   gap: 0.4rem;
   border-width: 1px;
   border-radius: 999px;
-  padding: 0.2rem 0.65rem;
-  font-size: 0.72rem;
-  font-weight: 850;
+  padding: 0.16rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -148,17 +141,17 @@
 
 .admin-dashboard-theme .admin-data-table {
   width: 100%;
-  min-width: 58rem;
+  min-width: 61rem;
   border-collapse: collapse;
   table-layout: fixed;
 }
 
 .admin-dashboard-theme .admin-data-table th {
-  background: #f8faf9;
+  background: #fafcfb;
   color: #63758a;
-  font-size: 0.7rem;
-  font-weight: 850;
-  letter-spacing: 0.09em;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
   text-align: left;
   text-transform: uppercase;
 }
@@ -166,7 +159,7 @@
 .admin-dashboard-theme .admin-data-table th,
 .admin-dashboard-theme .admin-data-table td {
   border-bottom: 1px solid #e7eee9;
-  padding: 1.05rem 1.15rem;
+  padding: 0.8rem 1rem;
   vertical-align: middle;
 }
 
@@ -228,17 +221,17 @@
 
 .admin-dashboard-theme .admin-avatar {
   display: inline-flex;
-  height: 2.45rem;
-  width: 2.45rem;
+  height: 2.15rem;
+  width: 2.15rem;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   border: 1px solid #ccefd9;
-  border-radius: 0.8rem;
-  background: linear-gradient(145deg, #f1fbf5, #e1f5e9);
+  border-radius: 0.6rem;
+  background: #edf8f1;
   color: #087a3e;
-  font-size: 0.78rem;
-  font-weight: 900;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .admin-dashboard-theme .admin-primary-text,
@@ -253,28 +246,28 @@
 .admin-dashboard-theme .admin-primary-text {
   color: #07152b;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.35;
 }
 
 .admin-dashboard-theme .admin-secondary-text {
-  margin-top: 0.25rem;
+  margin-top: 0.18rem;
   color: #63758a;
-  font-size: 0.74rem;
-  font-weight: 650;
+  font-size: 0.73rem;
+  font-weight: 500;
   line-height: 1.4;
 }
 
 .admin-dashboard-theme .admin-row-action {
   display: inline-flex;
-  min-height: 2.35rem;
+  min-height: 2rem;
   align-items: center;
   justify-content: center;
   border: 1px solid;
-  border-radius: 0.65rem;
-  padding: 0.45rem 0.7rem;
-  font-size: 0.73rem;
-  font-weight: 850;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
   white-space: nowrap;
   transition: background-color 160ms ease, border-color 160ms ease;
 }
@@ -304,7 +297,132 @@
 .admin-dashboard-theme .admin-no-action {
   color: #94a3b8;
   font-size: 0.73rem;
-  font-weight: 750;
+  font-weight: 500;
+}
+
+.admin-dashboard-theme .admin-table-value,
+.admin-dashboard-theme .admin-amount {
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-dashboard-theme .admin-amount {
+  color: #07152b;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.admin-dashboard-theme .admin-row-note {
+  color: #7a8a9d;
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.admin-dashboard-theme .admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid #e7eee9;
+  padding: 0.8rem 1rem;
+}
+
+.admin-dashboard-theme .admin-pagination-summary {
+  color: #63758a;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.admin-dashboard-theme .admin-pagination-summary strong {
+  color: #334155;
+  font-weight: 700;
+}
+
+.admin-dashboard-theme .admin-pagination-actions,
+.admin-dashboard-theme .admin-pagination-pages {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.admin-dashboard-theme .admin-pagination-button {
+  display: inline-flex;
+  min-width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: #526477;
+  font-size: 0.73rem;
+  font-weight: 600;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.admin-dashboard-theme .admin-pagination-button:hover:not(:disabled) {
+  border-color: #dce6e0;
+  background: #f8fbf9;
+  color: #087a3e;
+}
+
+.admin-dashboard-theme .admin-pagination-button.is-current {
+  border-color: #087a3e;
+  background: #087a3e;
+  color: #ffffff;
+}
+
+.admin-dashboard-theme .admin-pagination-button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.admin-dashboard-theme .admin-pagination-direction {
+  padding: 0 0.6rem;
+}
+
+.admin-dashboard-theme .admin-pagination-ellipsis {
+  width: 1.45rem;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.admin-dashboard-theme .admin-operation-row {
+  padding: 1rem 1.1rem;
+}
+
+.admin-dashboard-theme .admin-operation-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  border-top: 1px solid #edf1ee;
+  padding-top: 0.8rem;
+}
+
+.admin-dashboard-theme .admin-operation-meta > div + div {
+  border-left: 1px solid #edf1ee;
+  padding-left: 1rem;
+}
+
+.admin-dashboard-theme .admin-operation-meta dt {
+  color: #7a8a9d;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.admin-dashboard-theme .admin-operation-meta dd {
+  margin-top: 0.28rem;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .admin-dashboard-theme .admin-table-scroll {
@@ -614,7 +732,7 @@
 
   .admin-dashboard-theme .admin-data-table tr {
     border-bottom: 1px solid #e7eee9;
-    padding: 0.65rem 1rem;
+    padding: 0.55rem 0.9rem;
   }
 
   .admin-dashboard-theme .admin-list-header {
@@ -643,7 +761,7 @@
     justify-content: space-between;
     gap: 1rem;
     border-bottom: 0;
-    padding: 0.42rem 0;
+    padding: 0.38rem 0;
     text-align: right;
   }
 
@@ -662,10 +780,41 @@
     content: attr(data-label);
     flex: 0 0 auto;
     font-size: 0.68rem;
-    font-weight: 850;
-    letter-spacing: 0.08em;
+    font-weight: 700;
+    letter-spacing: 0.07em;
     text-align: left;
     text-transform: uppercase;
+  }
+
+  .admin-dashboard-theme .admin-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 0.85rem 0.9rem;
+  }
+
+  .admin-dashboard-theme .admin-pagination-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .admin-dashboard-theme .admin-pagination-pages {
+    gap: 0.15rem;
+  }
+
+  .admin-dashboard-theme .admin-operation-row {
+    padding: 1rem;
+  }
+
+  .admin-dashboard-theme .admin-operation-meta {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+
+  .admin-dashboard-theme .admin-operation-meta > div + div {
+    border-left: 0;
+    border-top: 1px solid #edf1ee;
+    padding-top: 0.65rem;
+    padding-left: 0;
   }
 }
 

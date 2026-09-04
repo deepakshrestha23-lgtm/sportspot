@@ -94,7 +94,7 @@ export default function AdminVenueApprovalsPage() {
       {!isLoading && error ? <AdminError onRetry={() => void loadVenues()} /> : null}
       {!isLoading && !error && !venues.length ? <AdminPanel><div className="admin-empty-state"><span className="admin-empty-icon" aria-hidden="true">✓</span><h2>Queue is clear</h2><p>No venues are currently in {formatAdminValue(statusFilter).toLowerCase()}.</p></div></AdminPanel> : null}
 
-      {!isLoading && !error && venues.length ? <div className="space-y-5">{venues.map((venue) => <VenueReviewCard busy={busyId === venue.id} key={venue.id} note={notes[venue.id] || ""} onAction={(action) => void reviewVenue(venue.id, action)} onNoteChange={(note) => setNotes((current) => ({ ...current, [venue.id]: note }))} venue={venue} />)}<AdminPaginationControls hasMore={pagination?.has_more || false} isLoading={isLoading} onNext={() => setPage((current) => current + 1)} onPrevious={() => setPage((current) => Math.max(current - 1, 1))} page={page} pageSize={pagination?.page_size || 25} total={pagination?.total || 0} /></div> : null}
+      {!isLoading && !error && venues.length ? <div className="space-y-5">{venues.map((venue) => <VenueReviewCard busy={busyId === venue.id} key={venue.id} note={notes[venue.id] || ""} onAction={(action) => void reviewVenue(venue.id, action)} onNoteChange={(note) => setNotes((current) => ({ ...current, [venue.id]: note }))} venue={venue} />)}<AdminPaginationControls hasMore={pagination?.has_more || false} isLoading={isLoading} onNext={() => setPage((current) => current + 1)} onPageChange={setPage} onPrevious={() => setPage((current) => Math.max(current - 1, 1))} page={page} pageSize={pagination?.page_size || 25} total={pagination?.total || 0} /></div> : null}
     </div>
   );
 }

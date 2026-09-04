@@ -98,7 +98,7 @@ export default function AdminReportsPage() {
           <div className="divide-y divide-slate-100">
             {reports.map((report) => <ReportRow busy={busyId === report.id} key={report.id} onAction={(action) => void updateReport(report, action)} report={report} />)}
           </div>
-          <AdminPaginationControls hasMore={pagination?.has_more || false} isLoading={isLoading} onNext={() => setPage((current) => current + 1)} onPrevious={() => setPage((current) => Math.max(current - 1, 1))} page={page} pageSize={pagination?.page_size || 25} total={pagination?.total || 0} />
+          <AdminPaginationControls hasMore={pagination?.has_more || false} isLoading={isLoading} onNext={() => setPage((current) => current + 1)} onPageChange={setPage} onPrevious={() => setPage((current) => Math.max(current - 1, 1))} page={page} pageSize={pagination?.page_size || 25} total={pagination?.total || 0} />
         </AdminPanel>
       ) : null}
     </div>

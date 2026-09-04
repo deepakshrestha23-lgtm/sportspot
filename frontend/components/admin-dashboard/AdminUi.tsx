@@ -52,11 +52,25 @@ export function AdminEmptyState({ title, description }: { title: string; descrip
   return <div className="admin-empty-state"><span className="admin-empty-icon" aria-hidden="true">✓</span><h2>{title}</h2><p>{description}</p></div>;
 }
 
-export function AdminPaginationControls({ page, pageSize = 25, hasMore, total, isLoading = false, onPrevious, onNext }: { page: number; pageSize?: number; hasMore: boolean; total: number; isLoading?: boolean; onPrevious: () => void; onNext: () => void }) {
-  if (total <= pageSize && page === 1) return null;
-  const firstItem = total ? (page - 1) * pageSize + 1 : 0;
-  const lastItem = total ? Math.min(page * pageSize, total) : 0;
-  return <nav aria-label="Pagination" className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs font-bold text-slate-500" aria-live="polite">Showing <span className="text-sportNavy">{firstItem.toLocaleString()}-{lastItem.toLocaleString()}</span> of <span className="text-sportNavy">{total.toLocaleString()}</span></p><div className="flex items-center gap-2"><span className="px-2 text-xs font-black text-slate-500" aria-current="page">Page {page}</span><button aria-label="Go to previous page" className="min-h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-sportNavy transition hover:border-green-200 hover:text-sportGreen disabled:cursor-not-allowed disabled:opacity-40" disabled={isLoading || page === 1} onClick={onPrevious} type="button">Previous</button><button aria-label="Go to next page" className="min-h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-sportNavy transition hover:border-green-200 hover:text-sportGreen disabled:cursor-not-allowed disabled:opacity-40" disabled={isLoading || !hasMore} onClick={onNext} type="button">Next</button></div></nav>;
+export function AdminPaginationControls({ page, pageSize = 25, hasMore, total, isLoading = false, onPrevious, onNext, onPageChange }: { page: number; pageSize?: number; hasMore: boolean; total: number; isLoading?: boolean; onPrevious: () => void; onNext: () => void; onPageChange?: (page: number) => void }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (totalPages === 1) return null;
+  const currentPage = Math.min(Math.max(page, 1), totalPages);
+  const firstItem = total ? (currentPage - 1) * pageSize + 1 : 0;
+  const lastItem = total ? Math.min(currentPage * pageSize, total) : 0;
+  const pageItems = paginationItems(currentPage, totalPages);
+
+  return <nav aria-label="Pagination" className="admin-pagination"><p className="admin-pagination-summary" aria-live="polite">Showing <strong>{firstItem.toLocaleString()}-{lastItem.toLocaleString()}</strong> of <strong>{total.toLocaleString()}</strong></p><div className="admin-pagination-actions"><button aria-label="Go to previous page" className="admin-pagination-button admin-pagination-direction" disabled={isLoading || currentPage === 1} onClick={onPrevious} type="button">Previous</button><div className="admin-pagination-pages" aria-label="Page numbers">{pageItems.map((item, index) => item === "ellipsis" ? <span aria-hidden="true" className="admin-pagination-ellipsis" key={`ellipsis-${index}`}>...</span> : <button aria-current={item === currentPage ? "page" : undefined} aria-label={`Go to page ${item}`} className={`admin-pagination-button admin-pagination-page ${item === currentPage ? "is-current" : ""}`} disabled={isLoading || !onPageChange || item === currentPage} key={item} onClick={() => onPageChange?.(item)} type="button">{item}</button>)}</div><button aria-label="Go to next page" className="admin-pagination-button admin-pagination-direction" disabled={isLoading || !hasMore} onClick={onNext} type="button">Next</button></div></nav>;
+}
+
+function paginationItems(page: number, totalPages: number): Array<number | "ellipsis"> {
+  if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
+  const items: Array<number | "ellipsis"> = [1];
+  if (page > 3) items.push("ellipsis");
+  for (let value = Math.max(2, page - 1); value <= Math.min(totalPages - 1, page + 1); value += 1) items.push(value);
+  if (page < totalPages - 2) items.push("ellipsis");
+  items.push(totalPages);
+  return items;
 }
 
 export function formatAdminValue(value: string) {
