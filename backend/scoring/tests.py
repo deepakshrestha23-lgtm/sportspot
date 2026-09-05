@@ -415,6 +415,35 @@ class CricketScoringServiceTests(TestCase):
         self.assertEqual(first_innings["fall_of_wickets"][0]["batter"], "Home Captain")
         self.assertEqual(first_innings["bowling"][0]["wickets"], 1)
 
+    def test_final_wicket_records_without_an_incoming_batter_and_closes_the_innings(self):
+        match, players = self.setup_started_innings(overs=2)
+        record_delivery(
+            self.fixture.id,
+            self.home_captain,
+            {
+                "wicket_kind": CricketDelivery.WicketKind.BOWLED,
+                "dismissed_player_id": players[self.home_captain.id],
+                "incoming_batsman_id": players[self.home_two.id],
+            },
+        )
+
+        record_delivery(
+            self.fixture.id,
+            self.home_captain,
+            {
+                "wicket_kind": CricketDelivery.WicketKind.BOWLED,
+                "dismissed_player_id": players[self.home_two.id],
+            },
+        )
+
+        innings = CricketInnings.objects.get(match=match, number=1)
+        self.assertEqual(innings.wickets, 2)
+        self.assertEqual(innings.status, CricketInnings.Status.COMPLETED)
+        self.assertEqual(innings.closing_reason, CricketInnings.ClosingReason.ALL_OUT)
+        self.assertIsNone(innings.current_striker_id)
+        self.assertIsNone(innings.current_non_striker_id)
+        self.assertIsNone(innings.current_bowler_id)
+
     def test_scorecard_api_returns_the_same_persisted_state_to_a_selected_player(self):
         self.setup_started_innings()
         client = APIClient()
