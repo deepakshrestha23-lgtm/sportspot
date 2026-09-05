@@ -21,6 +21,7 @@ from players.services import (
     record_commitment_attendance,
     record_player_rating,
     record_reliability_event,
+    reconcile_rating_feedback_notifications,
     submit_player_rating_eligibility,
 )
 from teams.models import Team, TeamMember
@@ -844,6 +845,43 @@ class PlayerRatingServiceTests(APITestCase):
         self.assertEqual(notification.action_status, Notification.ActionStatus.COMPLETED)
         self.assertEqual(notification.action_url, "")
         self.assertTrue(notification.is_read)
+
+    def test_reconciliation_removes_legacy_duplicate_feedback_cards(self):
+        eligibility, _created = create_rating_eligibility(
+            rater=self.rater,
+            rated_player=self.rated_player,
+            title="Kathmandu Kings vs Urban Strikers",
+            related_entity_type="game",
+            related_entity_id=206,
+            match_date=timezone.now() - timedelta(days=1),
+            deadline_at=timezone.now() + timedelta(days=7),
+        )
+        for suffix in ["first", "second", "third"]:
+            Notification.objects.create(
+                recipient=self.rater,
+                notification_type=Notification.NotificationType.RATING_REQUIRED,
+                title="Share feedback on your completed game",
+                message="Legacy feedback task.",
+                action_url=f"/dashboard/player/ratings?rate={eligibility.id}",
+                related_entity_type="game",
+                related_entity_id=206,
+                action_required=True,
+                action_status=Notification.ActionStatus.PENDING,
+                deduplication_key=f"legacy-rating-card:{suffix}",
+            )
+
+        reconcile_rating_feedback_notifications(self.rater)
+
+        notifications = Notification.objects.filter(
+            recipient=self.rater,
+            notification_type=Notification.NotificationType.RATING_REQUIRED,
+            related_entity_type="game",
+            related_entity_id=206,
+        )
+        self.assertEqual(notifications.count(), 1)
+        notification = notifications.get()
+        self.assertEqual(notification.metadata["pending_rating_count"], 1)
+        self.assertEqual(notification.action_url, f"/dashboard/player/ratings?rate={eligibility.id}")
 
     def test_expired_rating_eligibility_cannot_be_submitted(self):
         eligibility, _created = create_rating_eligibility(

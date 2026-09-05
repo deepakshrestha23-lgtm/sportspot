@@ -39,6 +39,9 @@ class NotificationListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        from players.services import reconcile_rating_feedback_notifications
+
+        reconcile_rating_feedback_notifications(request.user)
         notifications = (
             Notification.objects.filter(recipient=request.user)
             .select_related("actor", "actor__player_profile")
@@ -64,6 +67,9 @@ class UnseenNotificationCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        from players.services import reconcile_rating_feedback_notifications
+
+        reconcile_rating_feedback_notifications(request.user)
         latest = Notification.objects.filter(recipient=request.user).only(
             "id",
             "title",

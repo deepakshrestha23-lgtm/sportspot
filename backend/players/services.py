@@ -1128,6 +1128,36 @@ def synchronize_rating_feedback_notification(
 
 
 @transaction.atomic
+def reconcile_rating_feedback_notifications(player):
+    """Repair legacy rating cards from the source-of-truth eligibility ledger."""
+    from notifications.models import Notification
+
+    contexts = list(
+        Notification.objects.filter(
+            recipient=player,
+            notification_type=Notification.NotificationType.RATING_REQUIRED,
+        )
+        .values_list("related_entity_type", "related_entity_id")
+        .distinct()
+    )
+    for related_entity_type, related_entity_id in contexts:
+        if not related_entity_type or not related_entity_id:
+            continue
+        has_submitted_rating = PlayerRatingEligibility.objects.filter(
+            rater=player,
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id,
+            status=PlayerRatingEligibility.Status.SUBMITTED,
+        ).exists()
+        synchronize_rating_feedback_notification(
+            rater=player,
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id,
+            mark_as_read=has_submitted_rating,
+        )
+
+
+@transaction.atomic
 def create_rating_eligibilities_for_players(
     *,
     players,
