@@ -143,6 +143,30 @@ class NotificationApiTests(APITestCase):
         self.assertTrue(self.notification.is_read)
         self.assertFalse(unrelated.is_read)
 
+    def test_opening_a_page_marks_related_notification_with_query_parameters_read(self):
+        rating_notification = create_notification(
+            recipient=self.player,
+            notification_type=Notification.NotificationType.RATING_REQUIRED,
+            title="Share feedback",
+            message="Rate your teammates.",
+            action_url="/dashboard/player/ratings?rate=42",
+            action_required=True,
+            action_status=Notification.ActionStatus.PENDING,
+            deduplication_key="rating-query-read-test",
+        )
+        self.client.force_authenticate(self.player)
+
+        response = self.client.post(
+            reverse("notification-read-related"),
+            {"target_url": "/dashboard/player/ratings"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rating_notification.refresh_from_db()
+        self.assertTrue(rating_notification.is_seen)
+        self.assertTrue(rating_notification.is_read)
+
     def test_list_filters_and_paginates_without_hardcoded_counts(self):
         for index in range(18):
             create_notification(

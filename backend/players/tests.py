@@ -13,6 +13,7 @@ from players.models import ParticipationAttendanceEvent, ParticipationCommitment
 from players.services import (
     create_participation_commitment,
     create_rating_eligibility,
+    create_rating_eligibilities_for_players,
     dispute_commitment,
     excuse_participation_commitment,
     finalize_pending_attendance,
@@ -20,6 +21,7 @@ from players.services import (
     record_commitment_attendance,
     record_player_rating,
     record_reliability_event,
+    submit_player_rating_eligibility,
 )
 from teams.models import Team, TeamMember
 from venues.models import Booking, BookingSlot, Court, CourtSlot, Venue
@@ -764,6 +766,84 @@ class PlayerRatingServiceTests(APITestCase):
         self.assertIsNotNone(eligibility.submitted_rating)
         self.profile.refresh_from_db()
         self.assertEqual(str(self.profile.average_rating), "5.00")
+
+    def test_completed_game_feedback_uses_one_task_and_resolves_after_all_ratings(self):
+        third_player = get_user_model().objects.create_user(
+            email="rating-third@example.com",
+            password="test-password",
+            full_name="Third Rating Player",
+            phone="9800000044",
+            role="PLAYER",
+            email_verified=True,
+        )
+        PlayerProfile.objects.create(
+            user=third_player,
+            skill_level=PlayerProfile.SkillLevel.INTERMEDIATE,
+            location="Kathmandu",
+            weekly_availability="Evenings",
+            playing_style="Reliable teammate",
+            preferred_cricksal_role=PlayerProfile.CricksalRole.ALL_ROUNDER,
+        )
+        create_rating_eligibilities_for_players(
+            players=[self.rater, self.rated_player, third_player],
+            title="Kathmandu Kings vs Urban Strikers",
+            related_entity_type="game",
+            related_entity_id=205,
+            match_date=timezone.now() - timedelta(days=1),
+        )
+
+        notification = Notification.objects.get(
+            recipient=self.rater,
+            notification_type=Notification.NotificationType.RATING_REQUIRED,
+            related_entity_type="game",
+            related_entity_id=205,
+        )
+        self.assertEqual(
+            Notification.objects.filter(
+                recipient=self.rater,
+                notification_type=Notification.NotificationType.RATING_REQUIRED,
+                related_entity_type="game",
+                related_entity_id=205,
+            ).count(),
+            1,
+        )
+        self.assertEqual(notification.metadata["pending_rating_count"], 2)
+
+        first_eligibility = PlayerRatingEligibility.objects.get(
+            rater=self.rater,
+            related_entity_type="game",
+            related_entity_id=205,
+            rated_player=self.rated_player,
+        )
+        submit_player_rating_eligibility(
+            eligibility_id=first_eligibility.id,
+            rater=self.rater,
+            rating=5,
+            feedback_tags=["RELIABLE"],
+        )
+        notification.refresh_from_db()
+        self.assertTrue(notification.action_required)
+        self.assertEqual(notification.action_status, Notification.ActionStatus.PENDING)
+        self.assertEqual(notification.metadata["pending_rating_count"], 1)
+        self.assertTrue(notification.is_read)
+
+        second_eligibility = PlayerRatingEligibility.objects.get(
+            rater=self.rater,
+            related_entity_type="game",
+            related_entity_id=205,
+            rated_player=third_player,
+        )
+        submit_player_rating_eligibility(
+            eligibility_id=second_eligibility.id,
+            rater=self.rater,
+            rating=4,
+            feedback_tags=["TEAM_PLAYER"],
+        )
+        notification.refresh_from_db()
+        self.assertFalse(notification.action_required)
+        self.assertEqual(notification.action_status, Notification.ActionStatus.COMPLETED)
+        self.assertEqual(notification.action_url, "")
+        self.assertTrue(notification.is_read)
 
     def test_expired_rating_eligibility_cannot_be_submitted(self):
         eligibility, _created = create_rating_eligibility(

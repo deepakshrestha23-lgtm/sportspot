@@ -244,6 +244,17 @@ export default function NotificationCenter({
   }, [isRealtimeConnected, loadCount]);
 
   useEffect(() => {
+    const handleNotificationChange = () => {
+      void loadCount();
+      if (isOpenRef.current) {
+        void loadNotificationsRef.current(activeFilterRef.current, false);
+      }
+    };
+    window.addEventListener("sportspot:notifications-changed", handleNotificationChange);
+    return () => window.removeEventListener("sportspot:notifications-changed", handleNotificationChange);
+  }, [loadCount]);
+
+  useEffect(() => {
     api
       .post<{ unseen_count: number }>("/api/notifications/read-related/", { target_url: pathname })
       .then((response) => updateUnseenCount(response.data.unseen_count))

@@ -157,8 +157,9 @@ class MarkRelatedNotificationsReadView(APIView):
         now = timezone.now()
         updated = Notification.objects.filter(
             recipient=request.user,
-            action_url=target_url,
             is_read=False,
+        ).filter(
+            Q(action_url=target_url) | Q(action_url__startswith=f"{target_url}?")
         ).update(
             is_seen=True,
             seen_at=now,

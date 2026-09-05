@@ -999,6 +999,134 @@ def create_rating_eligibility(
         return eligibility, created
 
 
+def _rating_notification_key(*, rater_id, related_entity_type, related_entity_id):
+    return f"{related_entity_type}:{related_entity_id}:rating:{rater_id}"
+
+
+@transaction.atomic
+def synchronize_rating_feedback_notification(
+    *,
+    rater,
+    related_entity_type,
+    related_entity_id,
+    mark_as_read=False,
+):
+    """Keep one actionable feedback task for a player's completed activity.
+
+    Rating eligibilities remain individual because each teammate is rated
+    separately. The notification is deliberately activity-level so players do
+    not receive a visually identical card for every teammate.
+    """
+    from notifications.models import Notification
+    from notifications.services import create_notification
+
+    notification_queryset = Notification.objects.filter(
+        recipient=rater,
+        notification_type=Notification.NotificationType.RATING_REQUIRED,
+        related_entity_type=related_entity_type,
+        related_entity_id=related_entity_id,
+    ).order_by("-created_at", "-id")
+    notification_key = _rating_notification_key(
+        rater_id=rater.id,
+        related_entity_type=related_entity_type,
+        related_entity_id=related_entity_id,
+    )
+    notification = (
+        notification_queryset.select_for_update()
+        .filter(deduplication_key=notification_key)
+        .first()
+    )
+    if notification is None:
+        notification = notification_queryset.select_for_update().first()
+
+    pending_eligibilities = list(
+        PlayerRatingEligibility.objects.filter(
+            rater=rater,
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id,
+            status=PlayerRatingEligibility.Status.PENDING,
+        )
+        .select_related("rated_player")
+        .order_by("deadline_at", "created_at", "id")
+    )
+    now = timezone.now()
+
+    if not pending_eligibilities:
+        if notification:
+            notification.action_required = False
+            notification.action_status = Notification.ActionStatus.COMPLETED
+            notification.action_url = ""
+            notification.is_seen = True
+            notification.seen_at = notification.seen_at or now
+            notification.is_read = True
+            notification.read_at = notification.read_at or now
+            notification.save(
+                update_fields=[
+                    "action_required", "action_status", "action_url", "is_seen",
+                    "seen_at", "is_read", "read_at", "updated_at",
+                ]
+            )
+            notification_queryset.exclude(pk=notification.pk).delete()
+        return notification
+
+    target = pending_eligibilities[0]
+    pending_count = len(pending_eligibilities)
+    player_label = "player rating" if pending_count == 1 else "player ratings"
+    task_values = {
+        "title": "Share feedback on your completed game",
+        "message": (
+            f"You have {pending_count} {player_label} remaining from a completed game. "
+            "Ratings and reliability are kept separate."
+        ),
+        "action_url": f"/dashboard/player/ratings?rate={target.id}",
+        "action_required": True,
+        "action_status": Notification.ActionStatus.PENDING,
+        "metadata": {
+            "eligibility_id": target.id,
+            "rated_player_id": target.rated_player_id,
+            "pending_rating_count": pending_count,
+        },
+    }
+
+    if notification is None:
+        notification = create_notification(
+            recipient=rater,
+            actor=None,
+            notification_type=Notification.NotificationType.RATING_REQUIRED,
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id,
+            deduplication_key=notification_key,
+            **task_values,
+        )
+        if notification is None:
+            return None
+    else:
+        for field, value in task_values.items():
+            setattr(notification, field, value)
+        notification.deduplication_key = notification_key
+        if mark_as_read:
+            notification.is_seen = True
+            notification.seen_at = notification.seen_at or now
+            notification.is_read = True
+            notification.read_at = notification.read_at or now
+        notification.save(
+            update_fields=[
+                *task_values.keys(), "deduplication_key", "is_seen", "seen_at", "is_read", "read_at", "updated_at",
+            ]
+        )
+
+    if mark_as_read and notification:
+        Notification.objects.filter(pk=notification.pk, recipient=rater).update(
+            is_seen=True,
+            seen_at=notification.seen_at or now,
+            is_read=True,
+            read_at=notification.read_at or now,
+            updated_at=now,
+        )
+    notification_queryset.exclude(pk=notification.pk).delete()
+    return notification
+
+
 @transaction.atomic
 def create_rating_eligibilities_for_players(
     *,
@@ -1020,9 +1148,6 @@ def create_rating_eligibilities_for_players(
 
     deadline_at = deadline_at or timezone.now() + timezone.timedelta(days=RATING_ELIGIBILITY_DAYS)
     created_count = 0
-    from notifications.models import Notification
-    from notifications.services import create_notification
-
     for rater in unique_players.values():
         for rated_player in unique_players.values():
             if rater.id == rated_player.id:
@@ -1040,22 +1165,12 @@ def create_rating_eligibilities_for_players(
             if not created:
                 continue
             created_count += 1
-            create_notification(
-                recipient=rater,
-                actor=None,
-                notification_type=Notification.NotificationType.RATING_REQUIRED,
-                title="Share feedback on your completed game",
-                message="Your completed game is ready for verified player feedback. Ratings and reliability are kept separate.",
-                action_url=f"/dashboard/player/ratings?rate={eligibility.id}",
-                related_entity_type=related_entity_type,
-                related_entity_id=related_entity_id,
-                action_required=True,
-                action_status=Notification.ActionStatus.PENDING,
-                metadata={"eligibility_id": eligibility.id, "rated_player_id": rated_player.id},
-                deduplication_key=(
-                    f"{related_entity_type}:{related_entity_id}:rating:{rater.id}:{rated_player.id}"
-                ),
-            )
+    for rater in unique_players.values():
+        synchronize_rating_feedback_notification(
+            rater=rater,
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id,
+        )
     return created_count
 
 
@@ -1310,6 +1425,12 @@ def submit_player_rating_eligibility(*, eligibility_id, rater, rating, feedback_
             eligibility.status = PlayerRatingEligibility.Status.SUBMITTED
             eligibility.submitted_rating = player_rating
             eligibility.save(update_fields=["status", "submitted_rating", "updated_at"])
+            synchronize_rating_feedback_notification(
+                rater=rater,
+                related_entity_type=eligibility.related_entity_type,
+                related_entity_id=eligibility.related_entity_id,
+                mark_as_read=True,
+            )
             return player_rating, created
 
     raise ValidationError(expired_error or "This rating request is no longer active.")

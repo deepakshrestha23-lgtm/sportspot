@@ -65,6 +65,7 @@ export default function PlayerRatingsPage() {
       });
       emitToast({ message: "Your rating has been submitted.", type: "success", dedupeKey: `rating-submitted-${target.id}` });
       setRatingTarget(null);
+      window.dispatchEvent(new Event("sportspot:notifications-changed"));
       await loadSummary();
     } catch (requestError) {
       emitToast({ message: getApiErrorMessage(requestError, "We could not submit this rating. Please try again."), type: "error", dedupeKey: `rating-submit-error-${target.id}` });

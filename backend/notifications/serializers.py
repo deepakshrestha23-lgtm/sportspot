@@ -98,7 +98,10 @@ class NotificationSerializer(serializers.ModelSerializer):
             )
             return actions
 
-        if notification.action_url:
+        if notification.action_url and (
+            notification.notification_type != Notification.NotificationType.RATING_REQUIRED
+            or notification.action_required
+        ):
             actions.append(
                 {
                     "key": "open",
