@@ -4,6 +4,7 @@ export type GameType = "PICKUP" | "FILL_SQUAD";
 export type GameCreationMode = "BOOKING_FIRST" | "PLAN_FIRST";
 export type GameIntensity = "CASUAL" | "COMPETITIVE" | "PRACTICE";
 export type GameStatus = "DRAFT" | "RECRUITING" | "FULL" | "CLOSED" | "BOOKING_PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type GameRecruitmentClosureReason = "HOST_CLOSED" | "DEADLINE_PASSED" | "BOOKING_PAYMENT_PENDING" | "BOOKING_PAYMENT_EXPIRED" | "";
 export type GameSkillLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "OPEN";
 export type GameRole = "BATSMAN" | "BOWLER" | "ALL_ROUNDER" | "WICKETKEEPER" | "ANY";
 export type JoinRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "WAITLISTED" | "INVITED" | "WITHDRAWN" | "REMOVED" | "EXPIRED";
@@ -72,6 +73,8 @@ export type MatchmakingGame = {
   game_intensity_label: string;
   status: GameStatus;
   status_label: string;
+  recruitment_closed_reason: GameRecruitmentClosureReason;
+  recruitment_closed_at: string | null;
   title: string;
   description: string;
   host_notes: string;

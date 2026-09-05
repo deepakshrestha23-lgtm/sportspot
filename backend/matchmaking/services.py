@@ -542,22 +542,44 @@ def close_game_recruitment(game, actor):
 
 @transaction.atomic
 def reopen_game_recruitment(game, actor):
-    """Reopen discovery only while the original schedule remains safe."""
+    """Reopen discovery after the host has restored a safe game plan.
+
+    A host-initiated pause can be reopened directly. Automatic deadline or
+    failed-payment closures may also be resumed after the host updates the
+    future deadlines (and, for an unbooked plan, the proposed schedule).
+    Confirmed bookings remain authoritative, and roster reconfirmation must
+    finish before a changed unbooked schedule becomes public again.
+    """
     locked_game = Game.objects.select_for_update(of=("self",)).select_related("host", "booking").get(id=game.id)
     synchronize_and_require_game_host(locked_game, actor, "Only the game host can reopen recruitment.")
     synchronize_game_lifecycle(locked_game, expire_requests=True)
     if locked_game.status != Game.Status.CLOSED:
         raise ValidationError("Only a closed game can reopen recruitment.")
-    if locked_game.recruitment_closed_reason != Game.RecruitmentClosureReason.HOST_CLOSED:
-        raise ValidationError("Only recruitment closed by the host can be reopened.")
+    reopenable_reasons = {
+        Game.RecruitmentClosureReason.HOST_CLOSED,
+        Game.RecruitmentClosureReason.DEADLINE_PASSED,
+        Game.RecruitmentClosureReason.BOOKING_PAYMENT_EXPIRED,
+    }
+    if locked_game.recruitment_closed_reason not in reopenable_reasons:
+        raise ValidationError(
+            "This game cannot be reopened while a court payment is still in progress. "
+            "Complete or cancel the court reservation first."
+            if locked_game.recruitment_closed_reason == Game.RecruitmentClosureReason.BOOKING_PAYMENT_PENDING
+            else "This game was closed by a booking or lifecycle rule and cannot be reopened from this screen."
+        )
+    refresh_reconfirmation_state(locked_game)
+    if locked_game.requires_reconfirmation:
+        raise ValidationError(
+            "Existing players must confirm the updated schedule before recruitment can reopen."
+        )
     now = timezone.now()
     if not locked_game.recruitment_deadline or locked_game.recruitment_deadline <= now:
-        raise ValidationError("The recruitment deadline has passed. Create a new game if you still need players.")
+        raise ValidationError("Set a future recruitment deadline before reopening this game.")
     if not locked_game.start_at or locked_game.start_at <= now:
-        raise ValidationError("This game is too close to its start time to reopen recruitment.")
+        raise ValidationError("Set a future game date and time before reopening recruitment.")
     if locked_game.creation_mode == Game.CreationMode.PLAN_FIRST and not locked_game.booking_id:
         if locked_game.booking_deadline and locked_game.booking_deadline <= now:
-            raise ValidationError("The court-booking deadline has passed. Create a new game plan instead.")
+            raise ValidationError("Set a future court-booking deadline before reopening this game plan.")
     if locked_game.booking_id:
         ensure_booking_can_publish_game(locked_game.booking, actor, exclude_game_id=locked_game.id)
     locked_game.is_public = True

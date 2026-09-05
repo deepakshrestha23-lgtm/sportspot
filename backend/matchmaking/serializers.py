@@ -417,6 +417,8 @@ class GameSerializer(serializers.ModelSerializer):
             "game_intensity_label",
             "status",
             "status_label",
+            "recruitment_closed_reason",
+            "recruitment_closed_at",
             "title",
             "description",
             "host_notes",

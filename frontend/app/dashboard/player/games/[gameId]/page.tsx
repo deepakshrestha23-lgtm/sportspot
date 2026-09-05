@@ -39,6 +39,7 @@ export default function GameManagePage() {
   const [lookupPlayer, setLookupPlayer] = useState<GamePlayerLookup | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [showEditModal, setShowEditModal] = useState(false);
+  const [reopenAfterScheduleEdit, setReopenAfterScheduleEdit] = useState(false);
   const [editingParticipant, setEditingParticipant] = useState<MatchmakingGame["participants"][number] | null>(null);
   const [participantToRemove, setParticipantToRemove] = useState<MatchmakingGame["participants"][number] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -166,6 +167,7 @@ export default function GameManagePage() {
   }
 
   async function saveGame(values: GameHostEditValues) {
+    const shouldReopenAfterSave = reopenAfterScheduleEdit;
     const payload: Record<string, unknown> = {
       title: values.title.trim(),
       description: values.description.trim(),
@@ -192,14 +194,29 @@ export default function GameManagePage() {
       payload.booking_deadline = toIsoDateTime(values.booking_deadline);
     }
     setActionInProgress(true);
+    let scheduleSaved = false;
     try {
       const response = await api.patch<GameResponse>(`/api/matchmaking/games/${params.gameId}/manage/`, payload);
+      scheduleSaved = true;
       setGame(response.data.game);
       setShowEditModal(false);
+      setReopenAfterScheduleEdit(false);
+      if (shouldReopenAfterSave && response.data.game.requires_reconfirmation) {
+        emitToast({ message: "Schedule updated. Existing players must confirm before recruitment can reopen.", type: "success", dedupeKey: `game-reopen-confirmation-${params.gameId}` });
+        await loadGame(true);
+        return;
+      }
+      if (shouldReopenAfterSave) {
+        const reopenResponse = await api.post<GameResponse>(`/api/matchmaking/games/${params.gameId}/reopen-recruitment/`);
+        setGame(reopenResponse.data.game);
+        emitToast({ message: "Schedule updated and recruitment is open again.", type: "success", dedupeKey: `game-reopen-recruitment-${params.gameId}` });
+        await loadGame(true);
+        return;
+      }
       emitToast({ message: response.data.game.requires_reconfirmation ? "Game details updated. Registered players need to confirm, and offline guests need host acknowledgement." : "Your game details have been updated.", type: "success", dedupeKey: `game-edit-${params.gameId}` });
       await loadGame(true);
     } catch (requestError) {
-      emitToast({ message: getApiErrorMessage(requestError, "We could not save these game changes."), type: "error", dedupeKey: `game-edit-error-${params.gameId}` });
+      emitToast({ message: getApiErrorMessage(requestError, shouldReopenAfterSave ? scheduleSaved ? "The schedule was saved, but recruitment could not reopen. Review the updated deadlines and try again." : "The schedule could not be updated, so recruitment remains closed." : "We could not save these game changes."), type: "error", dedupeKey: `game-edit-error-${params.gameId}` });
     } finally {
       setActionInProgress(false);
     }
@@ -310,6 +327,11 @@ export default function GameManagePage() {
     }
   }
 
+  function beginReopenWithScheduleEdit() {
+    setReopenAfterScheduleEdit(true);
+    setShowEditModal(true);
+  }
+
   if (isLoading) return <div className="sport-surface h-[560px] animate-pulse" />;
   if (error || !game) return <section className="sport-error-state"><h1 className="text-xl font-bold text-red-950">Game unavailable</h1><p className="mt-2 text-sm font-semibold text-red-700">{error}</p><button className="sport-primary-button mt-5 bg-red-600 hover:bg-red-700" onClick={() => loadGame()} type="button">Retry</button></section>;
 
@@ -317,11 +339,15 @@ export default function GameManagePage() {
   const waitlistedRequests = requests.filter((request) => request.status === "WAITLISTED");
   const invitedRequests = requests.filter((request) => request.status === "INVITED");
   const canEditGame = game.user_state.is_host && !["CANCELLED", "COMPLETED", "IN_PROGRESS", "BOOKING_PENDING"].includes(game.status);
+  const canManageRecruitment = game.user_state.is_host && !["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(game.status);
+  const isClosedRecruitment = game.status === "CLOSED" && !game.is_public;
+  const needsScheduleUpdateToReopen = ["DEADLINE_PASSED", "BOOKING_PAYMENT_EXPIRED"].includes(game.recruitment_closed_reason);
+  const canReopenRecruitment = ["HOST_CLOSED", "DEADLINE_PASSED", "BOOKING_PAYMENT_EXPIRED"].includes(game.recruitment_closed_reason);
   const canOpenRoom = game.user_state.room_access && game.user_state.room_access !== "NONE";
 
   return (
     <div className="space-y-5">
-      <DashboardPageHeader eyebrow={game.game_type === "FILL_SQUAD" ? "Fill My Squad Host" : "Pickup Game Host"} title={game.title} description={`${game.venue_name} - ${game.booking_display_time}`} actions={<div className="flex flex-wrap items-center gap-2">{canEditGame ? <button className="sport-secondary-button min-h-11" onClick={() => setShowEditModal(true)} type="button">Edit game</button> : null}{canOpenRoom ? <Link className="sport-primary-button min-h-11" href={`/dashboard/player/games/${game.id}/room`}>{roomLinkLabel(game)}</Link> : null}</div>} />
+      <DashboardPageHeader eyebrow={game.game_type === "FILL_SQUAD" ? "Fill My Squad Host" : "Pickup Game Host"} title={game.title} description={`${game.venue_name} - ${game.booking_display_time}`} actions={<div className="flex flex-wrap items-center gap-2">{canEditGame ? <button className="sport-secondary-button min-h-11" onClick={() => { setReopenAfterScheduleEdit(false); setShowEditModal(true); }} type="button">Edit game</button> : null}{canOpenRoom ? <Link className="sport-primary-button min-h-11" href={`/dashboard/player/games/${game.id}/room`}>{roomLinkLabel(game)}</Link> : null}</div>} />
       {!canEditGame && game.user_state.is_host ? <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">This game is {game.status_label.toLowerCase()} and can no longer be edited.</p> : null}
       {game.requires_reconfirmation ? <section className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4"><h2 className="font-black text-amber-950">Schedule update needs attention</h2><p className="mt-1 text-sm font-semibold leading-6 text-amber-800">The confirmed booking differs from the plan shared with the roster. Registered players must confirm or decline the new details. Offline guests cannot respond in SportSpot, so confirm with each guest and use the action on their roster entry.</p><div className="mt-3 flex flex-wrap gap-3 text-xs font-black text-amber-900"><span>{game.registered_reconfirmation_pending_count} player response{game.registered_reconfirmation_pending_count === 1 ? "" : "s"} pending</span><span>{game.guest_confirmation_pending_count} guest acknowledgement{game.guest_confirmation_pending_count === 1 ? "" : "s"} pending</span></div></section> : null}
       <section className="grid gap-4 md:grid-cols-5"><Metric label="Occupied" value={`${game.occupied_spots_count}/${game.total_capacity}`} /><Metric label="Confirmed" value={game.confirmed_participants_count} /><Metric label="Provisional" value={game.provisional_participants_count} /><Metric label="Open spots" value={game.available_spots} /><Metric label="Waitlist" value={game.waitlist_count} /></section>
@@ -340,7 +366,7 @@ export default function GameManagePage() {
         <aside className="space-y-4 xl:contents">
           <RosterCard actionInProgress={actionInProgress} game={game} onConfirmGuest={confirmGuestSchedule} onEdit={setEditingParticipant} onInviteToTeam={inviteParticipantToTeam} onRemove={setParticipantToRemove} />
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-xl font-black text-sportNavy">Invite registered player</h2><p className="mt-1 text-sm font-semibold text-slate-600">Invite a SportSpot player by ID. They must accept before joining the roster.</p><div className="mt-4 flex gap-2"><input className="h-12 min-w-0 flex-1 rounded-xl border border-slate-200 px-4 text-sm font-bold uppercase" placeholder="SSP-1001" value={inviteSportSpotId} onChange={(event) => { setInviteSportSpotId(event.target.value); setLookupPlayer(null); }} /><button className="min-h-12 rounded-xl border border-green-200 px-4 text-sm font-black text-sportGreen disabled:opacity-60" disabled={actionInProgress} onClick={lookupRegisteredPlayer} type="button">Find</button></div>{lookupPlayer ? <div className="mt-3 rounded-xl bg-green-50 p-3"><p className="font-black text-sportNavy">{lookupPlayer.full_name}</p><p className="text-sm font-semibold text-slate-600">{lookupPlayer.sportspot_id} - {lookupPlayer.skill_level || "Skill not set"}</p>{lookupPlayer.reliability_label ? <p className="mt-1 text-xs font-black text-sportGreen">{lookupPlayer.reliability_label}</p> : null}</div> : null}<select className="mt-3 h-12 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as GameRole)}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select><textarea className="mt-3 min-h-20 w-full rounded-xl border border-slate-200 p-3 text-sm font-semibold" placeholder="Optional message" value={inviteMessage} onChange={(event) => setInviteMessage(event.target.value)} /><button className="mt-3 min-h-11 w-full rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={actionInProgress || (game.available_spots <= 0 && !game.waitlist_enabled)} onClick={inviteRegisteredPlayer} type="button">{game.available_spots <= 0 && game.waitlist_enabled ? "Invite to Waitlist" : "Send Invitation"}</button></section>          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-xl font-black text-sportNavy">Add guest player</h2><p className="mt-1 text-sm font-semibold text-slate-600">Guests occupy player spots but do not receive SportSpot notifications or Game Room access.</p><input className="mt-4 h-12 w-full rounded-xl border border-slate-200 px-4 text-sm font-bold" placeholder="Guest display name" value={guestName} onChange={(event) => setGuestName(event.target.value)} /><select className="mt-3 h-12 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold" value={guestRole} onChange={(event) => setGuestRole(event.target.value as GameRole)}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select><button className="mt-3 min-h-11 w-full rounded-xl bg-sportGreen text-sm font-black text-white disabled:opacity-60" disabled={actionInProgress || game.available_spots <= 0} onClick={addGuest} type="button">Add Guest</button></section>
-          {game.user_state.is_host && !["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(game.status) ? (
+          {canManageRecruitment ? (
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div>
                 <h2 className="text-lg font-black text-sportNavy">Manage recruitment</h2>
@@ -350,8 +376,9 @@ export default function GameManagePage() {
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {(game.status === "RECRUITING" || game.status === "FULL") ? <button className="min-h-11 rounded-xl border border-green-200 bg-green-50 px-4 text-sm font-black text-green-800 hover:bg-green-100 disabled:opacity-60" disabled={actionInProgress} onClick={closeRecruitment} type="button">Close recruitment</button> : null}
-                {game.status === "CLOSED" && !game.is_public ? <button className="min-h-11 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-800 hover:bg-blue-100 disabled:opacity-60" disabled={actionInProgress} onClick={reopenRecruitment} type="button">Reopen recruitment</button> : null}
+                {isClosedRecruitment && canReopenRecruitment ? <button className="min-h-11 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-800 hover:bg-blue-100 disabled:opacity-60" disabled={actionInProgress} onClick={needsScheduleUpdateToReopen ? beginReopenWithScheduleEdit : reopenRecruitment} type="button">{needsScheduleUpdateToReopen ? "Update and reopen" : "Reopen recruitment"}</button> : null}
               </div>
+              {isClosedRecruitment ? <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{game.recruitment_closed_reason === "HOST_CLOSED" ? "Recruitment is paused by you. Reopening keeps the current schedule; edit the game first if the planned time needs to change." : game.recruitment_closed_reason === "DEADLINE_PASSED" ? "Recruitment closed when its deadline passed. Set a new future deadline, and update the proposed time if needed, before reopening." : game.recruitment_closed_reason === "BOOKING_PAYMENT_EXPIRED" ? "The court payment window expired before a booking was confirmed. Review the plan and set new future deadlines before reopening." : "This game was closed by a booking or lifecycle rule and cannot be reopened from this screen."}</p> : null}
               {game.booking ? <Link className="mt-3 inline-flex text-sm font-black text-sportGreen hover:underline" href={`/dashboard/player/bookings/${game.booking}`}>Open linked booking</Link> : null}
               <div className="mt-5 border-t border-red-100 pt-4">
                 <h3 className="text-sm font-black text-red-950">Cancel this game</h3>
@@ -363,7 +390,7 @@ export default function GameManagePage() {
           ) : null}
         </aside>
       </section>
-      {showEditModal && canEditGame ? <GameHostEditModal game={game} isSaving={actionInProgress} onClose={() => setShowEditModal(false)} onSave={saveGame} /> : null}
+      {showEditModal && canEditGame ? <GameHostEditModal game={game} isSaving={actionInProgress} onClose={() => { setShowEditModal(false); setReopenAfterScheduleEdit(false); }} onSave={saveGame} /> : null}
       {editingParticipant ? <GameParticipantEditModal isSaving={actionInProgress} onClose={() => setEditingParticipant(null)} onSave={saveParticipant} participant={editingParticipant} /> : null}
       {participantToRemove ? <ConfirmActionModal actionLabel="Remove participant" body={`${participantToRemove.full_name} will lose access to this game's private room. Their player spot will become available again.`} isWorking={actionInProgress} onCancel={() => setParticipantToRemove(null)} onConfirm={removeParticipant} title="Remove this participant?" /> : null}
     </div>

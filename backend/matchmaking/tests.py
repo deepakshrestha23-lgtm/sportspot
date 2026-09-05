@@ -1418,6 +1418,86 @@ class PickupGameApiTests(APITestCase):
         self.assertEqual(game.status, Game.Status.FULL)
         self.assertTrue(game.is_public)
 
+    def test_host_can_extend_an_expired_recruitment_deadline_and_reopen(self):
+        game = Game.objects.create(
+            host=self.host,
+            booking=self.booking,
+            title="Reopen after deadline",
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+            recruitment_deadline=timezone.now() - timedelta(hours=1),
+        )
+        GameRoleRequirement.objects.create(game=game, role="ANY", required_count=3)
+        GameParticipant.objects.create(game=game, user=self.host, participant_type=GameParticipant.ParticipantType.HOST, role="ANY")
+        game.refresh_status()
+        self.assertEqual(game.status, Game.Status.CLOSED)
+        self.assertEqual(game.recruitment_closed_reason, Game.RecruitmentClosureReason.DEADLINE_PASSED)
+
+        self.client.force_authenticate(self.host)
+        new_deadline = timezone.now() + timedelta(days=1)
+        update_response = self.client.patch(
+            reverse("matchmaking-game-manage", args=[game.id]),
+            {"recruitment_deadline": new_deadline.isoformat()},
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, 200, update_response.data)
+
+        reopen_response = self.client.post(reverse("matchmaking-game-reopen-recruitment", args=[game.id]))
+        self.assertEqual(reopen_response.status_code, 200, reopen_response.data)
+        game.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.RECRUITING)
+        self.assertTrue(game.is_public)
+        self.assertEqual(game.recruitment_closed_reason, "")
+
+    def test_reopen_waits_for_players_after_a_plan_first_schedule_change(self):
+        game = Game.objects.create(
+            host=self.host,
+            creation_mode=Game.CreationMode.PLAN_FIRST,
+            title="Reopen with a new time",
+            proposed_date=timezone.localdate() + timedelta(days=5),
+            proposed_start_time=time(18, 0),
+            proposed_end_time=time(20, 0),
+            preferred_area="Baneshwor",
+            booking_deadline=timezone.now() + timedelta(days=3),
+            recruitment_deadline=timezone.now() + timedelta(days=2),
+            total_capacity=4,
+            minimum_players_to_proceed=2,
+        )
+        GameRoleRequirement.objects.create(game=game, role="ANY", required_count=3)
+        GameParticipant.objects.create(
+            game=game,
+            user=self.host,
+            participant_type=GameParticipant.ParticipantType.HOST,
+            role="ANY",
+            status=GameParticipant.Status.PROVISIONAL,
+        )
+        participant = GameParticipant.objects.create(
+            game=game,
+            user=self.player_one,
+            participant_type=GameParticipant.ParticipantType.TEMPORARY,
+            role="ANY",
+            status=GameParticipant.Status.PROVISIONAL,
+        )
+
+        self.client.force_authenticate(self.host)
+        close_response = self.client.post(reverse("matchmaking-game-close-recruitment", args=[game.id]))
+        self.assertEqual(close_response.status_code, 200, close_response.data)
+        update_response = self.client.patch(
+            reverse("matchmaking-game-manage", args=[game.id]),
+            {"proposed_date": (timezone.localdate() + timedelta(days=6)).isoformat()},
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, 200, update_response.data)
+
+        participant.refresh_from_db()
+        self.assertEqual(participant.status, GameParticipant.Status.RECONFIRM_REQUIRED)
+        reopen_response = self.client.post(reverse("matchmaking-game-reopen-recruitment", args=[game.id]))
+        self.assertEqual(reopen_response.status_code, 400, reopen_response.data)
+        self.assertIn("confirm", str(reopen_response.data).lower())
+        game.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.CLOSED)
+        self.assertFalse(game.is_public)
+
     def test_leaving_full_game_reopens_spot_when_recruitment_deadline_is_open(self):
         game = Game.objects.create(
             host=self.host,
